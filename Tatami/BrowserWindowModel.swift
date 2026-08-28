@@ -378,8 +378,11 @@ final class BrowserWindowModel {
         }
     }
 
-    /// アドレスバーへフォーカスを移す (prefix + /)
+    /// アドレスバーへフォーカスを移す (prefix + /)。一覧やプロンプトが開いていると通常のキーがそちらへ吸われるため先に閉じる
     func focusAddressBar() {
+        chooser = nil
+        cancelPrompt()
+        cancelPrefix()
         addressBarFocusRequestCount += 1
     }
 
@@ -392,7 +395,7 @@ final class BrowserWindowModel {
     }
 
     func reload() {
-        currentWindow.focusedPane.webView.reload()
+        currentWindow.focusedPane.reload()
     }
 
     /// 新しいウィンドウを末尾に作って表示する (prefix + c)
@@ -453,8 +456,9 @@ final class BrowserWindowModel {
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
     func beginRenameWindow() {
-        // メニューから開いた時に prefix 待ちが残っていると、名前の最初の文字がコマンドとして消費されるため取り消す
+        // メニューから開いた時に prefix 待ちや一覧が残っていると、名前の最初の文字がコマンドや一覧の操作として消費されるため取り消す
         cancelPrefix()
+        chooser = nil
         promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
@@ -462,15 +466,22 @@ final class BrowserWindowModel {
 
     /// rename-session のプロンプトを開く (prefix + $)
     func beginRenameSession() {
+        cancelPrefix()
+        chooser = nil
         promptText = sessionName
         prompt = .renameSession
     }
 
     /// ページ内検索のプロンプトを開く (prefix + [)。前回の語を初期値にする
     func beginFindPrompt() {
+        cancelPrefix()
+        chooser = nil
         promptText = lastFindText
         prompt = .find
     }
+
+    /// アドレスバーを編集中かどうか。View がフォーカス状態から設定する。編集中は find モードの n / N / Escape を消費しない
+    var isAddressBarEditing = false
 
     /// 検索結果を次へ (n) / 前へ (N)
     func findNext(backwards: Bool) {
@@ -481,15 +492,24 @@ final class BrowserWindowModel {
         configuration.backwards = backwards
         // 末尾の一致から n (先頭から N) でページの反対側へ折り返す (ブラウザと vi の反復検索と同じ)
         configuration.wraps = true
-        currentWindow.focusedPane.webView.find(lastFindText, configuration: configuration) { [weak self] result in
-            if !result.matchFound {
-                self?.statusMessage = "見つからない: \(self?.lastFindText ?? "")"
+        findGeneration += 1
+        let generation = findGeneration
+        let text = lastFindText
+        let webView = currentWindow.focusedPane.webView
+        webView.find(text, configuration: configuration) { [weak self, weak webView] result in
+            // 完了までに find モードを抜けた・別の語で検索した・ペインが移った場合は古い結果を捨てる
+            guard let self, generation == findGeneration, let webView, currentWindow.focusedPane.webView === webView, !result.matchFound else {
+                return
             }
+            statusMessage = "見つからない: \(text)"
         }
     }
 
     /// コマンドプロンプトを開く (prefix + :)
     func beginCommandPrompt() {
+        // prefix 待ちや一覧が残っていると最初の文字がそちらに消費されるため、コマンドプロンプトを排他的な入力状態にする
+        cancelPrefix()
+        chooser = nil
         promptText = ""
         commandHistoryIndex = commandHistory.count
         commandDraft = ""
@@ -673,6 +693,9 @@ final class BrowserWindowModel {
     }
 
     func cancelPrompt() {
+        guard prompt != nil else {
+            return
+        }
         closePrompt()
     }
 
@@ -870,7 +893,7 @@ final class BrowserWindowModel {
             return true
         }
         // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う
-        if isFindModeActive, prompt == nil, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
+        if isFindModeActive, prompt == nil, !isAddressBarEditing, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
             switch keyStroke.key {
             case "n":
                 findNext(backwards: false)
@@ -880,6 +903,7 @@ final class BrowserWindowModel {
                 return true
             case "Escape":
                 isFindModeActive = false
+                findGeneration += 1
                 find(text: "")
                 return true
             default:
