@@ -18,6 +18,16 @@ struct PaneCommands: Commands {
     @FocusedValue(\.browserWindowModel) private var model
 
     var body: some Commands {
+        CommandMenu("Navigate") {
+            Button("Open Location") { model?.perform(command: .omnibox) }
+                .keyboardShortcut("l", modifiers: [.command])
+            Button("Back") { model?.perform(command: .goBack) }
+                .keyboardShortcut("[", modifiers: [.command])
+            Button("Forward") { model?.perform(command: .goForward) }
+                .keyboardShortcut("]", modifiers: [.command])
+            Button("Reload") { model?.perform(command: .reload) }
+                .keyboardShortcut("r", modifiers: [.command])
+        }
         CommandMenu("Pane") {
             Button("Split Left / Right") { model?.perform(command: .splitWindowHorizontal) }
                 .keyboardShortcut("d", modifiers: [.command])

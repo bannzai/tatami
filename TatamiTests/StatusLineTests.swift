@@ -13,6 +13,7 @@ struct StatusLineTests {
             #expect(BrowserCommand(tmuxName: command.tmuxName) == command)
         }
         #expect(BrowserCommand(tmuxName: "select-window  -t 7") == .selectWindow(7))
+        #expect(BrowserCommand(tmuxName: "omnibox") == .omnibox)
         #expect(BrowserCommand(tmuxName: "detach") == nil)
     }
 
@@ -26,5 +27,6 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: ",")!] == .renameWindow)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "&")!] == .killWindow)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "w")!] == .chooseWindow)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "/")!] == .omnibox)
     }
 }

@@ -5,16 +5,48 @@ struct BrowserWindowView: View {
     @State private var model = BrowserWindowModel()
     /// プロンプトを開いた時にキーボードフォーカスを入力欄へ移す (アドレスバーに残ったままだと入力がそちらへ行く)
     @FocusState private var isPromptFocused: Bool
+    /// prefix + / でアドレスバーへフォーカスを移すためのフォーカス状態
+    @FocusState private var isAddressFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("URL または検索語", text: $model.addressText)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("addressField")
-                .onSubmit {
-                    model.navigate(text: model.addressText)
+            HStack(spacing: 6) {
+                Button {
+                    model.goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
-                .padding(8)
+                .disabled(!model.canGoBack)
+                .accessibilityIdentifier("backButton")
+                Button {
+                    model.goForward()
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(!model.canGoForward)
+                .accessibilityIdentifier("forwardButton")
+                Button {
+                    model.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .accessibilityIdentifier("reloadButton")
+                TextField("URL または検索語", text: $model.addressText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isAddressFieldFocused)
+                    .accessibilityIdentifier("addressField")
+                    .onSubmit {
+                        model.navigate(text: model.addressText)
+                        isAddressFieldFocused = false
+                    }
+            }
+            .padding(8)
+            // 読み込み中だけ進捗バーを出す。高さを固定して表示の切り替えでレイアウトが動かないようにする
+            ProgressView(value: model.focusedPaneProgress ?? 0)
+                .progressViewStyle(.linear)
+                .opacity(model.focusedPaneProgress == nil ? 0 : 1)
+                .frame(height: 4)
+                .accessibilityIdentifier("loadProgress")
             PaneContainer(model: model)
                 .overlay(alignment: .topLeading) {
                     if model.isChoosingWindow {
@@ -29,6 +61,10 @@ struct BrowserWindowView: View {
         .onChange(of: model.prompt) { _, prompt in
             isPromptFocused = prompt != nil
         }
+        .onChange(of: model.addressBarFocusRequestCount) {
+            isAddressFieldFocused = true
+        }
+        .navigationTitle(model.focusedPageTitle)
         // Info.plist の CFBundleURLTypes (http / https) で他アプリから渡された URL をフォーカス中のペインで開く
         .onOpenURL { openedURL in
             model.open(url: openedURL)

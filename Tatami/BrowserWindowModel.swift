@@ -33,6 +33,10 @@ final class BrowserWindowModel {
     private(set) var isChoosingWindow = false
     /// choose-window の一覧で選択中の添字
     private(set) var chooserSelectionIndex = 0
+    /// アドレスバーへのフォーカス要求。回数を増やすことで同じ要求を続けて出せる (View 側が onChange で拾う)
+    private(set) var addressBarFocusRequestCount = 0
+    /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
+    private(set) var focusedPaneStateVersion = 0
 
     init() {
         windows = []
@@ -43,6 +47,29 @@ final class BrowserWindowModel {
     /// 表示中のウィンドウ
     var currentWindow: PaneWindow {
         windows[currentWindowIndex]
+    }
+
+    /// ウィンドウのタイトルバーに出す、フォーカス中のページのタイトル
+    var focusedPageTitle: String {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.title ?? "Tatami"
+    }
+
+    /// フォーカス中のペインの読み込み進捗 (0...1)。読み込み中でなければ nil
+    var focusedPaneProgress: Double? {
+        _ = focusedPaneStateVersion
+        let webView = currentWindow.focusedPane.webView
+        return webView.isLoading ? webView.estimatedProgress : nil
+    }
+
+    var canGoBack: Bool {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.webView.canGoBack
+    }
+
+    var canGoForward: Bool {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.webView.canGoForward
     }
 
     /// status line の左側の表示
@@ -59,6 +86,23 @@ final class BrowserWindowModel {
     func open(url: URL) {
         addressText = url.absoluteString
         currentWindow.focusedPane.load(url: url)
+    }
+
+    /// アドレスバーへフォーカスを移す (prefix + /)
+    func focusAddressBar() {
+        addressBarFocusRequestCount += 1
+    }
+
+    func goBack() {
+        currentWindow.focusedPane.webView.goBack()
+    }
+
+    func goForward() {
+        currentWindow.focusedPane.webView.goForward()
+    }
+
+    func reload() {
+        currentWindow.focusedPane.webView.reload()
     }
 
     /// 新しいウィンドウを末尾に作って表示する (prefix + c)
@@ -93,6 +137,7 @@ final class BrowserWindowModel {
         previousWindowIndex = currentWindowIndex
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
+        focusedPaneStateVersion += 1
     }
 
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
@@ -224,6 +269,14 @@ final class BrowserWindowModel {
             killCurrentWindow()
         case .chooseWindow:
             beginChooseWindow()
+        case .omnibox:
+            focusAddressBar()
+        case .goBack:
+            goBack()
+        case .goForward:
+            goForward()
+        case .reload:
+            reload()
         }
     }
 
@@ -234,6 +287,13 @@ final class BrowserWindowModel {
                 return
             }
             addressText = navigatedURL.absoluteString
+            focusedPaneStateVersion += 1
+        }
+        window.onFocusedPaneStateChange = { [weak self, weak window] in
+            guard let self, let window, currentWindow === window else {
+                return
+            }
+            focusedPaneStateVersion += 1
         }
         return window
     }
