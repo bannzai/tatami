@@ -30,6 +30,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     private var restoringNavigation: WKNavigation?
     /// 復元後、ユーザー起点のナビゲーションが始まるまで true。復元直後の SPA の初期化による History API の遷移も訪問として記録しない
     private var isSuppressingRestoredVisits = false
+    /// 表示中のページ (いずれかのフレーム) にパスワード欄があるか。注入スクリプトからの通知で更新する
+    private(set) var hasLoginForm = false
+
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -46,6 +49,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         webView.customUserAgent = userAgent
         webView.uiDelegate = self
         webView.navigationDelegate = self
+        // ログインフォームの検出と充填のスクリプトを専用の content world に注入する (documentStart・全フレーム)
+        configuration.userContentController.addUserScript(LoginFormScript.makeUserScript())
+        // userContentController は handler を強参照するため、弱参照の中継を挟んで WebPane が解放されるようにする
+        configuration.userContentController.add(ScriptMessageRelay(target: self), contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する。
         // observation をこのインスタンスが所有するため、クロージャからは弱参照にして循環参照を避ける
         observations = [
@@ -160,6 +167,37 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     func webViewDidClose(_ webView: WKWebView) {
         onClose?()
+    }
+
+    /// WKUserContentController が handler を強参照して WebPane と循環するのを避けるための弱参照の中継
+    private final class ScriptMessageRelay: NSObject, WKScriptMessageHandler {
+        private weak var target: WebPane?
+
+        init(target: WebPane) {
+            self.target = target
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            target?.userContentController(userContentController, didReceive: message)
+        }
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
+            return
+        }
+        hasLoginForm = body["hasPassword"] as? Bool ?? false
+    }
+
+    /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false
+    func fill(credential: Credential) async throws -> Bool {
+        let result = try await webView.callAsyncJavaScript(
+            "return window.__tatamiFill(username, password);",
+            arguments: ["username": credential.username, "password": credential.password],
+            in: nil,
+            contentWorld: LoginFormScript.contentWorld
+        )
+        return result as? Bool ?? false
     }
 
     // MARK: JavaScript のダイアログ (alert / confirm / prompt) をネイティブのシートで出す

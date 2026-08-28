@@ -187,6 +187,8 @@ enum BrowserCommand: Hashable, Sendable {
     case setDefaultBrowser
     /// ブックマークの一覧を開く (prefix + b)
     case chooseBookmark
+    /// 資格情報を検索してログインフォームへ充填する (prefix + a)
+    case fillCredential
     /// セッションを保存したままウィンドウを閉じる (prefix + d)
     case detachClient
     case chooseSession
@@ -258,6 +260,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "set-default-browser"
         case .chooseBookmark:
             return "choose-bookmark"
+        case .fillCredential:
+            return "fill-credential"
         case .detachClient:
             return "detach-client"
         case .chooseSession:
@@ -306,7 +310,7 @@ enum BrowserCommand: Hashable, Sendable {
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
-        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt, .setDefaultBrowser, .chooseBookmark,
+        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt, .setDefaultBrowser, .chooseBookmark, .fillCredential,
     ]
 }
 
@@ -351,6 +355,7 @@ struct KeyBindingTable: Equatable, Sendable {
             (":", .commandPrompt),
             ("[", .findPrompt),
             ("b", .chooseBookmark),
+            ("a", .fillCredential),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }
