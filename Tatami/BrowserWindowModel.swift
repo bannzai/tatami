@@ -426,6 +426,9 @@ final class BrowserWindowModel {
 
     /// コマンドプロンプトを開く (prefix + :)
     func beginCommandPrompt() {
+        // prefix 待ちや一覧が残っていると最初の文字がそちらに消費されるため、コマンドプロンプトを排他的な入力状態にする
+        cancelPrefix()
+        chooser = nil
         promptText = ""
         commandHistoryIndex = commandHistory.count
         commandDraft = ""
