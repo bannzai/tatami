@@ -192,8 +192,10 @@ final class PaneContainerView: NSView {
             if event.type == .keyUp {
                 return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
             }
-            if event.isARepeat, consumedKeyCodes.contains(event.keyCode) {
-                return nil
+            if event.isARepeat {
+                // リピートは最初の keyDown の扱いを引き継ぐ。消費したキーのリピートは捨て、ページへ渡したキーのリピートは
+                // prefix の判定やコマンドに使わずそのままページへ渡す (長押し中に prefix を押しても次のリピートがコマンドにならない)
+                return consumedKeyCodes.contains(event.keyCode) ? nil : event
             }
             // 別アプリへ移った間に離されたキーは keyUp が届かず集合に残るため、リピートでない keyDown が来た時点で古い記録を消す
             consumedKeyCodes.remove(event.keyCode)
