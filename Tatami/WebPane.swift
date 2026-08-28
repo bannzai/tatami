@@ -244,9 +244,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         loginFormFrames.values.first(where: \.isMainFrame) ?? loginFormFrames.values.first
     }
 
-    /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため URL で対応付ける)
-    private static func frameKey(frame: WKFrameInfo) -> String {
-        frame.request.url?.absoluteString ?? (frame.isMainFrame ? "main" : "frame")
+    /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため、スクリプトが注入コンテキストごとに付ける ID で対応付ける。
+    /// 同じ URL の iframe が複数あっても区別できる。ID が無い通知は URL で代用する)
+    private static func frameKey(message: WKScriptMessage) -> String {
+        if let frameID = (message.body as? [String: Any])?["frameID"] as? String, !frameID.isEmpty {
+            return frameID
+        }
+        return message.frameInfo.request.url?.absoluteString ?? (message.frameInfo.isMainFrame ? "main" : "frame")
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -255,15 +259,15 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
         if let hasPassword = body["hasPassword"] as? Bool {
             if hasPassword {
-                loginFormFrames[WebPane.frameKey(frame: message.frameInfo)] = message.frameInfo
+                loginFormFrames[WebPane.frameKey(message: message)] = message.frameInfo
             } else {
-                loginFormFrames.removeValue(forKey: WebPane.frameKey(frame: message.frameInfo))
+                loginFormFrames.removeValue(forKey: WebPane.frameKey(message: message))
             }
             hasLoginForm = !loginFormFrames.isEmpty
         }
         if let hasNewPassword = body["hasNewPassword"] as? Bool {
             // フレームごとに保持し、いずれかのフレームにあればペイン全体としてある (遅れて読み込まれた iframe の false で消さない)
-            let frameKey = message.frameInfo.request.url?.absoluteString ?? (message.frameInfo.isMainFrame ? "main" : "frame")
+            let frameKey = WebPane.frameKey(message: message)
             if hasNewPassword {
                 newPasswordFrames[frameKey] = message.frameInfo
             } else {
@@ -277,9 +281,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
         if let editing = body["editing"] as? Bool {
             if editing {
-                editingFrames.insert(WebPane.frameKey(frame: message.frameInfo))
+                editingFrames.insert(WebPane.frameKey(message: message))
             } else {
-                editingFrames.remove(WebPane.frameKey(frame: message.frameInfo))
+                editingFrames.remove(WebPane.frameKey(message: message))
             }
             isEditingText = !editingFrames.isEmpty
         }
@@ -301,13 +305,16 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// 生成したパスワードを、新規パスワード欄を検出したフレームの全てのパスワード欄 (新規と確認) に入れる
-    /// (最後にパスワード欄を通知した別フレームのログイン欄へ入れない)
+    /// 生成したパスワードを、新規パスワード欄を検出したフレームの全てのパスワード欄 (新規と確認) に入れる。
+    /// 新規パスワード欄を検出していなければ何もしない (通常のログイン欄へ生成値を入れて入力済みの値を上書きしない)
     func fillNewPassword(_ password: String) async throws -> Bool {
+        guard let frame = newPasswordFrames.values.first(where: \.isMainFrame) ?? newPasswordFrames.values.first else {
+            return false
+        }
         let result = try await webView.callAsyncJavaScript(
             "return window.__tatamiFillNewPassword(password);",
             arguments: ["password": password],
-            in: newPasswordFrames.values.first(where: \.isMainFrame) ?? newPasswordFrames.values.first ?? loginFormFrame,
+            in: frame,
             contentWorld: LoginFormScript.contentWorld
         )
         return result as? Bool ?? false

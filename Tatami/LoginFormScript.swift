@@ -12,13 +12,16 @@ enum LoginFormScript {
     /// `__tatamiFill` は充填の入口で、React 等が値の変化を拾えるよう native setter で値を入れて input / change を発火する
     static let source = """
     (() => {
+      // 同じ URL の iframe が複数あっても区別できるよう、注入されたコンテキストごとに一意な ID を全ての通知に付ける
+      const frameID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const send = (body) => { try { send(Object.assign({ frameID }, body)); } catch (e) {} };
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
         const hasPassword = !!document.querySelector('input[type="password"]');
         if (hasPassword === lastHasPassword) { return; }
         lastHasPassword = hasPassword;
-        try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasPassword }); } catch (e) {}
+        send({ hasPassword });
       };
       const setValue = (element, value) => {
         const prototype = Object.getPrototypeOf(element);
@@ -72,9 +75,14 @@ enum LoginFormScript {
         const passwordField = passwordFieldToReport(scope);
         if (!passwordField || !passwordField.value) {
           // ユーザー名だけのページ (複数段階ログインの 1 段目) はユーザー名を覚えておく
-          const usernameOnly = Array.from(scope.querySelectorAll('input')).find((input) => /username|email|user|login|account/i.test(`${input.autocomplete} ${input.name} ${input.id} ${input.type}`) && input.value);
+          // hidden の内部 ID (account_id 等) を拾わないよう、通常のユーザー名検出と同じく可視で操作できる text / email 系の欄に限る
+          const usernameOnly = inputsIn(scope).find((input) => {
+            const type = (input.getAttribute('type') || 'text').toLowerCase();
+            return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input)
+              && /username|email|user|login|account/i.test(`${input.autocomplete} ${input.name} ${input.id} ${input.type}`) && input.value;
+          });
           if (usernameOnly) {
-            try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ usernameOnly: usernameOnly.value }); } catch (e) {}
+            send({ usernameOnly: usernameOnly.value });
           }
           return;
         }
@@ -82,7 +90,7 @@ enum LoginFormScript {
         const isNewPassword = (passwordField.autocomplete || '').toLowerCase() === 'new-password'
           || (passwordField.form ? Array.from(passwordField.form.querySelectorAll('input[type="password"]')).filter(isVisible).length : 0) >= 2;
         try {
-          window.webkit.messageHandlers.tatamiLoginForm.postMessage({
+          send({
             submitted: true,
             username: usernameField ? usernameField.value : '',
             password: passwordField.value,
@@ -96,25 +104,26 @@ enum LoginFormScript {
         const form = event.target;
         if (form && form.querySelector) { capture(form); }
       }, true);
+      // 制約検証 (required / pattern 等) で送信されないクリック・Enter は通知しない (通常のフォームは submit イベント側で捕捉する)
+      const passesValidation = (form, button) => !form || form.noValidate || (button && button.formNoValidate) || typeof form.checkValidity !== 'function' || form.checkValidity();
       // 送信になりうるボタンだけを対象にする (type=button のパスワード表示切替などで入力途中の値を送らない)
       document.addEventListener('click', (event) => {
         const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"]') : null;
         if (!button) { return; }
         const form = button.form || button.closest('form');
-        // 制約検証 (required / pattern 等) で送信されないクリックは通知しない (通常のフォームは submit イベント側で捕捉する)
-        if (form && !form.noValidate && !button.formNoValidate && typeof form.checkValidity === 'function' && !form.checkValidity()) { return; }
+        if (!passesValidation(form, button)) { return; }
         capture(form || document);
       }, true);
       // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
       const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
       const postEditing = () => {
-        try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ editing: isTextTarget(document.activeElement) }); } catch (e) {}
+        send({ editing: isTextTarget(document.activeElement) });
       };
       document.addEventListener('focusin', postEditing, true);
       document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
       postEditing();
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && event.target && event.target.type === 'password') { capture(event.target.form || document); }
+        if (event.key === 'Enter' && event.target && event.target.type === 'password' && passesValidation(event.target.form, null)) { capture(event.target.form || document); }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
       // 複数欄の判定は同じ (可視の) フォーム内の組で行う (デスクトップ用・モバイル用に独立したログインフォームが並ぶページを誤検出しない)。
@@ -131,7 +140,7 @@ enum LoginFormScript {
           || isNewPasswordForm({ querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) });
         if (hasNewPassword === lastHasNewPassword) { return; }
         lastHasNewPassword = hasNewPassword;
-        try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasNewPassword }); } catch (e) {}
+        send({ hasNewPassword });
       };
       // SPA が既存の input の type / autocomplete を後から変える場合も検出する
       new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });

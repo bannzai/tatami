@@ -498,6 +498,8 @@ final class BrowserWindowModel {
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
+        // 非表示のウィンドウで検出した登録フォームの生成提案は、表示された時に出す
+        evaluateNewPasswordProposal()
         scheduleSave()
     }
 
@@ -924,6 +926,11 @@ final class BrowserWindowModel {
 
     /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
     private func handleNewPasswordForm(pane: WebPane, hasNewPasswordForm: Bool) {
+        // 欄が消えた (モーダルを閉じた・SPA がログインフォームへ置き換えた) 時は、そのペインの生成提案を取り下げる
+        if !hasNewPasswordForm, proposal == .generatePassword, proposalPane === pane {
+            dismissProposal()
+            return
+        }
         guard hasNewPasswordForm, proposal == nil, pane === currentWindow.focusedPane else {
             return
         }
