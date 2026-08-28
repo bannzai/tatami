@@ -597,7 +597,8 @@ final class BrowserWindowModel {
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
-            find(text: lastFindText)
+            // find プロンプトと同じく、コマンドプロンプトを閉じて Web コンテンツへフォーカスが移った後に検索する
+            pendingFindText = lastFindText
         case "import-passwords":
             guard !arguments.isEmpty else {
                 statusMessage = "import-passwords は CSV のパスを取る"
