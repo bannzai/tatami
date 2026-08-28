@@ -302,11 +302,13 @@ enum TatamiConfigLoader {
         URL(filePath: TatamiConfigParser.expandedPath(path: path))
     }
 
-    /// 読み込みの結果。fileExists が false なら config は既定値のまま
+    /// 読み込みの結果。parsed が false (ファイルが無い・読めない) なら config は既定値のままで、呼び出し側は現在の設定を維持する
     struct LoadResult {
         let config: TatamiConfig
         let errors: [TatamiConfigError]
         let fileExists: Bool
+        /// ファイルを読んで行の解釈まで行えたか (行ごとのエラーがあっても true)
+        let parsed: Bool
     }
 
     /// 設定ファイルを読んで適用する。既定ファイルが無いのは「設定していない」だけなのでエラーにしないが、
@@ -315,14 +317,14 @@ enum TatamiConfigLoader {
         var config = TatamiConfig()
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             let errors = requireFile ? [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルが無い: \(fileURL.path(percentEncoded: false))")] : []
-            return LoadResult(config: config, errors: errors, fileExists: false)
+            return LoadResult(config: config, errors: errors, fileExists: false, parsed: false)
         }
         let text: String
         do {
             text = try String(contentsOf: fileURL, encoding: .utf8)
         } catch {
             // ファイル全体が読めない失敗は行を特定できないため、設定を書いた人が最初に見る 1 行目として報告する
-            return LoadResult(config: config, errors: [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルを読み込めない: \(error)")], fileExists: true)
+            return LoadResult(config: config, errors: [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルを読み込めない: \(error)")], fileExists: true, parsed: false)
         }
         let errors = TatamiConfigParser.apply(
             text: text,
@@ -333,6 +335,6 @@ enum TatamiConfigLoader {
             },
             baseDirectory: fileURL.deletingLastPathComponent().path(percentEncoded: false)
         )
-        return LoadResult(config: config, errors: errors, fileExists: true)
+        return LoadResult(config: config, errors: errors, fileExists: true, parsed: true)
     }
 }

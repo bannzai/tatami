@@ -264,6 +264,18 @@ struct TatamiConfigTests {
         #expect(required.errors.count == 1)
         #expect(required.errors[0].message.hasPrefix("設定ファイルが無い"))
         #expect(!required.fileExists)
+        #expect(!required.parsed)
+    }
+
+    @Test func unreadableFileIsNotParsed() throws {
+        let directoryURL = FileManager.default.temporaryDirectory.appending(path: "tatami-dir-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let result = TatamiConfigLoader.load(fileURL: directoryURL)
+        #expect(result.fileExists)
+        #expect(!result.parsed)
+        #expect(result.errors.count == 1)
+        #expect(result.errors[0].message.hasPrefix("設定ファイルを読み込めない"))
     }
 
     @Test func relativeSourceFileIsResolvedFromConfigDirectory() {
