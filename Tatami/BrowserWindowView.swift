@@ -61,6 +61,9 @@ struct BrowserWindowView: View {
         .onAppear {
             model.activate()
         }
+        .onDisappear {
+            model.deactivate()
+        }
         .onChange(of: model.prompt) { _, prompt in
             isPromptFocused = prompt != nil
         }
