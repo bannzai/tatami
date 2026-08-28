@@ -310,7 +310,7 @@ final class BrowserWindowModel {
 
     /// アドレスバーへフォーカスを移す (prefix + /)。一覧やプロンプトが開いていると通常のキーがそちらへ吸われるため先に閉じる
     func focusAddressBar() {
-        isChoosingWindow = false
+        chooser = nil
         cancelPrompt()
         cancelPrefix()
         addressBarFocusRequestCount += 1
@@ -388,7 +388,7 @@ final class BrowserWindowModel {
     func beginRenameWindow() {
         // メニューから開いた時に prefix 待ちや一覧が残っていると、名前の最初の文字がコマンドや一覧の操作として消費されるため取り消す
         cancelPrefix()
-        isChoosingWindow = false
+        chooser = nil
         promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
@@ -396,6 +396,8 @@ final class BrowserWindowModel {
 
     /// rename-session のプロンプトを開く (prefix + $)
     func beginRenameSession() {
+        cancelPrefix()
+        chooser = nil
         promptText = sessionName
         prompt = .renameSession
     }
