@@ -12,8 +12,12 @@ enum LoginFormScript {
     /// `__tatamiFill` は充填の入口で、React 等が値の変化を拾えるよう native setter で値を入れて input / change を発火する
     static let source = """
     (() => {
+      // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
+      let lastHasPassword = null;
       const post = () => {
         const hasPassword = !!document.querySelector('input[type="password"]');
+        if (hasPassword === lastHasPassword) { return; }
+        lastHasPassword = hasPassword;
         try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasPassword }); } catch (e) {}
       };
       const setValue = (element, value) => {
@@ -39,8 +43,11 @@ enum LoginFormScript {
         return before[before.length - 1] || candidates[0] || null;
       };
       window.__tatamiFill = (username, password) => {
-        const passwordField = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible)
-          || document.querySelector('input[type="password"]');
+        // 登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れない。current-password を優先する
+        const fields = Array.from(document.querySelectorAll('input[type="password"]'))
+          .filter((field) => (field.autocomplete || '').toLowerCase() !== 'new-password');
+        const passwordField = fields.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password' && isVisible(field))
+          || fields.find(isVisible) || fields[0];
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
         if (usernameField && username) { setValue(usernameField, username); }

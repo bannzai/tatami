@@ -25,8 +25,8 @@ final class BrowserWindowModel {
         case session([String])
         /// ブックマークの一覧。x で選択中の項目を削除する
         case bookmark
-        /// 表示中のページに合う資格情報の一覧。選ぶと充填する
-        case credential([Credential])
+        /// 表示中のページに合う資格情報の一覧。選ぶと候補を作ったペインへ充填する (充填時にそのペインの URL と再照合する)
+        case credential([Credential], pane: WebPane)
     }
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
@@ -806,7 +806,7 @@ final class BrowserWindowModel {
             return names
         case .bookmark:
             return browsingData.bookmarks.map { "\($0.title)  \($0.url.absoluteString)" }
-        case .credential(let credentials):
+        case .credential(let credentials, _):
             return credentials.map { "\($0.username)  \($0.host)" }
         case nil:
             return []
@@ -825,7 +825,7 @@ final class BrowserWindowModel {
         }
         let candidates: [Credential]
         do {
-            candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageHost: host)
+            candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
             return
@@ -834,16 +834,20 @@ final class BrowserWindowModel {
         case 0:
             statusMessage = "\(host) の資格情報は無い"
         case 1:
-            fill(credential: candidates[0])
+            fill(credential: candidates[0], pane: pane)
         default:
             chooserSelectionIndex = 0
-            chooser = .credential(candidates)
+            chooser = .credential(candidates, pane: pane)
         }
     }
 
-    /// 資格情報をフォーカス中のペインのログインフォームへ充填する
-    private func fill(credential: Credential) {
-        let pane = currentWindow.focusedPane
+    /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
+    /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
+    private func fill(credential: Credential, pane: WebPane) {
+        guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url) else {
+            statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+            return
+        }
         Task { @MainActor [weak self] in
             do {
                 let filled = try await pane.fill(credential: credential)
@@ -971,11 +975,11 @@ final class BrowserWindowModel {
             let url = browsingData.bookmarks[index].url
             addressText = url.absoluteString
             currentWindow.focusedPane.load(url: url)
-        case .credential(let credentials):
+        case .credential(let credentials, let pane):
             guard credentials.indices.contains(index) else {
                 return
             }
-            fill(credential: credentials[index])
+            fill(credential: credentials[index], pane: pane)
         case nil:
             break
         }

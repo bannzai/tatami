@@ -2,36 +2,69 @@ import Foundation
 import Testing
 @testable import Tatami
 
-/// サブドメイン・eTLD+1 の一致規則を検証する
+/// サブドメイン・eTLD+1 (Public Suffix List)・スキーム・ポートの一致規則を検証する
 struct CredentialMatcherTests {
     private let base = Date(timeIntervalSince1970: 1_000_000)
+    /// テスト用の最小のリスト (同梱の実物と同じ文法)
+    private let rules = PublicSuffixList.Rules(text: """
+        // ===BEGIN ICANN DOMAINS===
+        com
+        jp
+        co.jp
+        *.ck
+        !www.ck
+        // ===BEGIN PRIVATE DOMAINS===
+        github.io
+        """)
 
     private func makeCredential(url: String, username: String, date: Date) -> Credential {
         Credential(id: UUID(), url: URL(string: url)!, username: username, password: "dummy-password", note: "", updatedAt: date)
     }
 
-    @Test func registrableDomainHandlesTwoLevelSuffixes() {
-        #expect(CredentialMatcher.registrableDomain(host: "accounts.example.com") == "example.com")
-        #expect(CredentialMatcher.registrableDomain(host: "www.example.co.jp") == "example.co.jp")
-        #expect(CredentialMatcher.registrableDomain(host: "example.co.jp") == "example.co.jp")
-        #expect(CredentialMatcher.registrableDomain(host: "EXAMPLE.COM") == "example.com")
-        #expect(CredentialMatcher.registrableDomain(host: "localhost") == "localhost")
-        #expect(CredentialMatcher.registrableDomain(host: "127.0.0.1") == "127.0.0.1")
+    private func matches(_ credential: String, _ page: String) -> Bool {
+        CredentialMatcher.matches(credentialURL: URL(string: credential)!, pageURL: URL(string: page)!, rules: rules)
     }
 
-    @Test func matchesExactSubdomainAndSameRegistrableDomain() {
-        #expect(CredentialMatcher.matches(credentialHost: "example.com", pageHost: "example.com"))
-        #expect(CredentialMatcher.matches(credentialHost: "accounts.example.com", pageHost: "example.com"))
-        #expect(CredentialMatcher.matches(credentialHost: "example.com", pageHost: "login.example.com"))
-        #expect(CredentialMatcher.matches(credentialHost: "a.example.co.jp", pageHost: "b.example.co.jp"))
-        #expect(!CredentialMatcher.matches(credentialHost: "example.com", pageHost: "example.org"))
-        #expect(!CredentialMatcher.matches(credentialHost: "notexample.com", pageHost: "example.com"))
-        #expect(!CredentialMatcher.matches(credentialHost: "a.co.jp", pageHost: "b.co.jp"))
-        #expect(CredentialMatcher.matches(credentialHost: "localhost", pageHost: "localhost"))
-        #expect(!CredentialMatcher.matches(credentialHost: "localhost", pageHost: "localhost.example.com"))
-        #expect(CredentialMatcher.matches(credentialHost: "127.0.0.1", pageHost: "127.0.0.1"))
-        #expect(!CredentialMatcher.matches(credentialHost: "127.0.0.1", pageHost: "1.0.0.1"))
-        #expect(!CredentialMatcher.matches(credentialHost: "", pageHost: "example.com"))
+    @Test func registrableDomainFollowsPublicSuffixList() {
+        #expect(CredentialMatcher.registrableDomain(host: "accounts.example.com", rules: rules) == "example.com")
+        #expect(CredentialMatcher.registrableDomain(host: "www.example.co.jp", rules: rules) == "example.co.jp")
+        #expect(CredentialMatcher.registrableDomain(host: "alice.github.io", rules: rules) == "alice.github.io")
+        #expect(CredentialMatcher.registrableDomain(host: "github.io", rules: rules) == nil)
+        #expect(CredentialMatcher.registrableDomain(host: "a.b.ck", rules: rules) == "a.b.ck")
+        #expect(CredentialMatcher.registrableDomain(host: "www.ck", rules: rules) == "www.ck")
+        #expect(CredentialMatcher.registrableDomain(host: "example.unknowntld", rules: rules) == nil)
+        #expect(CredentialMatcher.registrableDomain(host: "localhost", rules: rules) == nil)
+        #expect(CredentialMatcher.registrableDomain(host: "127.0.0.1", rules: rules) == nil)
+    }
+
+    @Test func bundledListIsLoaded() {
+        #expect(PublicSuffixList.bundled.rules.contains("co.jp"))
+        #expect(PublicSuffixList.bundled.rules.contains("github.io"))
+        #expect(CredentialMatcher.registrableDomain(host: "alice.github.io") == "alice.github.io")
+    }
+
+    @Test func matchesSameOriginAndSameRegistrableDomain() {
+        #expect(matches("https://example.com/", "https://example.com/login"))
+        #expect(matches("https://accounts.example.com/", "https://example.com/"))
+        #expect(matches("https://example.com/", "https://login.example.com/"))
+        #expect(matches("https://a.example.co.jp/", "https://b.example.co.jp/"))
+        #expect(!matches("https://example.com/", "https://example.org/"))
+        #expect(!matches("https://notexample.com/", "https://example.com/"))
+        #expect(!matches("https://a.co.jp/", "https://b.co.jp/"))
+        #expect(!matches("https://alice.github.io/", "https://evil.github.io/"))
+        #expect(!matches("https://a.example.unknowntld/", "https://b.example.unknowntld/"))
+        #expect(matches("http://localhost:8765/", "http://localhost:8765/login"))
+        #expect(!matches("http://localhost/", "http://localhost.example.com/"))
+        #expect(matches("http://127.0.0.1/", "http://127.0.0.1/"))
+        #expect(!matches("http://127.0.0.1/", "http://1.0.0.1/"))
+    }
+
+    @Test func httpsCredentialsAreNotOfferedToHTTPOrOtherPorts() {
+        #expect(!matches("https://example.com/", "http://example.com/"))
+        #expect(matches("http://example.com/", "https://example.com/"))
+        #expect(!matches("https://example.com/", "https://example.com:8443/"))
+        #expect(matches("https://example.com:443/", "https://example.com/"))
+        #expect(!matches("https://example.com/", "ftp://example.com/"))
     }
 
     @Test func candidatesPutExactHostFirstThenNewest() {
@@ -41,9 +74,11 @@ struct CredentialMatcherTests {
             makeCredential(url: "https://example.com/login", username: "exact-new", date: base.addingTimeInterval(10)),
             makeCredential(url: "https://example.org/", username: "other", date: base.addingTimeInterval(20)),
             makeCredential(url: "https://mail.example.com/", username: "sub-new", date: base.addingTimeInterval(5)),
+            makeCredential(url: "http://example.com/", username: "http-only", date: base.addingTimeInterval(30)),
         ]
-        #expect(CredentialMatcher.candidates(credentials: credentials, pageHost: "example.com").map(\.username) == ["exact-new", "exact-old", "sub-new", "sub-old"])
-        #expect(CredentialMatcher.candidates(credentials: credentials, pageHost: "example.org").map(\.username) == ["other"])
-        #expect(CredentialMatcher.candidates(credentials: credentials, pageHost: "unknown.test").isEmpty)
+        let page = URL(string: "https://example.com/")!
+        #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: page, rules: rules).map(\.username) == ["http-only", "exact-new", "exact-old", "sub-new", "sub-old"])
+        #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "http://example.com/")!, rules: rules).map(\.username) == ["http-only"])
+        #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "https://unknown.test/")!, rules: rules).isEmpty)
     }
 }

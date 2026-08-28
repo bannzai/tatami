@@ -54,9 +54,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         webView.uiDelegate = self
         webView.navigationDelegate = self
         // ログインフォームの検出と充填のスクリプトを専用の content world に注入する (documentStart・全フレーム)
-        configuration.userContentController.addUserScript(LoginFormScript.makeUserScript())
-        // userContentController は handler を強参照するため、弱参照の中継を挟んで WebPane が解放されるようにする
-        configuration.userContentController.add(ScriptMessageRelay(target: self), contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
+        // window.open で渡される configuration は元のビューの userContentController を引き継ぐ。同名 handler の重複登録は例外になるため、
+        // controller ごとに 1 度だけ登録し、中継先は最後に登録したペインではなく controller を共有する各ペインへ配る
+        WebPane.register(pane: self, in: configuration.userContentController)
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する。
         // observation をこのインスタンスが所有するため、クロージャからは弱参照にして循環参照を避ける
         observations = [
@@ -173,22 +173,44 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         onClose?()
     }
 
-    /// WKUserContentController が handler を強参照して WebPane と循環するのを避けるための弱参照の中継
+    /// WKUserContentController が handler を強参照して WebPane と循環するのを避けるための弱参照の中継。
+    /// 1 つの controller を複数の WKWebView (window.open で開いたペイン) が共有するため、メッセージは送信元の WebView を持つペインへ届ける
     private final class ScriptMessageRelay: NSObject, WKScriptMessageHandler {
-        private weak var target: WebPane?
-
-        init(target: WebPane) {
-            self.target = target
-        }
+        let panes = NSHashTable<WebPane>.weakObjects()
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            target?.userContentController(userContentController, didReceive: message)
+            guard let webView = message.webView, let pane = panes.allObjects.first(where: { $0.webView === webView }) else {
+                return
+            }
+            pane.userContentController(userContentController, didReceive: message)
         }
     }
+
+    /// controller ごとの中継。同じ controller に 2 回 add すると WebKit が例外を投げるため、ここで 1 度だけ登録する
+    private static var relays: [ObjectIdentifier: ScriptMessageRelay] = [:]
+
+    private static func register(pane: WebPane, in controller: WKUserContentController) {
+        let key = ObjectIdentifier(controller)
+        if let relay = relays[key] {
+            relay.panes.add(pane)
+            return
+        }
+        let relay = ScriptMessageRelay()
+        relay.panes.add(pane)
+        relays[key] = relay
+        controller.addUserScript(LoginFormScript.makeUserScript())
+        controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
+    }
+
+    /// パスワード欄を検出したフレーム。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する
+    private var loginFormFrame: WKFrameInfo?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
+        }
+        if body["hasPassword"] as? Bool == true {
+            loginFormFrame = message.frameInfo
         }
         hasLoginForm = body["hasPassword"] as? Bool ?? false
     }
@@ -198,7 +220,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         let result = try await webView.callAsyncJavaScript(
             "return window.__tatamiFill(username, password);",
             arguments: ["username": credential.username, "password": credential.password],
-            in: nil,
+            in: loginFormFrame,
             contentWorld: LoginFormScript.contentWorld
         )
         return result as? Bool ?? false
