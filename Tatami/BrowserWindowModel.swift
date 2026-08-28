@@ -486,6 +486,8 @@ final class BrowserWindowModel {
             navigate(text: text)
         case "find":
             find(text: arguments.joined(separator: " "))
+        case "source-file" where arguments.isEmpty:
+            perform(command: .sourceFile(nil))
         case "set", "bind", "bind-key", "unbind", "unbind-key", "source-file":
             let errors = TatamiConfigStore.shared.apply(line: line)
             applyConfigToAllWindows()
@@ -526,7 +528,12 @@ final class BrowserWindowModel {
         case .renameSession:
             renameSession(newName: promptText)
         case .command:
-            execute(commandLine: promptText)
+            // 実行するコマンドが次のプロンプト (rename-window 等) を開くことがあるため、先にこのプロンプトを閉じてから実行する
+            let commandLine = promptText
+            closePrompt()
+            execute(commandLine: commandLine)
+            scheduleSave()
+            return
         case .find:
             lastFindText = promptText
             isFindModeActive = !promptText.isEmpty
