@@ -28,8 +28,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// セッションの復元による読み込みのナビゲーション。復元は新しい訪問ではないため、このナビゲーションの完了は履歴に記録しない
     /// (フラグではなくナビゲーションを持つことで、復元が終わる前にユーザーが開いた別ページの完了を復元扱いしない)
     private var restoringNavigation: WKNavigation?
-    /// 復元後、ユーザー起点のナビゲーションが始まるまで true。復元直後の SPA の初期化による History API の遷移も訪問として記録しない
+    /// 復元後、復元直後の SPA の初期化による History API の遷移を訪問として記録しないための抑止。
+    /// ユーザー起点のナビゲーション開始で解除するほか、復元の読み込み完了から一定時間で解除する (pushState だけで遷移する SPA でユーザー操作を記録するため)
     private var isSuppressingRestoredVisits = false
+    /// 復元の読み込み完了後に抑止を続ける時間。SPA の初期化 (replaceState 等) は読み込み直後に集中するため、その後のユーザー操作を取りこぼさない短さにした
+    private static let restoredVisitSuppressionGrace: Duration = .seconds(2)
+
     /// 表示中のページ (いずれかのフレーム) にパスワード欄があるか。注入スクリプトからの通知で更新する
     private(set) var hasLoginForm = false
 
@@ -301,6 +305,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if let restoringNavigation, navigation === restoringNavigation {
             self.restoringNavigation = nil
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: WebPane.restoredVisitSuppressionGrace)
+                self?.isSuppressingRestoredVisits = false
+            }
             return
         }
         restoringNavigation = nil
