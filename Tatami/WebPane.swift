@@ -78,9 +78,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 Task { @MainActor in
                     self.url = changedURL
                     self.onNavigate?(changedURL)
-                    // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する
+                    // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する。
+                    // 同じターンで pushState が続くと後の KVO で webView.url が進んでいるため、捕捉した changedURL を記録する
                     if !self.webView.isLoading, !self.isSuppressingRestoredVisits {
-                        self.notifyVisitIfWebPage()
+                        self.notifyVisitIfWebPage(url: changedURL)
                     }
                 }
             },
@@ -166,9 +167,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// ページのタイトル。無題なら nil
+    /// ページのタイトル。無題なら nil。読み込み中は前のページのタイトルが残っていて現在の URL に属さないため nil
     var title: String? {
-        webView.title.flatMap { $0.isEmpty ? nil : $0 }
+        guard !webView.isLoading else {
+            return nil
+        }
+        return webView.title.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     func webView(
@@ -410,8 +414,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     /// http / https のページだけを履歴に記録する (about:blank・証明書の警告ページ・セッション復元の読み込みは記録しない)
-    private func notifyVisitIfWebPage() {
-        guard let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning else {
+    private func notifyVisitIfWebPage(url: URL? = nil) {
+        guard let url = url ?? webView.url, isWebPage(url: url), !isShowingCertificateWarning else {
             return
         }
         onVisit?(url, title ?? url.host() ?? url.absoluteString)
