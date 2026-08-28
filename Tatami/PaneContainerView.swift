@@ -147,8 +147,22 @@ final class PaneContainerView: NSView {
         draggingDivider = nil
     }
 
+    /// ウィンドウがキーウィンドウでなくなった時に消費中のキーを忘れる (離された keyUp は届かない)
+    private var resignKeyObserver: NSObjectProtocol?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
+        if let window {
+            resignKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.consumedKeyCodes.removeAll()
+                }
+            }
+        }
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
@@ -170,6 +184,8 @@ final class PaneContainerView: NSView {
             if event.isARepeat, consumedKeyCodes.contains(event.keyCode) {
                 return nil
             }
+            // 別アプリへ移った間に離されたキーは keyUp が届かず集合に残るため、リピートでない keyDown が来た時点で古い記録を消す
+            consumedKeyCodes.remove(event.keyCode)
             guard let keyStroke = KeyStroke(event: event) else {
                 return event
             }
