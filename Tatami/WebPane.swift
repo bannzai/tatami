@@ -362,6 +362,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             return
         }
         restoringNavigation = nil
+        // 復元に伴う自動遷移 (location 変更・meta refresh・認証リダイレクト) の完了は訪問として記録しない
+        guard !isSuppressingRestoredVisits else {
+            return
+        }
         notifyVisitIfWebPage()
         // 読み込み中は title を nil にしているため、その間の document.title の変化は通知されない。完了時点の確定タイトルをここで通知する
         if let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, let title {
