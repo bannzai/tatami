@@ -296,17 +296,13 @@ enum PrefixKeyState: Equatable, Sendable {
         case perform(BrowserCommand)
     }
 
-    /// prefix 待ちの取り消しは tmux と同じく Escape で行う
-    private static let cancelKeyStroke = KeyStroke(tmuxKeyName: "Escape")!
-
+    /// prefix 待ちの取り消しは tmux と同じく Escape で行う。バインドされていないキーと同じく消費して idle に戻るため、特別な分岐は持たない
     func handling(keyStroke: KeyStroke, table: KeyBindingTable) -> (state: PrefixKeyState, outcome: Outcome) {
         switch self {
         case .idle:
             return keyStroke == table.prefix ? (.awaitingCommand, .consume) : (.idle, .passThrough)
         case .awaitingCommand:
-            if keyStroke == PrefixKeyState.cancelKeyStroke {
-                return (.idle, .consume)
-            }
+            // 設定で Escape にコマンドを割り当てた場合はそれを優先し、未設定の時だけ取り消しとして扱う (どちらも消費して idle に戻る)
             guard let command = table.bindings[keyStroke] else {
                 return (.idle, .consume)
             }
