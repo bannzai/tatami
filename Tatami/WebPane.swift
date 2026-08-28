@@ -28,6 +28,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// セッションの復元による読み込みのナビゲーション。復元は新しい訪問ではないため、このナビゲーションの完了は履歴に記録しない
     /// (フラグではなくナビゲーションを持つことで、復元が終わる前にユーザーが開いた別ページの完了を復元扱いしない)
     private var restoringNavigation: WKNavigation?
+    /// 復元後、ユーザー起点のナビゲーションが始まるまで true。復元直後の SPA の初期化による History API の遷移も訪問として記録しない
+    private var isSuppressingRestoredVisits = false
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -55,7 +57,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                     self.url = changedURL
                     self.onNavigate?(changedURL)
                     // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する
-                    if !self.webView.isLoading {
+                    if !self.webView.isLoading, !self.isSuppressingRestoredVisits {
                         self.notifyVisitIfWebPage()
                     }
                 }
@@ -122,6 +124,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// セッション復元による読み込み。完了しても履歴には記録しない
     func loadRestoredURL() {
+        isSuppressingRestoredVisits = true
         restoringNavigation = webView.load(URLRequest(url: url))
     }
 
@@ -247,6 +250,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         guard navigation !== certificateWarningNavigation else {
             return
+        }
+        // 復元のナビゲーション以外 (ユーザー起点) が始まったら、復元に付随する遷移の抑止を終える
+        if navigation !== restoringNavigation {
+            isSuppressingRestoredVisits = false
         }
         isShowingCertificateWarning = false
         certificateFailedURL = nil
