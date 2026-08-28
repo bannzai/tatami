@@ -764,7 +764,7 @@ final class BrowserWindowModel {
     /// 表示中のページをブックマークする (`:bookmark`)。既にあれば解除する (トグル)
     func toggleBookmark() {
         let pane = currentWindow.focusedPane
-        guard let scheme = pane.url.scheme, scheme == "http" || scheme == "https" else {
+        guard WebPane.isWebPage(url: pane.url) else {
             statusMessage = "このページはブックマークできない: \(pane.url.absoluteString)"
             return
         }
