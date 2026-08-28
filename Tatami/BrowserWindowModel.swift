@@ -632,9 +632,15 @@ final class BrowserWindowModel {
         }
     }
 
+    /// コマンドの引数のパスを解決する。`~` を展開し、相対パスは GUI アプリのカレントディレクトリ (利用者から見えず不安定) ではなく
+    /// ホームディレクトリを基準にする
+    static func commandFileURL(path: String) -> URL {
+        URL(filePath: TatamiConfigParser.expandedPath(path: path), directoryHint: .notDirectory, relativeTo: FileManager.default.homeDirectoryForCurrentUser).absoluteURL
+    }
+
     /// Chrome 互換 CSV を読み、既存の資格情報に取り込む。同じファイルを何度取り込んでも重複しない (PasswordImporter.merge が冪等)
     private func importPasswords(path: String) {
-        let fileURL = URL(filePath: TatamiConfigParser.expandedPath(path: path))
+        let fileURL = BrowserWindowModel.commandFileURL(path: path)
         do {
             let existing = try credentialStore.all()
             let result = PasswordImporter.merge(
@@ -666,7 +672,7 @@ final class BrowserWindowModel {
 
     /// 資格情報を Chrome 互換 CSV に書き出す。書き出したファイルは平文のため、既存のファイルには追記も上書きもせずエラーにする
     private func exportPasswords(path: String) {
-        let fileURL = URL(filePath: TatamiConfigParser.expandedPath(path: path))
+        let fileURL = BrowserWindowModel.commandFileURL(path: path)
         let filePath = fileURL.path(percentEncoded: false)
         guard !FileManager.default.fileExists(atPath: filePath) else {
             statusMessage = "エクスポート: すでにファイルがある: \(filePath)"
