@@ -38,8 +38,13 @@ final class BrowserWindowModel {
     private(set) var previousWindowIndex: Int?
     /// アドレスバーに入力中のテキスト。フォーカス中のペインの URL に追随する
     var addressText = ""
-    /// tatami.conf の内容。起動時と source-file の実行で読み直す
-    private(set) var config = TatamiConfig()
+    /// 表示中 (activate 済み) の全モデル。設定の再読込を全ウィンドウのペインへ反映するために使う
+    private static let activeModels = NSHashTable<BrowserWindowModel>.weakObjects()
+
+    /// tatami.conf の内容。アプリ全体で共有し、起動時と source-file の実行で読み直す
+    var config: TatamiConfig {
+        TatamiConfigStore.shared.config
+    }
     /// prefix キーとコマンドの対応
     var keyBindings: KeyBindingTable {
         config.keyBindings
@@ -77,8 +82,6 @@ final class BrowserWindowModel {
     /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
     init() {
         windows = []
-        let loadedConfig = TatamiConfigLoader.load()
-        config = loadedConfig.config
         let name = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
         do {
             if let snapshot = try SessionStore.load(name: name) {
@@ -93,7 +96,7 @@ final class BrowserWindowModel {
             windows = [makeWindow()]
         }
         addressText = currentWindow.focusedPane.url.absoluteString
-        statusMessage = TatamiConfigError.statusMessage(errors: loadedConfig.errors)
+        statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
     }
 
     /// 画面に表示された時に呼ぶ。以後の変更を保存の対象にし、終了時は debounce を待たずに保存する
@@ -112,6 +115,7 @@ final class BrowserWindowModel {
             syncAddressTextToFocusedPane()
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
+        BrowserWindowModel.activeModels.add(self)
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
@@ -126,6 +130,7 @@ final class BrowserWindowModel {
         }
         saveNow()
         BrowserWindowModel.openSessionNames.remove(sessionName)
+        BrowserWindowModel.activeModels.remove(self)
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -563,18 +568,20 @@ final class BrowserWindowModel {
         case .renameSession:
             beginRenameSession()
         case .sourceFile(let path):
-            reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL)
+            reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL, requireFile: path != nil)
         }
     }
 
-    /// tatami.conf を読み直して設定を差し替える (source-file)。解釈できなかった行は飛ばし、読めた分だけを反映して status line に知らせる
-    private func reload(configFileURL: URL) {
-        let loadedConfig = TatamiConfigLoader.load(fileURL: configFileURL)
-        config = loadedConfig.config
-        for window in windows {
-            window.apply(homeURL: config.homeURL, userAgent: config.userAgent)
+    /// tatami.conf を読み直して設定を差し替える (source-file)。解釈できなかった行は飛ばし、読めた分だけを反映して status line に知らせる。
+    /// 設定はアプリ全体で共有しているため、開いている全ウィンドウのペインへ反映する
+    private func reload(configFileURL: URL, requireFile: Bool) {
+        let errors = TatamiConfigStore.shared.reload(fileURL: configFileURL, requireFile: requireFile)
+        for model in BrowserWindowModel.activeModels.allObjects {
+            for window in model.windows {
+                window.apply(homeURL: model.config.homeURL, userAgent: model.config.userAgent)
+            }
         }
-        statusMessage = TatamiConfigError.statusMessage(errors: loadedConfig.errors)
+        statusMessage = TatamiConfigError.statusMessage(errors: errors)
     }
 
     private func makeWindow() -> PaneWindow {

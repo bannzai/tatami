@@ -194,10 +194,14 @@ enum TatamiConfigParser {
     }
 
     /// スキームを持つ URL だけを受け付ける。`example.com` のようなスキーム無しの文字列も URL(string:) は返すが、
-    /// 相対 URL として読み込みに失敗するため設定を読んだ時点で弾く
+    /// 相対 URL として読み込みに失敗するため設定を読んだ時点で弾く。http / https はホストも必須 (`https://` や `http:/x` は読み込みエラーになる)。
+    /// `about:blank` のような非 HTTP の URL はホストを求めない
     private static func url(text: String) throws(LineError) -> URL {
-        guard let url = URL(string: text), url.scheme != nil else {
+        guard let url = URL(string: text), let scheme = url.scheme else {
             throw LineError(message: "URL として解釈できない: \(text)")
+        }
+        if ["http", "https"].contains(scheme.lowercased()), (url.host() ?? "").isEmpty {
+            throw LineError(message: "URL にホストが無い: \(text)")
         }
         return url
     }
@@ -277,18 +281,27 @@ enum TatamiConfigLoader {
         URL(filePath: TatamiConfigParser.expandedPath(path: path))
     }
 
-    /// 設定ファイルを読んで適用する。ファイルが無いのは「設定していない」だけなのでエラーにしない
-    static func load(fileURL: URL = defaultFileURL) -> (config: TatamiConfig, errors: [TatamiConfigError]) {
+    /// 読み込みの結果。fileExists が false なら config は既定値のまま
+    struct LoadResult {
+        let config: TatamiConfig
+        let errors: [TatamiConfigError]
+        let fileExists: Bool
+    }
+
+    /// 設定ファイルを読んで適用する。既定ファイルが無いのは「設定していない」だけなのでエラーにしないが、
+    /// `source-file <path>` のように明示したファイルが無いのは書き間違いのため requireFile でエラーにする
+    static func load(fileURL: URL = defaultFileURL, requireFile: Bool = false) -> LoadResult {
         var config = TatamiConfig()
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
-            return (config, [])
+            let errors = requireFile ? [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルが無い: \(fileURL.path(percentEncoded: false))")] : []
+            return LoadResult(config: config, errors: errors, fileExists: false)
         }
         let text: String
         do {
             text = try String(contentsOf: fileURL, encoding: .utf8)
         } catch {
             // ファイル全体が読めない失敗は行を特定できないため、設定を書いた人が最初に見る 1 行目として報告する
-            return (config, [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルを読み込めない: \(error)")])
+            return LoadResult(config: config, errors: [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルを読み込めない: \(error)")], fileExists: true)
         }
         let errors = TatamiConfigParser.apply(
             text: text,
@@ -298,6 +311,6 @@ enum TatamiConfigLoader {
                 try String(contentsOf: URL(filePath: path), encoding: .utf8)
             }
         )
-        return (config, errors)
+        return LoadResult(config: config, errors: errors, fileExists: true)
     }
 }

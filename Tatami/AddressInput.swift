@@ -23,7 +23,14 @@ enum AddressInput {
             return url
         }
         var components = URLComponents(url: searchURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "q", value: trimmed)]
+        // 設定の検索 URL に含まれるパラメータは残す。値が空のパラメータ (`?p=`) があればそこに検索語を入れ、無ければ `q` を足す
+        var queryItems = components.queryItems ?? []
+        if let index = queryItems.firstIndex(where: { ($0.value ?? "").isEmpty }) {
+            queryItems[index] = URLQueryItem(name: queryItems[index].name, value: trimmed)
+        } else {
+            queryItems.append(URLQueryItem(name: "q", value: trimmed))
+        }
+        components.queryItems = queryItems
         return components.url!
     }
 

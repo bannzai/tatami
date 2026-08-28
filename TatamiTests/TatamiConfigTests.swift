@@ -246,4 +246,23 @@ struct TatamiConfigTests {
         #expect(TatamiConfigLoader.defaultFileURL.path(percentEncoded: false) == "\(NSHomeDirectory())/.config/tatami/tatami.conf")
         #expect(TatamiConfigLoader.fileURL(path: "~/x.conf").path(percentEncoded: false) == "\(NSHomeDirectory())/x.conf")
     }
+
+    @Test func httpURLsWithoutHostAreRejected() {
+        var config = TatamiConfig()
+        let errors = TatamiConfigParser.apply(text: "set -g home https://\nset -g search-engine http:/x\nset -g home about:blank", config: &config)
+        #expect(errors.map(\.line) == [1, 2])
+        #expect(errors.allSatisfy { $0.message.hasPrefix("URL にホストが無い") })
+        #expect(config.homeURL == URL(string: "about:blank"))
+    }
+
+    @Test func explicitMissingFileIsReportedWhenRequired() {
+        let fileURL = FileManager.default.temporaryDirectory.appending(path: "tatami-missing-\(UUID().uuidString).conf")
+        let optional = TatamiConfigLoader.load(fileURL: fileURL)
+        #expect(optional.errors.isEmpty)
+        #expect(!optional.fileExists)
+        let required = TatamiConfigLoader.load(fileURL: fileURL, requireFile: true)
+        #expect(required.errors.count == 1)
+        #expect(required.errors[0].message.hasPrefix("設定ファイルが無い"))
+        #expect(!required.fileExists)
+    }
 }
