@@ -304,6 +304,14 @@ struct PaneTreeTests {
         tree.resize(paneID: tree.focusedPaneID, axis: .horizontal, delta: 0.2)
         let frames = tree.frames(bounds: PaneTreeTests.bounds)
         #expect(frames.count == 4)
+        #expect(Set(frames.keys) == Set(tree.paneIDs))
+        #expect(frames.values.allSatisfy { PaneTreeTests.bounds.contains($0) })
+        let frameValues = Array(frames.values)
+        for i in frameValues.indices {
+            for j in frameValues.indices where j > i {
+                #expect(frameValues[i].intersection(frameValues[j]).isEmpty)
+            }
+        }
         let totalArea = frames.values.reduce(0.0) { total, frame in
             total + frame.width * frame.height
         }
