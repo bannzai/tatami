@@ -48,7 +48,9 @@ struct BrowsingDataTests {
         defer { try? FileManager.default.removeItem(at: directoryURL) }
         let fileURL = directoryURL.appending(path: "browsing.json")
         try Data("not json".utf8).write(to: fileURL)
-        #expect(BrowsingStore.loadOrEmpty(fileURL: fileURL) == BrowsingData())
+        let loaded = BrowsingStore.loadOrEmpty(fileURL: fileURL)
+        #expect(loaded.data == BrowsingData())
+        #expect(loaded.isWritable)
         let remaining = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil).map(\.lastPathComponent)
         #expect(remaining.count == 1)
         #expect(remaining[0].hasPrefix("browsing.json.corrupt-"))
