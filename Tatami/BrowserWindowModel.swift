@@ -192,6 +192,13 @@ final class BrowserWindowModel {
             return
         }
         isActive = true
+        // ロックされたら、本人確認後にだけ見せる候補一覧を閉じる (別ウィンドウの :lock や自動ロックでも)。
+        // init では stored property の初期化が終わる前に self を捕捉できないため、ここで購読する
+        lockObservation = NotificationCenter.default.addObserver(forName: CredentialLock.didLockNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.closeCredentialChooserIfLocked()
+            }
+        }
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
             // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
