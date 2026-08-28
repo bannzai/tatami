@@ -57,29 +57,34 @@ final class PaneWindow {
     }
 
     func focusNext() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusNext()
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focusPrevious() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusPrevious()
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focusLastPane() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusLastPane()
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focus(direction: FocusDirection) {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focus(direction: direction)
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     /// ペインのクリックでそのペインへフォーカスを移す
     func focus(paneID: PaneID) {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focus(paneID: paneID)
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func swapWithPrevious() {
@@ -108,5 +113,12 @@ final class PaneWindow {
 
     private func notifyFocusedURL() {
         onFocusedURLChange?(focusedPane.url)
+    }
+
+    /// フォーカスが実際に移った時だけ通知し、移らなかった時 (ペインが 1 枚・隣が無い等) はアドレスバーの入力途中のテキストを残す
+    private func notifyFocusedURLIfFocusChanged(previousFocusedPaneID: PaneID) {
+        if paneTree.focusedPaneID != previousFocusedPaneID {
+            notifyFocusedURL()
+        }
     }
 }
