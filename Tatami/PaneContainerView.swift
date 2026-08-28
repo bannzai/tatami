@@ -14,6 +14,8 @@ final class PaneContainerView: NSView {
     var onDividerDrag: ((_ dividerPath: [SplitSide], _ delta: Double) -> Void)?
     /// ペインがクリックされた時の通知先
     var onPaneClick: ((PaneID) -> Void)?
+    /// このウィンドウへのキー入力の通知先。true を返すと入力を消費し、WKWebView (Web ページ) へ渡さない
+    var onKeyDown: ((KeyStroke) -> Bool)?
 
     private var paneTree = PaneTree()
     private var webViews: [PaneID: WKWebView] = [:]
@@ -23,6 +25,8 @@ final class PaneContainerView: NSView {
     private var lastDragLocation: CGPoint = .zero
     /// ウィンドウ内のクリックを WKWebView より先に見てフォーカス移動に使う監視。WKWebView はマウスイベントを自分で消費するため、responder chain では受け取れない
     private var clickMonitor: Any?
+    /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
+    private var keyMonitor: Any?
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
     override var isFlipped: Bool { true }
@@ -101,8 +105,18 @@ final class PaneContainerView: NSView {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
         }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
         guard window != nil else {
             return
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === window, let keyStroke = KeyStroke(event: event) else {
+                return event
+            }
+            return onKeyDown?(keyStroke) == true ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, event.window === window else {
@@ -138,6 +152,9 @@ struct PaneContainer: NSViewRepresentable {
         }
         view.onPaneClick = { paneID in
             model.focus(paneID: paneID)
+        }
+        view.onKeyDown = { keyStroke in
+            model.handle(keyStroke: keyStroke)
         }
         return view
     }

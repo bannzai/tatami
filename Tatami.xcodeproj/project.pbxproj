@@ -17,6 +17,8 @@
 		99294680D5664B718A00A3D0 /* BrowserWindowModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */; };
 		5F05464E6EBA4E7F9A344068 /* PaneContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AC810FA5594E2A885F80DC /* PaneContainerView.swift */; };
 		AC1D138D50924296BA4838BD /* PaneCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */; };
+		B36C8CD7DDD84F199564C66C /* KeyBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */; };
+		AC701C56F5DB4930A7974DE8 /* KeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324BDC8BFA1B4746AAEA7E29 /* KeyBindingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +45,8 @@
 		E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModel.swift; sourceTree = "<group>"; };
 		44AC810FA5594E2A885F80DC /* PaneContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneContainerView.swift; sourceTree = "<group>"; };
 		E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCommands.swift; sourceTree = "<group>"; };
+		4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyBinding.swift; sourceTree = "<group>"; };
+		324BDC8BFA1B4746AAEA7E29 /* KeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyBindingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -60,6 +64,7 @@
 			children = (
 				A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */,
 				10214FFA89244825ACDF4111 /* PaneTreeTests.swift */,
+				324BDC8BFA1B4746AAEA7E29 /* KeyBindingTests.swift */,
 			);
 			path = TatamiTests;
 			sourceTree = "<group>";
@@ -84,6 +89,7 @@
 				E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */,
 				44AC810FA5594E2A885F80DC /* PaneContainerView.swift */,
 				E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */,
+				4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */,
 				A8AFEAE9B940E262E5784834 /* TatamiApp.swift */,
 			);
 			path = Tatami;
@@ -178,6 +184,7 @@
 				99294680D5664B718A00A3D0 /* BrowserWindowModel.swift in Sources */,
 				5F05464E6EBA4E7F9A344068 /* PaneContainerView.swift in Sources */,
 				AC1D138D50924296BA4838BD /* PaneCommands.swift in Sources */,
+				B36C8CD7DDD84F199564C66C /* KeyBinding.swift in Sources */,
 				BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -188,6 +195,7 @@
 			files = (
 				CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */,
 				02E240FFA8AB4B9DB0282623 /* PaneTreeTests.swift in Sources */,
+				AC701C56F5DB4930A7974DE8 /* KeyBindingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

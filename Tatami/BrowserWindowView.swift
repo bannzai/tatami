@@ -14,6 +14,7 @@ struct BrowserWindowView: View {
                 }
                 .padding(8)
             PaneContainer(model: model)
+            statusLine
         }
         // 2 分割しても各ペインが実用的な幅になる最小サイズとして、一般的なノート PC の画面の半分程度を選んだ
         .frame(minWidth: 800, minHeight: 600)
@@ -22,5 +23,19 @@ struct BrowserWindowView: View {
         .onOpenURL { openedURL in
             model.open(url: openedURL)
         }
+    }
+
+    /// tmux の status line に相当する最下段。ウィンドウ一覧 (#4) までは prefix 待ちの表示だけを持つ
+    private var statusLine: some View {
+        HStack {
+            Text(model.prefixKeyState == .awaitingCommand ? model.keyBindings.prefix.tmuxKeyName : "")
+                .accessibilityIdentifier("prefixIndicator")
+            Spacer()
+        }
+        .font(.system(.caption, design: .monospaced))
+        .padding(.horizontal, 8)
+        .frame(height: 20)
+        .background(.bar)
+        .accessibilityIdentifier("statusLine")
     }
 }
