@@ -51,9 +51,9 @@ struct SessionSnapshotTests {
         try SessionStore.save(snapshot: snapshot, directoryURL: directoryURL)
         try SessionStore.save(snapshot: makeSnapshot(name: "work"), directoryURL: directoryURL)
         #expect(try SessionStore.load(name: "0", directoryURL: directoryURL) == snapshot)
-        #expect(SessionStore.sessionNames(directoryURL: directoryURL) == ["0", "work"])
+        #expect(try SessionStore.sessionNames(directoryURL: directoryURL) == ["0", "work"])
         try SessionStore.rename(name: "work", newName: "home", directoryURL: directoryURL)
-        #expect(SessionStore.sessionNames(directoryURL: directoryURL) == ["0", "home"])
+        #expect(try SessionStore.sessionNames(directoryURL: directoryURL) == ["0", "home"])
         #expect(throws: (any Error).self) {
             try SessionStore.rename(name: "home", newName: "0", directoryURL: directoryURL)
         }

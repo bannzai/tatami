@@ -47,7 +47,7 @@ struct PaneCommands: Commands {
             Button("Next Pane") { model?.perform(command: .selectPaneNext) }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-select-pane-next")
-            Button("Previous Pane") { model?.currentWindow.focusPrevious() }
+            Button("Previous Pane") { model?.perform(command: .selectPanePrevious) }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-select-pane-previous")
             Button("Last Pane") { model?.perform(command: .selectPaneLast) }
