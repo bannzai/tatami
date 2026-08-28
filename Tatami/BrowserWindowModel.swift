@@ -668,7 +668,8 @@ final class BrowserWindowModel {
             return
         }
         do {
-            let credentials = try credentialStore.all()
+            let exportable = PasswordImporter.exportable(credentials: try credentialStore.all())
+            let credentials = exportable.rows
             let text = PasswordCSV.serialize(rows: PasswordImporter.rows(credentials: credentials))
             // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう、排他的な新規作成にする
             try Data(text.utf8).write(to: fileURL, options: .withoutOverwriting)
@@ -679,7 +680,8 @@ final class BrowserWindowModel {
                 try? FileManager.default.removeItem(at: fileURL)
                 throw error
             }
-            statusMessage = "エクスポート: \(filePath) に \(credentials.count) 件。このファイルは削除するまで平文で残る"
+            let excludedNote = exportable.excluded > 0 ? "・ホストの無い URL の \(exportable.excluded) 件は対象外" : ""
+            statusMessage = "エクスポート: \(filePath) に \(credentials.count) 件\(excludedNote)。このファイルは削除するまで平文で残る"
         } catch {
             statusMessage = "エクスポートに失敗: \(error)"
         }

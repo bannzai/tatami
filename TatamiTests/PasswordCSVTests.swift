@@ -252,4 +252,24 @@ struct PasswordCSVTests {
             ]
         )
     }
+
+    @Test func quotedCarriageReturnsArePreserved() throws {
+        let text = "name,url,username,password,note\r\nexample.com,https://example.com/,alice,\"a\rb\",\"x\r\ny\"\r\n"
+        let rows = try PasswordCSV.parse(text: text)
+        #expect(rows.count == 1)
+        #expect(rows[0].password == "a\rb")
+        #expect(rows[0].note == "x\r\ny")
+        let reparsed = try PasswordCSV.parse(text: PasswordCSV.serialize(rows: rows))
+        #expect(reparsed == rows)
+    }
+
+    @Test func exportableExcludesCredentialsWithoutHost() {
+        let credentials = [
+            makeCredential(url: "https://example.com/", username: "alice", password: "dummy-alice", date: past),
+            makeCredential(url: "about:blank", username: "x", password: "dummy", date: past),
+        ]
+        let result = PasswordImporter.exportable(credentials: credentials)
+        #expect(result.rows.map(\.username) == ["alice"])
+        #expect(result.excluded == 1)
+    }
 }

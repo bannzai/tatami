@@ -92,7 +92,8 @@ enum PasswordCSV {
 
     /// RFC 4180 に従い、区切りと解釈されうる文字を含む値だけをクオートする。ダブルクオートは 2 つ重ねてエスケープする
     private static func escaped(value: String) -> String {
-        guard value.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) else {
+        // CRLF は Character として 1 文字になるため、Unicode スカラーで改行を検出する
+        guard value.unicodeScalars.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) else {
             return value
         }
         return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
@@ -101,13 +102,10 @@ enum PasswordCSV {
     /// CSV を「レコードの開始行番号と値の並び」にする。クオートで囲んだ値の中の改行・カンマは区切りとして扱わず、
     /// 行番号だけを進めることでエラーの位置をファイル上の行と一致させる
     private static func records(text: String) throws(PasswordCSVError) -> [(line: Int, fields: [String])] {
-        // 表計算ソフトが付ける BOM を最初の列名の一部にしないため取り除き、改行を LF に揃える。
-        // Swift の Character は CRLF を 1 文字として扱うため、揃えずに走査すると CRLF のファイルで改行を見落とす
-        let characters = Array(
-            (text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text)
-                .replacingOccurrences(of: "\r\n", with: "\n")
-                .replacingOccurrences(of: "\r", with: "\n")
-        )
+        // 表計算ソフトが付ける BOM を最初の列名の一部にしないため取り除く。
+        // Swift の Character は CRLF を 1 文字として扱うため Unicode スカラーで走査し、レコード区切り (LF / CRLF / CR) は
+        // クオートの外でだけ解釈する (クオート内の CR や CRLF は値の一部としてそのまま残す)
+        let characters = Array((text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text).unicodeScalars)
         var parsedRecords: [(line: Int, fields: [String])] = []
         var index = 0
         var lineNumber = 1
@@ -136,18 +134,18 @@ enum PasswordCSV {
                         if character == "\n" {
                             lineNumber += 1
                         }
-                        field.append(character)
+                        field.unicodeScalars.append(character)
                         index += 1
                     }
                     guard isClosed else {
                         throw PasswordCSVError(line: recordLine, message: "クオートが閉じていない")
                     }
                 }
-                while index < characters.count, characters[index] != ",", characters[index] != "\n" {
+                while index < characters.count, characters[index] != ",", characters[index] != "\n", characters[index] != "\r" {
                     guard !isQuoted else {
                         throw PasswordCSVError(line: recordLine, message: "閉じクオートの後に値が続いている")
                     }
-                    field.append(characters[index])
+                    field.unicodeScalars.append(characters[index])
                     index += 1
                 }
                 fields.append(field)
@@ -157,6 +155,10 @@ enum PasswordCSV {
                 if characters[index] == "," {
                     index += 1
                     continue
+                }
+                // レコード区切り。CRLF は 2 スカラーで 1 つの区切り
+                if characters[index] == "\r", characters[safe: index + 1] == "\n" {
+                    index += 1
                 }
                 index += 1
                 lineNumber += 1
@@ -228,6 +230,13 @@ enum PasswordImporter {
     }
 
     /// 書き出し用の行。Chrome の name 列は一覧の表示名のため、ホスト名を入れる
+    /// エクスポート対象の資格情報 (ホストを持つ URL のもの)。ホストが無い URL (about:blank 等) は再インポートで読み飛ばされるため対象外にし、
+    /// 呼び出し側が件数を利用者に示す
+    static func exportable(credentials: [Credential]) -> (rows: [Credential], excluded: Int) {
+        let rows = credentials.filter { !$0.host.isEmpty }
+        return (rows, credentials.count - rows.count)
+    }
+
     static func rows(credentials: [Credential]) -> [PasswordCSV.Row] {
         credentials.map { credential in
             PasswordCSV.Row(
