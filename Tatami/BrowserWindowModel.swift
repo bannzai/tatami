@@ -643,7 +643,9 @@ final class BrowserWindowModel {
             )
             // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let changed = result.credentials.filter { existingByID[$0.id] != $0 }
+            // 保存対象も id ごとに先頭の 1 件に限る (同じ id の後続要素で更新済みの項目を戻さない)
+            var seenIDs = Set<UUID>()
+            let changed = result.credentials.filter { seenIDs.insert($0.id).inserted && existingByID[$0.id] != $0 }
             var saved = 0
             for credential in changed {
                 do {

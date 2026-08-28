@@ -301,4 +301,25 @@ struct PasswordCSVTests {
         #expect(result.credentials.count == 2)
         #expect(result.credentials[0].password.unicodeScalars.elementsEqual(decomposed.unicodeScalars))
     }
+
+    @Test func mergeNormalizesIPAddressHosts() {
+        let existing = [makeCredential(url: "https://[::1]/", username: "alice", password: "dummy-alice", date: past)]
+        let result = PasswordImporter.merge(
+            rows: [PasswordCSV.Row(name: "", url: "https://[0:0:0:0:0:0:0:1]/login", username: "alice", password: "dummy-new", note: "")],
+            existing: existing,
+            now: now
+        )
+        #expect(result.updated == 1)
+        #expect(result.added == 0)
+        #expect(PasswordImporter.normalizedHost(host: "[0:0:0:0:0:0:0:1]") == "[::1]")
+        #expect(PasswordImporter.normalizedHost(host: "127.000.000.001") == "127.0.0.1")
+        #expect(PasswordImporter.normalizedHost(host: "example.com") == "example.com")
+    }
+
+    @Test func quotedLoneCarriageReturnAdvancesLineNumber() {
+        // 1 行目ヘッダ、2 行目のクオート内に単独 CR (1 行分)、4 行目が列数不一致
+        #expect(throws: PasswordCSVError(line: 4, message: "列の数がヘッダと合わない (ヘッダ 5 列・この行 3 列)")) {
+            try PasswordCSV.parse(text: "name,url,username,password,note\nx,https://example.com/,alice,\"a\rb\",memo\nbad,row,here\n")
+        }
+    }
 }
