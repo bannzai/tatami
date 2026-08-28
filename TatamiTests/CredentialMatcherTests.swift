@@ -37,6 +37,13 @@ struct CredentialMatcherTests {
         #expect(CredentialMatcher.registrableDomain(host: "127.0.0.1", rules: rules) == nil)
     }
 
+    @Test func idnRulesAndHostsAreComparedInASCIIForm() {
+        let idnRules = PublicSuffixList.Rules(text: "中国\ncom")
+        #expect(idnRules.rules.contains("xn--fiqs8s"))
+        #expect(CredentialMatcher.registrableDomain(host: "accounts.example.xn--fiqs8s", rules: idnRules) == "example.xn--fiqs8s")
+        #expect(CredentialMatcher.registrableDomain(host: "login.example.中国", rules: idnRules) == "example.xn--fiqs8s")
+    }
+
     @Test func bundledListIsLoaded() {
         #expect(PublicSuffixList.bundled.rules.contains("co.jp"))
         #expect(PublicSuffixList.bundled.rules.contains("github.io"))

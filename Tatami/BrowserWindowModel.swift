@@ -991,11 +991,23 @@ final class BrowserWindowModel {
     /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
     /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
     private func fill(credential: Credential, pane: WebPane) {
+        // 候補元のペインが閉じられていたら (別のペインが表示されていて誤認しやすい) 充填しない
+        guard windows.contains(where: { $0.panes[pane.id] === pane }) else {
+            statusMessage = "ペインが閉じられたため充填しない"
+            return
+        }
         guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url) else {
             statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
             return
         }
         Task { @MainActor [weak self] in
+            // 非同期に入るまでにリダイレクトや History API の遷移が起きていることがあるため、JavaScript を呼ぶ直前に
+            // トップレベルと充填先フレーム (別オリジンの iframe に欄がある場合) の URL を改めて照合する
+            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
+                  let frameURL = pane.loginFormURL, CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
+                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+                return
+            }
             do {
                 let filled = try await pane.fill(credential: credential)
                 self?.statusMessage = filled ? "充填した: \(credential.username)" : "ログインフォームが見つからない"
@@ -1073,6 +1085,10 @@ final class BrowserWindowModel {
 
     /// 訪問を履歴に記録する
     private func recordVisit(url: URL, title: String) {
+        // 表示されなかったモデル (SwiftUI が作って捨てた @State の初期値等) の初期読み込みを履歴にしない
+        guard isActive else {
+            return
+        }
         BrowsingDataStore.shared.recordVisit(url: url, title: title)
     }
 

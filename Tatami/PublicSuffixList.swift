@@ -20,7 +20,8 @@ enum PublicSuffixList {
                 guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else {
                     continue
                 }
-                let rule = trimmed.split(separator: " ")[0].lowercased()
+                // IDN の規則 (U-label) は、URL やホストが返す A-label (`xn--`) と一致するよう IDNA の ASCII 形に揃える
+                let rule = PublicSuffixList.asciiForm(rule: trimmed.split(separator: " ")[0].lowercased())
                 if rule.hasPrefix("!") {
                     exceptions.insert(String(rule.dropFirst()))
                 } else if rule.hasPrefix("*.") {
@@ -55,12 +56,32 @@ enum PublicSuffixList {
 
         /// 登録可能ドメイン (eTLD+1)。公開サフィックスそのもの・リストに無い TLD・ラベルが足りない場合は nil
         func registrableDomain(host: String) -> String? {
-            let labels = host.lowercased().split(separator: ".").map(String.init)
+            // 入力も A-label に揃える (Unicode 表記のホストが渡された場合)
+            let ascii = PublicSuffixList.asciiForm(rule: host.lowercased())
+            let labels = ascii.split(separator: ".").map(String.init)
             guard let suffixCount = publicSuffixLabelCount(labels: labels), labels.count > suffixCount else {
                 return nil
             }
             return labels.suffix(suffixCount + 1).joined(separator: ".")
         }
+    }
+
+    /// 規則 (接頭辞 `!` / `*.` を含みうる) の IDNA ASCII 形。ASCII だけの規則はそのまま返す
+    static func asciiForm(rule: String) -> String {
+        guard rule.contains(where: { !$0.isASCII }) else {
+            return rule
+        }
+        var prefix = ""
+        var domain = rule
+        if domain.hasPrefix("!") {
+            prefix = "!"
+            domain = String(domain.dropFirst())
+        } else if domain.hasPrefix("*.") {
+            prefix = "*."
+            domain = String(domain.dropFirst(2))
+        }
+        let encoded = URLComponents(string: "https://\(domain)/")?.encodedHost?.lowercased() ?? domain
+        return prefix + encoded
     }
 
     /// 同梱したリスト。読めない時は空の規則 (全て「リストに無い」扱いで完全一致だけになる)

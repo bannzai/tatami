@@ -126,6 +126,7 @@ enum LoginFormScript {
         return true;
       };
       post();
+      // 既存の input の type を後から password に変えるページも検出する
       new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type'] });
     })();
     """
