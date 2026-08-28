@@ -65,6 +65,7 @@
 		F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiConfigTests.swift; sourceTree = "<group>"; };
 		B36C24AF9ED148488297390E /* TatamiConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiConfigStore.swift; sourceTree = "<group>"; };
 		623175DED39C4C3F8906160A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		FFEF1F93A53047EAAFD51DC7 /* Tatami.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tatami.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -105,6 +106,7 @@
 				7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */,
 				53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */,
 				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
+				FFEF1F93A53047EAAFD51DC7 /* Tatami.entitlements */,
 				CD8C5B56487F4F1F9006165F /* PaneTree.swift */,
 				85CED8AA8672425F88EAD428 /* WebPane.swift */,
 				623175DED39C4C3F8906160A /* DownloadManager.swift */,
@@ -336,6 +338,7 @@
 		49AADDA635D58EB550310F3F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -435,6 +438,7 @@
 		EA839FADD8DA5380513C2EE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
