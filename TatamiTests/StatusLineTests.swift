@@ -31,5 +31,7 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: "d")!] == .detachClient)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "s")!] == .chooseSession)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "$")!] == .renameSession)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: ":")!] == .commandPrompt)
+        #expect(BrowserCommand(tmuxName: "command-prompt") == .commandPrompt)
     }
 }

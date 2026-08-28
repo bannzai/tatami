@@ -90,6 +90,10 @@ struct PaneCommands: Commands {
                 .accessibilityIdentifier("menu-choose-session")
             Button("Rename Session…") { model?.perform(command: .renameSession) }
                 .accessibilityIdentifier("menu-rename-session")
+            Divider()
+            Button("Command Prompt…") { model?.perform(command: .commandPrompt) }
+                .keyboardShortcut(":", modifiers: [.command, .shift])
+                .accessibilityIdentifier("menu-command-prompt")
         }
     }
 }

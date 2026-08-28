@@ -11,6 +11,8 @@ final class BrowserWindowModel {
     enum Prompt: Equatable {
         case renameWindow
         case renameSession
+        /// `:` から始まるコマンドの入力 (prefix + :)
+        case command
     }
 
     /// 一覧から選ぶ操作 (choose-window / choose-session)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
@@ -57,6 +59,14 @@ final class BrowserWindowModel {
     private var promptTargetWindow: PaneWindow?
     /// プロンプトの入力欄のテキスト
     var promptText = ""
+    /// コマンドプロンプトで実行した行の履歴 (古い順)。上下キーで辿る
+    private(set) var commandHistory: [String] = []
+    /// 履歴を辿っている位置。`commandHistory.count` は「入力中の新しい行」を表す
+    private var commandHistoryIndex = 0
+    /// 履歴を辿り始める前に入力していたテキスト。末尾まで戻った時に復元する
+    private var commandDraft = ""
+    /// 履歴の上限。tmux の history-limit に合わせる意図はなく、上下キーで辿れる現実的な量として選んだ
+    private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
     /// 一覧で選択中の添字
@@ -393,6 +403,94 @@ final class BrowserWindowModel {
         prompt = .renameSession
     }
 
+    /// コマンドプロンプトを開く (prefix + :)
+    func beginCommandPrompt() {
+        promptText = ""
+        commandHistoryIndex = commandHistory.count
+        commandDraft = ""
+        prompt = .command
+    }
+
+    /// コマンドプロンプトで履歴を 1 つ古い方へ辿る (上キー)
+    func recallOlderCommand() {
+        guard prompt == .command, commandHistoryIndex > 0 else {
+            return
+        }
+        if commandHistoryIndex == commandHistory.count {
+            commandDraft = promptText
+        }
+        commandHistoryIndex -= 1
+        promptText = commandHistory[commandHistoryIndex]
+    }
+
+    /// コマンドプロンプトで履歴を 1 つ新しい方へ辿る (下キー)。末尾まで戻ると入力中だった行に戻る
+    func recallNewerCommand() {
+        guard prompt == .command, commandHistoryIndex < commandHistory.count else {
+            return
+        }
+        commandHistoryIndex += 1
+        promptText = commandHistoryIndex == commandHistory.count ? commandDraft : commandHistory[commandHistoryIndex]
+    }
+
+    /// コマンドプロンプトの 1 行を実行する。キーバインドと同じコマンド表 (BrowserCommand) と、tatami.conf と同じ設定行 (set / bind / unbind / source-file) を使い、
+    /// それ以外に `open <url>` と `find <text>` を持つ。未知のコマンドや解釈できない行は status line に表示する
+    func execute(commandLine: String) {
+        let line = commandLine.trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty else {
+            return
+        }
+        commandHistory.append(line)
+        if commandHistory.count > BrowserWindowModel.commandHistoryLimit {
+            commandHistory.removeFirst(commandHistory.count - BrowserWindowModel.commandHistoryLimit)
+        }
+        guard let tokens = TatamiConfigParser.tokens(line: line), let name = tokens.first else {
+            statusMessage = "command-prompt: クオートが閉じていない"
+            return
+        }
+        let arguments = Array(tokens.dropFirst())
+        switch name {
+        case "open":
+            guard !arguments.isEmpty else {
+                statusMessage = "open は URL または検索語を取る"
+                return
+            }
+            let text = arguments.joined(separator: " ")
+            addressText = text
+            navigate(text: text)
+        case "find":
+            find(text: arguments.joined(separator: " "))
+        case "set", "bind", "bind-key", "unbind", "unbind-key", "source-file":
+            let errors = TatamiConfigStore.shared.apply(line: line)
+            applyConfigToAllWindows()
+            statusMessage = TatamiConfigError.statusMessage(errors: errors)
+        case "rename-window" where !arguments.isEmpty:
+            currentWindow.renamedName = arguments.joined(separator: " ")
+            scheduleSave()
+        case "rename-session" where !arguments.isEmpty:
+            renameSession(newName: arguments.joined(separator: " "))
+        default:
+            guard let command = BrowserCommand(tmuxName: tokens.joined(separator: " ")) else {
+                statusMessage = "知らないコマンド: \(line)"
+                return
+            }
+            perform(command: command)
+        }
+    }
+
+    /// ページ内検索 (find)。空文字なら検索の強調を消す。結果が無ければ status line に知らせる
+    func find(text: String) {
+        let webView = currentWindow.focusedPane.webView
+        guard !text.isEmpty else {
+            webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+            return
+        }
+        webView.find(text) { [weak self] result in
+            if !result.matchFound {
+                self?.statusMessage = "見つからない: \(text)"
+            }
+        }
+    }
+
     /// プロンプトの入力を確定する。rename-window は空文字なら automatic-rename に戻す
     func commitPrompt() {
         switch prompt {
@@ -400,6 +498,8 @@ final class BrowserWindowModel {
             (promptTargetWindow ?? currentWindow).renamedName = promptText.isEmpty ? nil : promptText
         case .renameSession:
             renameSession(newName: promptText)
+        case .command:
+            execute(commandLine: promptText)
         case nil:
             break
         }
@@ -568,6 +668,8 @@ final class BrowserWindowModel {
             beginChooseSession()
         case .renameSession:
             beginRenameSession()
+        case .commandPrompt:
+            beginCommandPrompt()
         case .sourceFile(let path):
             reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL, requireFile: path != nil)
         }
@@ -577,12 +679,17 @@ final class BrowserWindowModel {
     /// 設定はアプリ全体で共有しているため、開いている全ウィンドウのペインへ反映する
     private func reload(configFileURL: URL, requireFile: Bool) {
         let errors = TatamiConfigStore.shared.reload(fileURL: configFileURL, requireFile: requireFile)
+        applyConfigToAllWindows()
+        statusMessage = TatamiConfigError.statusMessage(errors: errors)
+    }
+
+    /// 共有の設定を、表示中の全ウィンドウのペインへ反映する
+    private func applyConfigToAllWindows() {
         for model in BrowserWindowModel.activeModels.allObjects {
             for window in model.windows {
                 window.apply(homeURL: model.config.homeURL, userAgent: model.config.userAgent)
             }
         }
-        statusMessage = TatamiConfigError.statusMessage(errors: errors)
     }
 
     private func makeWindow() -> PaneWindow {

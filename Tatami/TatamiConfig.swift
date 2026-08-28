@@ -230,7 +230,7 @@ enum TatamiConfigParser {
     /// 1 行をシェル風の空白区切りのトークンに分ける。`"..."` は `\"` と `\\` のエスケープを解いた値、`'...'` は書いたままの値になる。
     /// `#` はトークンの先頭にある時だけ行末までのコメントにする (URL のフラグメント `https://example.com/#top` を壊さないため)。
     /// クオートが閉じていない行は解釈できないため nil
-    private static func tokens(line: String) -> [String]? {
+    static func tokens(line: String) -> [String]? {
         var tokens: [String] = []
         var current = ""
         var hasCurrent = false
