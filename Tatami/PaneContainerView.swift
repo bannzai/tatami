@@ -55,6 +55,25 @@ final class PaneContainerView: NSView {
         needsDisplay = true
         // 境界線の位置が変わるのはビューの frame ではなく paneTree の変化なので、cursor rect の再計算を明示的に求める
         window?.invalidateCursorRects(for: self)
+        syncFirstResponderWithFocusedPane()
+    }
+
+    /// 直前に apply した時のフォーカス中ペイン。フォーカスの変化を検出して first responder を追従させる
+    private var lastFocusedPaneID: PaneID?
+
+    /// モデルのフォーカス (paneTree.focusedPaneID) と AppKit の first responder を揃える。
+    /// Web コンテンツが first responder の時にフォーカスが別のペインへ移った、または first responder だった WKWebView が外れた場合に、
+    /// フォーカス中のペインの WKWebView を first responder にする (アドレスバー等にフォーカスがある時は動かさない)
+    private func syncFirstResponderWithFocusedPane() {
+        let focusChanged = lastFocusedPaneID != paneTree.focusedPaneID
+        lastFocusedPaneID = paneTree.focusedPaneID
+        guard let window, let responder = window.firstResponder as? NSView,
+              let responderWebView = sequence(first: responder, next: \.superview).first(where: { $0 is WKWebView }),
+              let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self,
+              focusChanged || responderWebView.superview !== self else {
+            return
+        }
+        window.makeFirstResponder(focusedWebView)
     }
 
     override func layout() {

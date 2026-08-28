@@ -65,29 +65,34 @@ final class BrowserWindowModel {
     }
 
     func focusNext() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusNext()
-        syncAddressTextToFocusedPane()
+        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focusPrevious() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusPrevious()
-        syncAddressTextToFocusedPane()
+        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focusLastPane() {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focusLastPane()
-        syncAddressTextToFocusedPane()
+        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func focus(direction: FocusDirection) {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focus(direction: direction)
-        syncAddressTextToFocusedPane()
+        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     /// ペインのクリックでそのペインへフォーカスを移す
     func focus(paneID: PaneID) {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         paneTree.focus(paneID: paneID)
-        syncAddressTextToFocusedPane()
+        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
     }
 
     func swapWithPrevious() {
@@ -163,5 +168,12 @@ final class BrowserWindowModel {
 
     private func syncAddressTextToFocusedPane() {
         addressText = focusedPane.url.absoluteString
+    }
+
+    /// フォーカスが実際に移った時だけアドレスバーを同期し、移らなかった時 (ペインが 1 枚・隣が無い等) は入力途中のテキストを残す
+    private func syncAddressTextIfFocusChanged(previousFocusedPaneID: PaneID) {
+        if paneTree.focusedPaneID != previousFocusedPaneID {
+            syncAddressTextToFocusedPane()
+        }
     }
 }
