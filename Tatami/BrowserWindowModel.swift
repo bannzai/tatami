@@ -179,6 +179,8 @@ final class BrowserWindowModel {
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
     func beginRenameWindow() {
+        // メニューから開いた時に prefix 待ちが残っていると、名前の最初の文字がコマンドとして消費されるため取り消す
+        cancelPrefix()
         promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
@@ -208,6 +210,9 @@ final class BrowserWindowModel {
 
     /// ウィンドウ一覧 (prefix + w) を開く
     func beginChooseWindow() {
+        // 一覧と名前変更のプロンプトは排他にする (両方が開くと入力の宛先が曖昧になる)
+        cancelPrompt()
+        cancelPrefix()
         chooserSelectionIndex = currentWindowIndex
         isChoosingWindow = true
     }
@@ -255,6 +260,10 @@ final class BrowserWindowModel {
             return false
         }
         if isChoosingWindow {
+            // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
+            if keyStroke.modifiers.contains(.command) {
+                return false
+            }
             handleChooserKey(keyStroke: keyStroke)
             return true
         }

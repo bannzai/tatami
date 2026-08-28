@@ -38,6 +38,10 @@ final class PaneContainerView: NSView {
 
     /// モデルの状態を反映する。閉じたペインの WKWebView はここで外れ、モデル側の参照が消えれば破棄される
     func apply(paneTree: PaneTree, webViews: [PaneID: WKWebView]) {
+        // 別のウィンドウ (tmux window) へ切り替わった (ペインの集合が変わった) 時は、掴んでいた境界線が無くなるためドラッグを取り消す
+        if draggingDivider != nil, Set(self.paneTree.paneIDs) != Set(paneTree.paneIDs) {
+            draggingDivider = nil
+        }
         self.paneTree = paneTree
         self.webViews = webViews
         let visiblePaneIDs = Set(paneTree.frames(bounds: bounds).keys)
@@ -196,8 +200,10 @@ final class PaneContainerView: NSView {
             if event.type == .keyUp {
                 return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
             }
-            if event.isARepeat, consumedKeyCodes.contains(event.keyCode) {
-                return nil
+            if event.isARepeat {
+                // リピートは最初の keyDown の扱いを引き継ぐ。消費したキーのリピートは捨て、ページへ渡したキーのリピートは
+                // prefix の判定やコマンドに使わずそのままページへ渡す (長押し中に prefix を押しても次のリピートがコマンドにならない)
+                return consumedKeyCodes.contains(event.keyCode) ? nil : event
             }
             // 別アプリへ移った間に離されたキーは keyUp が届かず集合に残るため、リピートでない keyDown が来た時点で古い記録を消す
             consumedKeyCodes.remove(event.keyCode)
