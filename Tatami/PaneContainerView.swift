@@ -47,13 +47,21 @@ final class PaneContainerView: NSView {
         }
         needsLayout = true
         needsDisplay = true
+        // 境界線の位置が変わるのはビューの frame ではなく paneTree の変化なので、cursor rect の再計算を明示的に求める
+        window?.invalidateCursorRects(for: self)
     }
 
     override func layout() {
         super.layout()
         let inset = Self.dividerThickness / 2
         for (paneID, frame) in paneTree.frames(bounds: bounds) {
-            webViews[paneID]?.frame = frame.insetBy(dx: inset, dy: inset)
+            // 同じ向きの分割を入れ子にすると比率の下限 (5%) が掛け合わされて境界線の太さより細くなり得るため、インセット後の寸法を非負に留める
+            webViews[paneID]?.frame = CGRect(
+                x: frame.minX + inset,
+                y: frame.minY + inset,
+                width: max(0, frame.width - inset * 2),
+                height: max(0, frame.height - inset * 2)
+            )
         }
     }
 
