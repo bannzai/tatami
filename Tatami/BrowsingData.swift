@@ -13,6 +13,25 @@ struct BrowsingData: Codable, Equatable {
         let url: URL
         let title: String
         let addedAt: Date
+        /// 読み込み中にブックマークしてタイトルが未確定 (ホスト名を仮に入れた) か。確定後の更新で置き換える対象を、
+        /// 正式なタイトルがホスト名と同じページと区別するために持つ
+        var isTitleProvisional = false
+
+        // isTitleProvisional は後から加えたため、旧版で保存したファイル (キーなし) を読めるよう decodeIfPresent にしている
+        init(url: URL, title: String, addedAt: Date, isTitleProvisional: Bool = false) {
+            self.url = url
+            self.title = title
+            self.addedAt = addedAt
+            self.isTitleProvisional = isTitleProvisional
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            url = try container.decode(URL.self, forKey: .url)
+            title = try container.decode(String.self, forKey: .title)
+            addedAt = try container.decode(Date.self, forKey: .addedAt)
+            isTitleProvisional = try container.decodeIfPresent(Bool.self, forKey: .isTitleProvisional) ?? false
+        }
     }
 
     /// アドレスバーの候補 1 件
@@ -49,9 +68,9 @@ struct BrowsingData: Codable, Equatable {
             history[index] = HistoryEntry(url: url, title: title, visitedAt: history[index].visitedAt)
             changed = true
         }
-        // 読み込み中に付けたブックマークは仮の名前 (ホスト名) を持つため、その場合だけ確定したタイトルに揃える。
-        // 未読件数などで変わる動的なタイトルで、利用者が付けた (または確定済みの) 名前を書き換えない
-        if let index = bookmarks.firstIndex(where: { $0.url == url }), bookmarks[index].title == (url.host() ?? ""), bookmarks[index].title != title {
+        // 読み込み中に付けたブックマークは仮の名前を持つため、その場合だけ確定したタイトルに揃える。
+        // 未読件数などで変わる動的なタイトルで、確定済みの名前を書き換えない
+        if let index = bookmarks.firstIndex(where: { $0.url == url }), bookmarks[index].isTitleProvisional {
             bookmarks[index] = Bookmark(url: url, title: title, addedAt: bookmarks[index].addedAt)
             changed = true
         }
@@ -59,11 +78,11 @@ struct BrowsingData: Codable, Equatable {
     }
 
     /// ブックマークを追加する。同じ URL があればタイトルだけ更新する
-    mutating func addBookmark(url: URL, title: String, date: Date) {
+    mutating func addBookmark(url: URL, title: String, date: Date, isTitleProvisional: Bool = false) {
         if let index = bookmarks.firstIndex(where: { $0.url == url }) {
-            bookmarks[index] = Bookmark(url: url, title: title, addedAt: bookmarks[index].addedAt)
+            bookmarks[index] = Bookmark(url: url, title: title, addedAt: bookmarks[index].addedAt, isTitleProvisional: isTitleProvisional)
         } else {
-            bookmarks.append(Bookmark(url: url, title: title, addedAt: date))
+            bookmarks.append(Bookmark(url: url, title: title, addedAt: date, isTitleProvisional: isTitleProvisional))
         }
     }
 

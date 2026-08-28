@@ -91,7 +91,10 @@ enum LoginFormScript {
       document.addEventListener('click', (event) => {
         const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"]') : null;
         if (!button) { return; }
-        capture(button.form || button.closest('form') || document);
+        const form = button.form || button.closest('form');
+        // 制約検証 (required / pattern 等) で送信されないクリックは通知しない (通常のフォームは submit イベント側で捕捉する)
+        if (form && !form.noValidate && !button.formNoValidate && typeof form.checkValidity === 'function' && !form.checkValidity()) { return; }
+        capture(form || document);
       }, true);
       // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
       const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
@@ -108,7 +111,8 @@ enum LoginFormScript {
       // 複数欄の判定は同じ (可視の) フォーム内の組で行う (デスクトップ用・モバイル用に独立したログインフォームが並ぶページを誤検出しない)。
       // 状態が変わった時だけ送る
       const isNewPasswordForm = (scope) => {
-        const fields = Array.from(scope.querySelectorAll('input[type="password"]')).filter(isVisible);
+        // 送信・充填側と同じく操作できる欄だけで判定する (表示用の disabled / readOnly の欄を 2 つ目と数えない)
+        const fields = usablePasswordFields(scope);
         return fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
       };
       let lastHasNewPassword = null;

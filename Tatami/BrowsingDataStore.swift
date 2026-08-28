@@ -38,8 +38,8 @@ final class BrowsingDataStore {
         scheduleSave()
     }
 
-    func addBookmark(url: URL, title: String) {
-        data.addBookmark(url: url, title: title, date: Date())
+    func addBookmark(url: URL, title: String, isTitleProvisional: Bool = false) {
+        data.addBookmark(url: url, title: title, date: Date(), isTitleProvisional: isTitleProvisional)
         scheduleSave()
     }
 

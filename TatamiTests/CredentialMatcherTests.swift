@@ -88,4 +88,12 @@ struct CredentialMatcherTests {
         #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "http://example.com/")!, rules: rules).map(\.username) == ["http-only"])
         #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "https://unknown.test/")!, rules: rules).isEmpty)
     }
+
+    @Test func sameOriginRequiresExactSchemeHostAndPort() {
+        let credential = URL(string: "https://accounts.example.com/login")!
+        #expect(CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "https://accounts.example.com:443/frame")!))
+        #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "https://evil.example.com/")!))
+        #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "http://accounts.example.com/")!))
+        #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "https://accounts.example.com:8443/")!))
+    }
 }
