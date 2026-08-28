@@ -107,6 +107,18 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         webView.load(URLRequest(url: url))
     }
 
+    /// 証明書エラーで表示できなかった URL。警告ページを表示している間だけ持ち、再読み込みで警告 HTML ではなくこの URL へ再接続する
+    private var certificateFailedURL: URL?
+
+    /// 再読み込み。証明書の警告ページを表示中は元の URL へ再接続する (証明書や時刻を直した後に再試行できる)
+    func reload() {
+        if let certificateFailedURL {
+            webView.load(URLRequest(url: certificateFailedURL))
+        } else {
+            webView.reload()
+        }
+    }
+
     /// ページのタイトル。無題なら nil
     var title: String? {
         webView.title.flatMap { $0.isEmpty ? nil : $0 }
@@ -207,6 +219,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定)
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        certificateFailedURL = nil
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
         (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
@@ -224,6 +240,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             return
         }
         // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)
+        certificateFailedURL = failedURL
         webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
     }
 
