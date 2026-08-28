@@ -146,7 +146,8 @@ struct BrowserWindowView: View {
                     .onExitCommand {
                         model.cancelPrompt()
                     }
-            } else if let statusMessage = model.statusMessage {
+            } else if let statusMessage = model.statusMessage ?? BrowsingDataStore.shared.lastSaveError {
+                // 履歴の保存は非同期 (debounce) のため、失敗はストアのエラー状態を表示側で監視して出す
                 Text(statusMessage)
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("statusMessage")

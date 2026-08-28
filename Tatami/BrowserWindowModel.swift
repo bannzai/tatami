@@ -774,6 +774,8 @@ final class BrowserWindowModel {
 
     /// ブックマークの一覧を開く (prefix + b)
     func beginChooseBookmark() {
+        cancelPrompt()
+        cancelPrefix()
         chooserSelectionIndex = 0
         chooser = .bookmark
     }
@@ -781,9 +783,6 @@ final class BrowserWindowModel {
     /// 訪問を履歴に記録する
     private func recordVisit(url: URL, title: String) {
         BrowsingDataStore.shared.recordVisit(url: url, title: title)
-        if let error = BrowsingDataStore.shared.lastSaveError {
-            statusMessage = error
-        }
     }
 
     /// 一覧のキー操作。一覧を閉じるまで他のキーは消費する
