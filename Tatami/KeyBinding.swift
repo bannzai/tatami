@@ -266,9 +266,19 @@ enum BrowserCommand: Hashable, Sendable {
         }
     }
 
-    /// tmux のコマンド名からの変換。空白の連続は 1 つに正規化する。知らないコマンドは nil
+    /// tmux のコマンド名からの変換。コマンド名と引数の間の空白の連続は 1 つに正規化するが、`source-file` のパスは空白を保つ。知らないコマンドは nil
     init?(tmuxName: String) {
-        let normalized = tmuxName.split(separator: " ").joined(separator: " ")
+        let trimmed = tmuxName.trimmingCharacters(in: .whitespaces)
+        if trimmed == "source-file" {
+            self = .sourceFile(nil)
+            return
+        }
+        if trimmed.hasPrefix("source-file ") {
+            let path = trimmed.dropFirst("source-file ".count).trimmingCharacters(in: .whitespaces)
+            self = .sourceFile(path.isEmpty ? nil : path)
+            return
+        }
+        let normalized = trimmed.split(separator: " ").joined(separator: " ")
         if let match = normalized.wholeMatch(of: /select-window -t (\d+)/), let index = Int(match.1) {
             self = .selectWindow(index)
             return
