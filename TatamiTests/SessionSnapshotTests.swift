@@ -101,4 +101,23 @@ struct SessionSnapshotTests {
         tree.toggleZoom()
         #expect(tree.isConsistent)
     }
+
+    @Test func invalidRatioIsRejectedOnLoad() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(makeSnapshot(name: "0"))) as! [String: Any]
+        var windows = json["windows"] as! [[String: Any]]
+        var tree = windows[0]["paneTree"] as! [String: Any]
+        var root = tree["root"] as! [String: Any]
+        var split = root["split"] as! [String: Any]
+        split["ratio"] = 2
+        root["split"] = split
+        tree["root"] = root
+        windows[0]["paneTree"] = tree
+        json["windows"] = windows
+        try JSONSerialization.data(withJSONObject: json).write(to: SessionStore.fileURL(name: "0", directoryURL: directoryURL))
+        #expect(throws: SessionStoreError.self) {
+            try SessionStore.load(name: "0", directoryURL: directoryURL)
+        }
+    }
 }
