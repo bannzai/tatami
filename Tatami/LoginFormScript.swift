@@ -45,9 +45,19 @@ enum LoginFormScript {
       // ログインフォームの送信 (submit イベント、または XHR / fetch でログインするページのために送信ボタンのクリックと
       // パスワード欄での Enter) を検出し、その時点のユーザー名・パスワードをネイティブへ渡す
       // 送信時に報告するパスワード欄。変更フォーム (現在・新規・確認) では新しいパスワード (autocomplete=new-password) を優先する
+      // 可視で操作できる欄だけを対象にする (非表示の honeypot や無効化された欄を送信値として扱わない)
+      const usablePasswordFields = (scope) => Array.from(scope.querySelectorAll('input[type="password"]'))
+        .filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
       const passwordFieldToReport = (scope) => {
-        const fields = Array.from(scope.querySelectorAll('input[type="password"]'));
+        const fields = usablePasswordFields(scope);
         return fields.find((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields[0] || null;
+      };
+      // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、新規の欄より前の欄)
+      const currentPasswordValue = (scope, reported) => {
+        const fields = usablePasswordFields(scope);
+        const current = fields.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password')
+          || fields.find((field) => field !== reported && (field.autocomplete || '').toLowerCase() !== 'new-password');
+        return current && current !== reported ? current.value : '';
       };
       const capture = (scope) => {
         const passwordField = passwordFieldToReport(scope);
@@ -67,6 +77,7 @@ enum LoginFormScript {
             submitted: true,
             username: usernameField ? usernameField.value : '',
             password: passwordField.value,
+            currentPassword: isNewPassword ? currentPasswordValue(scope, passwordField) : '',
             isNewPassword,
             frameURL: location.href,
           });
@@ -78,7 +89,7 @@ enum LoginFormScript {
       }, true);
       // 送信になりうるボタンだけを対象にする (type=button のパスワード表示切替などで入力途中の値を送らない)
       document.addEventListener('click', (event) => {
-        const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]), input[type="submit"]') : null;
+        const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"]') : null;
         if (!button) { return; }
         capture(button.form || button.closest('form') || document);
       }, true);
@@ -116,7 +127,11 @@ enum LoginFormScript {
       window.__tatamiFillNewPassword = (password) => {
         const visible = Array.from(document.querySelectorAll('input[type="password"]')).filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
         const marked = visible.filter((field) => (field.autocomplete || '').toLowerCase() === 'new-password');
-        const fields = marked.length > 0 ? marked : visible.filter((field) => (field.autocomplete || '').toLowerCase() !== 'current-password');
+        // 新規の欄が印付きでも、同じフォームの確認欄 (印無し) にも同じ値を入れる。現在のパスワード欄だけを除外する
+        const notCurrent = visible.filter((field) => (field.autocomplete || '').toLowerCase() !== 'current-password');
+        const fields = marked.length > 0
+          ? notCurrent.filter((field) => marked.includes(field) || marked.some((m) => m.form === field.form))
+          : notCurrent;
         if (fields.length === 0) { return false; }
         fields.forEach((field) => setValue(field, password));
         return true;

@@ -843,7 +843,7 @@ final class BrowserWindowModel {
     }
 
     /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
-    private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, isNewPassword: Bool) {
+    private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, currentPassword: String, isNewPassword: Bool) {
         guard WebPane.isWebPage(url: frameURL), let host = frameURL.host()?.lowercased(), !host.isEmpty else {
             return
         }
@@ -857,7 +857,10 @@ final class BrowserWindowModel {
             statusMessage = "資格情報を読めない: \(error)"
             return
         }
-        if let same = existing.first(where: { $0.username == username }) {
+        // ユーザー名の無い変更フォーム (現在・新規・確認だけ) では、現在のパスワードが一致する既存の項目を更新対象にする
+        let matched = existing.first(where: { $0.username == username })
+            ?? (username.isEmpty && !currentPassword.isEmpty ? existing.first(where: { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }) : nil)
+        if let same = matched {
             guard same.password != password else {
                 // 保存済みの正しいパスワードで送り直した時は、その前の誤ったパスワードの提案を残さない
                 if proposalPane === pane {
@@ -1359,8 +1362,8 @@ final class BrowserWindowModel {
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
         }
-        window.onLoginSubmit = { [weak self] pane, frameURL, username, password, isNewPassword in
-            self?.handleLoginSubmit(pane: pane, frameURL: frameURL, username: username, password: password, isNewPassword: isNewPassword)
+        window.onLoginSubmit = { [weak self] pane, frameURL, username, password, currentPassword, isNewPassword in
+            self?.handleLoginSubmit(pane: pane, frameURL: frameURL, username: username, password: password, currentPassword: currentPassword, isNewPassword: isNewPassword)
         }
         window.onNewPasswordFormChange = { [weak self] pane, hasNewPasswordForm in
             self?.handleNewPasswordForm(pane: pane, hasNewPasswordForm: hasNewPasswordForm)

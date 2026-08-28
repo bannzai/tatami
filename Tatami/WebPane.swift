@@ -38,13 +38,21 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     private(set) var hasLoginForm = false
     /// サインアップ / パスワード変更のフォーム (autocomplete=new-password かパスワード欄が 2 つ以上) があるか
     private(set) var hasNewPasswordForm = false
-    /// ログインフォームが送信された時の通知先 (送信元フレームの URL・ユーザー名・パスワード・新規パスワードのフォームか)。保存・更新の提案に使う。
-    /// 別オリジンの iframe からの送信を埋め込み元の資格情報として扱わないよう、URL はトップレベルではなくフレームのもの
-    var onLoginSubmit: ((URL, String, String, Bool) -> Void)?
+    /// ログインフォームが送信された時の通知先 (送信元フレームの URL・ユーザー名・パスワード・現在のパスワード (変更フォーム)・新規パスワードのフォームか)。
+    /// 保存・更新の提案に使う。別オリジンの iframe からの送信を埋め込み元の資格情報として扱わないよう、URL はトップレベルではなくフレームのもの
+    var onLoginSubmit: ((URL, String, String, String, Bool) -> Void)?
+
+    /// scheme + host + port のオリジン文字列
+    static func origin(url: URL) -> String {
+        "\(url.scheme?.lowercased() ?? "")://\(url.host()?.lowercased() ?? ""):\(url.port.map(String.init) ?? "")"
+    }
     /// Web ページ内のテキスト入力 (input / textarea / contentEditable) にフォーカスがあるか。提案の y / n を横取りしないために使う
     private(set) var isEditingText = false
-    /// 複数段階ログインの 1 段目で入力されたユーザー名。次の段でパスワードだけが送信された時に関連付ける
-    private(set) var pendingUsername: String?
+    /// 複数段階ログインの 1 段目で入力されたユーザー名と、そのオリジン。次の段で同じオリジンからパスワードだけが送信された時に関連付け、
+    /// 別のサイトへ移った (オリジンが変わった) 時は使わない
+    private(set) var pendingUsername: (username: String, origin: String)?
+    /// フレームごとの新規パスワード欄の有無。ペイン全体の有無はいずれかのフレームが true か
+    private var newPasswordFrames: Set<String> = []
     /// サインアップ用のパスワード欄が現れた / 消えた時の通知先
     var onNewPasswordFormChange: ((Bool) -> Void)?
 
@@ -230,15 +238,25 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         if let hasPassword = body["hasPassword"] as? Bool {
             hasLoginForm = hasPassword
         }
-        if let hasNewPassword = body["hasNewPassword"] as? Bool, hasNewPassword != hasNewPasswordForm {
-            hasNewPasswordForm = hasNewPassword
-            onNewPasswordFormChange?(hasNewPassword)
+        if let hasNewPassword = body["hasNewPassword"] as? Bool {
+            // フレームごとに保持し、いずれかのフレームにあればペイン全体としてある (遅れて読み込まれた iframe の false で消さない)
+            let frameKey = message.frameInfo.request.url?.absoluteString ?? (message.frameInfo.isMainFrame ? "main" : "frame")
+            if hasNewPassword {
+                newPasswordFrames.insert(frameKey)
+            } else {
+                newPasswordFrames.remove(frameKey)
+            }
+            let aggregated = !newPasswordFrames.isEmpty
+            if aggregated != hasNewPasswordForm {
+                hasNewPasswordForm = aggregated
+                onNewPasswordFormChange?(aggregated)
+            }
         }
         if let editing = body["editing"] as? Bool {
             isEditingText = editing
         }
-        if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty {
-            pendingUsername = usernameOnly
+        if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = message.frameInfo.request.url {
+            pendingUsername = (usernameOnly, WebPane.origin(url: frameURL))
         }
         if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
             // 送信元フレームの URL (スクリプトからの申告ではなく WebKit が持つフレーム情報) を使う
@@ -247,11 +265,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 return
             }
             var username = body["username"] as? String ?? ""
-            if username.isEmpty, let pendingUsername {
-                username = pendingUsername
+            if username.isEmpty, let pendingUsername, pendingUsername.origin == WebPane.origin(url: frameURL) {
+                username = pendingUsername.username
             }
             pendingUsername = nil
-            onLoginSubmit?(frameURL, username, password, body["isNewPassword"] as? Bool ?? false)
+            onLoginSubmit?(frameURL, username, password, body["currentPassword"] as? String ?? "", body["isNewPassword"] as? Bool ?? false)
         }
     }
 
@@ -376,6 +394,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         if navigation !== restoringNavigation {
             isSuppressingRestoredVisits = false
         }
+        // 別のページへ移る時は、前のページで集めた新規パスワード欄の状態を捨てる (ユーザー名はオリジンで照合するため残す)
+        newPasswordFrames.removeAll()
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
