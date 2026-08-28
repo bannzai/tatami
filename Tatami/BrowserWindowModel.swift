@@ -495,8 +495,9 @@ final class BrowserWindowModel {
         }
         findGeneration += 1
         let generation = findGeneration
-        webView.find(text) { [weak self] result in
-            guard let self, generation == findGeneration, !result.matchFound else {
+        webView.find(text) { [weak self, weak webView] result in
+            // 完了までにペインやウィンドウが移っていたら、古い WebView の結果で status line を更新しない
+            guard let self, generation == findGeneration, let webView, currentWindow.focusedPane.webView === webView, !result.matchFound else {
                 return
             }
             statusMessage = "見つからない: \(text)"
