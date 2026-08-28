@@ -27,6 +27,40 @@ enum FocusDirection: Sendable {
     case down
     case up
     case right
+
+    /// この方向へ隣を辿れる分割の向き
+    var splitAxis: SplitAxis {
+        switch self {
+        case .left, .right:
+            return .horizontal
+        case .up, .down:
+            return .vertical
+        }
+    }
+
+    /// 分割の second 側 (右・下) へ向かう方向かどうか
+    var isTowardSecond: Bool {
+        switch self {
+        case .right, .down:
+            return true
+        case .left, .up:
+            return false
+        }
+    }
+
+    /// 反対の方向
+    var opposite: FocusDirection {
+        switch self {
+        case .left:
+            return .right
+        case .right:
+            return .left
+        case .up:
+            return .down
+        case .down:
+            return .up
+        }
+    }
 }
 
 /// prefix + Space が巡回するレイアウト。tmux の even-horizontal / even-vertical / tiled に対応する
@@ -146,6 +180,36 @@ indirect enum PaneNode: Equatable, Sendable {
             let dividedBounds = PaneNode.dividing(bounds: bounds, axis: splitAxis, ratio: ratio)
             return first.frames(bounds: dividedBounds.first)
                 .merging(second.frames(bounds: dividedBounds.second)) { existing, _ in existing }
+        }
+    }
+
+    /// 指定した葉と direction 側で辺を接する葉の候補。矩形の比較ではなく木の構造から求めるため、
+    /// 極端に細いペインがあっても飛び越えずに直近の隣を返す。その方向に隣が無ければ空
+    func adjacentPaneIDs(paneID: PaneID, direction: FocusDirection) -> [PaneID] {
+        guard case .split(let splitAxis, _, let first, let second) = self else {
+            return []
+        }
+        let isInFirst = first.contains(paneID: paneID)
+        guard isInFirst || second.contains(paneID: paneID) else {
+            return []
+        }
+        let innerAdjacentPaneIDs = (isInFirst ? first : second).adjacentPaneIDs(paneID: paneID, direction: direction)
+        guard innerAdjacentPaneIDs.isEmpty, splitAxis == direction.splitAxis, isInFirst == direction.isTowardSecond else {
+            return innerAdjacentPaneIDs
+        }
+        return (isInFirst ? second : first).edgePaneIDs(direction: direction.opposite)
+    }
+
+    /// この部分木の direction 側の辺に接している葉
+    func edgePaneIDs(direction: FocusDirection) -> [PaneID] {
+        switch self {
+        case .leaf(let paneID):
+            return [paneID]
+        case .split(let splitAxis, _, let first, let second):
+            guard splitAxis == direction.splitAxis else {
+                return first.edgePaneIDs(direction: direction) + second.edgePaneIDs(direction: direction)
+            }
+            return (direction.isTowardSecond ? second : first).edgePaneIDs(direction: direction)
         }
     }
 
@@ -327,7 +391,7 @@ struct PaneTree: Equatable, Sendable {
         focus(paneID: previousFocusedPaneID)
     }
 
-    /// 単位矩形での配置を基に、その方向でフォーカス中のペインと辺を接し、重なりが最大のペインへ移す (prefix + h/j/k/l)。
+    /// その方向でフォーカス中のペインと辺を接するペインのうち、辺の重なりが最大のペインへ移す (prefix + h/j/k/l)。
     /// 接するペインが無ければ何もしない
     mutating func focus(direction: FocusDirection) {
         guard let adjacentPaneID = adjacentPaneID(direction: direction) else {
@@ -395,37 +459,9 @@ struct PaneTree: Equatable, Sendable {
         guard let focusedFrame = unitFrames[focusedPaneID] else {
             return nil
         }
-        var adjacentPaneID: PaneID?
-        // 角だけで接するペイン (重なり 0) を除くため、0 より大きい重なりだけを候補にする
-        var largestOverlap = 0.0
-        for paneID in paneIDs where paneID != focusedPaneID {
-            guard let frame = unitFrames[paneID],
-                  PaneTree.isTouching(frame: frame, focusedFrame: focusedFrame, direction: direction) else {
-                continue
-            }
-            let overlap = PaneTree.edgeOverlap(frame: frame, focusedFrame: focusedFrame, direction: direction)
-            if overlap > largestOverlap {
-                largestOverlap = overlap
-                adjacentPaneID = paneID
-            }
-        }
-        return adjacentPaneID
-    }
-
-    /// 単位矩形上で辺が接していると認める誤差。入れ子の割合の積で生じる倍精度の誤差 (1e-15 程度) を吸収し、
-    /// かつ最小のペイン (幅 5%) を誤って接触と判定しない大きさにする
-    private static let edgeTolerance = 1e-9
-
-    private static func isTouching(frame: CGRect, focusedFrame: CGRect, direction: FocusDirection) -> Bool {
-        switch direction {
-        case .left:
-            return abs(frame.maxX - focusedFrame.minX) <= edgeTolerance
-        case .right:
-            return abs(frame.minX - focusedFrame.maxX) <= edgeTolerance
-        case .up:
-            return abs(frame.maxY - focusedFrame.minY) <= edgeTolerance
-        case .down:
-            return abs(frame.minY - focusedFrame.maxY) <= edgeTolerance
+        return root.adjacentPaneIDs(paneID: focusedPaneID, direction: direction).max { lhs, rhs in
+            PaneTree.edgeOverlap(frame: unitFrames[lhs]!, focusedFrame: focusedFrame, direction: direction)
+                < PaneTree.edgeOverlap(frame: unitFrames[rhs]!, focusedFrame: focusedFrame, direction: direction)
         }
     }
 
