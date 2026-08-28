@@ -43,8 +43,13 @@ final class PaneWindow {
         renamedName = snapshot.renamedName
         let urls = Dictionary(snapshot.panes.map { ($0.id, $0.url) }) { first, _ in first }
         for paneID in paneTree.paneIDs {
-            let pane = makePane(id: paneID, url: urls[paneID] ?? homeURL)
-            panes[paneID] = pane
+            panes[paneID] = makePane(id: paneID, url: urls[paneID] ?? homeURL)
+        }
+    }
+
+    /// 復元したペインの URL を読み込む。復元の init では読み込まず、セッションの所有権が確定した後に呼ぶ
+    func loadRestoredPanes() {
+        for pane in panes.values {
             pane.loadInitialURL()
         }
     }

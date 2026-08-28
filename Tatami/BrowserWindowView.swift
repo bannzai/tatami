@@ -81,6 +81,26 @@ struct BrowserWindowView: View {
         }
     }
 
+    /// status line 左側のウィンドウ一覧。ウィンドウが多い・名前が長い時も現在のウィンドウが見えるよう、横スクロールで現在の項目へ追従する
+    private var windowList: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Text("[\(model.sessionName)]")
+                    ForEach(Array(model.windows.enumerated()), id: \.offset) { index, window in
+                        Text("\(index):\(window.name)\(index == model.currentWindowIndex ? "*" : "")")
+                            .id(index)
+                    }
+                }
+            }
+            .onChange(of: model.currentWindowIndex, initial: true) { _, index in
+                proxy.scrollTo(index)
+            }
+        }
+        .accessibilityIdentifier("windowList")
+        .accessibilityLabel(model.statusLineText)
+    }
+
     /// tmux の status line に相当する最下段。左にセッション名とウィンドウ一覧、右に prefix 待ち。プロンプト中は入力欄に置き換わる
     private var statusLine: some View {
         HStack {
@@ -114,8 +134,7 @@ struct BrowserWindowView: View {
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("statusMessage")
             } else {
-                Text(model.statusLineText)
-                    .accessibilityIdentifier("windowList")
+                windowList
             }
             Spacer()
             Text(model.prefixKeyState == .awaitingCommand ? model.keyBindings.prefix.tmuxKeyName : "")
