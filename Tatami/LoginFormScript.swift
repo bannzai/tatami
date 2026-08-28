@@ -14,7 +14,7 @@ enum LoginFormScript {
     (() => {
       // 同じ URL の iframe が複数あっても区別できるよう、注入されたコンテキストごとに一意な ID を全ての通知に付ける
       const frameID = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      const send = (body) => { try { send(Object.assign({ frameID }, body)); } catch (e) {} };
+      const send = (body) => { try { window.webkit.messageHandlers.tatamiLoginForm.postMessage(Object.assign({ frameID }, body)); } catch (e) {} };
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
