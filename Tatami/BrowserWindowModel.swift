@@ -479,6 +479,9 @@ final class BrowserWindowModel {
         }
     }
 
+    /// 検索の世代。完了が遅れて届いた古い検索の結果で、後の検索やペイン移動後の status line を上書きしないために数える
+    private var findGeneration = 0
+
     /// ページ内検索 (find)。空文字なら検索の強調を消す。結果が無ければ status line に知らせる
     func find(text: String) {
         let webView = currentWindow.focusedPane.webView
@@ -486,10 +489,13 @@ final class BrowserWindowModel {
             webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
             return
         }
+        findGeneration += 1
+        let generation = findGeneration
         webView.find(text) { [weak self] result in
-            if !result.matchFound {
-                self?.statusMessage = "見つからない: \(text)"
+            guard let self, generation == findGeneration, !result.matchFound else {
+                return
             }
+            statusMessage = "見つからない: \(text)"
         }
     }
 
