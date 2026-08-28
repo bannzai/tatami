@@ -84,10 +84,18 @@ enum SessionStore {
         return snapshot
     }
 
-    /// 保存済みのセッション名の一覧 (名前順)
-    static func sessionNames(directoryURL: URL = defaultDirectoryURL) -> [String] {
-        let fileURLs = (try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)) ?? []
+    /// 保存済みのセッション名の一覧 (名前順)。ディレクトリが無ければ空。読めない (権限・I/O エラー) 時は空にせずエラーを投げる
+    static func sessionNames(directoryURL: URL = defaultDirectoryURL) throws -> [String] {
+        guard FileManager.default.fileExists(atPath: directoryURL.path(percentEncoded: false)) else {
+            return []
+        }
+        let fileURLs = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
         return fileURLs.filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }.sorted()
+    }
+
+    /// その名前の保存ファイルがあるか
+    static func fileExists(name: String, directoryURL: URL = defaultDirectoryURL) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(name: name, directoryURL: directoryURL).path(percentEncoded: false))
     }
 
     /// セッション名の変更 = ファイル名の変更。同名があれば上書きせずエラーにする

@@ -60,6 +60,10 @@ final class BrowserWindowModel {
     private(set) var statusMessage: String?
     /// debounce 中の保存タスク
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// 未保存の変更を最初に予約した時刻。maxSaveDelay の判定に使い、保存で nil に戻す
+    @ObservationIgnored private var firstScheduledAt: ContinuousClock.Instant?
+    /// 変更が続いても保存を待たせる上限。クラッシュ時に失う操作を数秒分に抑える値として選んだ
+    private static let maxSaveDelay: Duration = .seconds(5)
     /// アプリ終了通知の監視
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     /// 画面に表示されて操作の対象になっているかどうか。SwiftUI は @State の初期値を複数回作ることがあり、
@@ -99,8 +103,9 @@ final class BrowserWindowModel {
         isActive = true
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
-            let usedNames = BrowserWindowModel.openSessionNames.union(SessionStore.sessionNames())
-            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) }!
+            // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
+            let usedNames = BrowserWindowModel.openSessionNames.union((try? SessionStore.sessionNames()) ?? [])
+            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) && !SessionStore.fileExists(name: $0) }!
             windows = [makeWindow()]
             currentWindowIndex = 0
             previousWindowIndex = nil
@@ -144,6 +149,15 @@ final class BrowserWindowModel {
         guard isActive else {
             return
         }
+        // 連続する変更 (replaceState を繰り返すページ等) で debounce が延び続けても、最大待ち時間を超えたら保存する
+        let now = ContinuousClock.now
+        if let firstScheduledAt, now - firstScheduledAt >= BrowserWindowModel.maxSaveDelay {
+            saveNow()
+            return
+        }
+        if firstScheduledAt == nil {
+            firstScheduledAt = now
+        }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: BrowserWindowModel.saveDelay)
@@ -161,6 +175,7 @@ final class BrowserWindowModel {
             return false
         }
         saveTask?.cancel()
+        firstScheduledAt = nil
         do {
             try SessionStore.save(snapshot: snapshot)
             UserDefaults.standard.set(sessionName, forKey: BrowserWindowModel.lastSessionNameKey)
@@ -216,7 +231,14 @@ final class BrowserWindowModel {
         guard newName != sessionName else {
             return
         }
-        guard SessionStore.isValidName(newName), !SessionStore.sessionNames().contains(newName),
+        let existingNames: [String]
+        do {
+            existingNames = try SessionStore.sessionNames()
+        } catch {
+            statusMessage = "セッション一覧を読めない: \(error)"
+            return
+        }
+        guard SessionStore.isValidName(newName), !existingNames.contains(newName),
               !BrowserWindowModel.openSessionNames.contains(newName) else {
             statusMessage = "その名前は使えない: \(newName)"
             return
@@ -444,7 +466,13 @@ final class BrowserWindowModel {
         cancelPrompt()
         cancelPrefix()
         saveNow()
-        let names = SessionStore.sessionNames()
+        let names: [String]
+        do {
+            names = try SessionStore.sessionNames()
+        } catch {
+            statusMessage = "セッション一覧を読めない: \(error)"
+            return
+        }
         chooserSelectionIndex = names.firstIndex(of: sessionName) ?? 0
         chooser = .session(names)
     }
@@ -554,6 +582,8 @@ final class BrowserWindowModel {
             closeFocusedPane()
         case .selectPaneNext:
             currentWindow.focusNext()
+        case .selectPanePrevious:
+            currentWindow.focusPrevious()
         case .selectPaneLast:
             currentWindow.focusLastPane()
         case .selectPaneLeft:
