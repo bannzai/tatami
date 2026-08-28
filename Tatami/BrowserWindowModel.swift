@@ -82,6 +82,31 @@ final class BrowserWindowModel {
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
+    /// status line に出す提案 (y で承認・n / Escape で却下)
+    enum Proposal: Equatable {
+        /// 未保存の資格情報を保存する
+        case save(url: URL, username: String, password: String)
+        /// 既存の資格情報のパスワードを更新する
+        case update(credential: Credential, password: String)
+        /// サインアップ用のパスワード欄に強いパスワードを生成して入れる
+        case generatePassword
+
+        var text: String {
+            switch self {
+            case .save(let url, let username, _):
+                return "\(url.host() ?? "") の \(username.isEmpty ? "(ユーザー名なし)" : username) のパスワードを保存する? (y/n)"
+            case .update(let credential, _):
+                return "\(credential.host) の \(credential.username) のパスワードを更新する? (y/n)"
+            case .generatePassword:
+                return "強いパスワードを生成して入れる? (y/n)"
+            }
+        }
+    }
+
+    /// 表示中の提案。nil なら無し
+    private(set) var proposal: Proposal?
+    /// 提案の対象ペイン。生成したパスワードの充填先になる
+    private var proposalPane: WebPane?
     /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
     var browsingData: BrowsingData {
         BrowsingDataStore.shared.data
@@ -601,6 +626,8 @@ final class BrowserWindowModel {
             navigate(text: text)
         case "bookmark":
             toggleBookmark()
+        case "generate-password":
+            generatePassword()
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
@@ -808,6 +835,93 @@ final class BrowserWindowModel {
         }
     }
 
+    /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
+    private func handleLoginSubmit(pane: WebPane, username: String, password: String, isNewPassword: Bool) {
+        guard WebPane.isWebPage(url: pane.url), let host = pane.url.host()?.lowercased(), !host.isEmpty else {
+            return
+        }
+        let existing: [Credential]
+        do {
+            existing = try credentialStore.credentials(host: host)
+        } catch {
+            statusMessage = "資格情報を読めない: \(error)"
+            return
+        }
+        if let same = existing.first(where: { $0.username == username }) {
+            guard same.password != password else {
+                return
+            }
+            proposalPane = pane
+            proposal = .update(credential: same, password: password)
+        } else {
+            proposalPane = pane
+            proposal = .save(url: pane.url, username: username, password: password)
+        }
+    }
+
+    /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
+    private func handleNewPasswordForm(pane: WebPane, hasNewPasswordForm: Bool) {
+        guard hasNewPasswordForm, proposal == nil, pane === currentWindow.focusedPane else {
+            return
+        }
+        proposalPane = pane
+        proposal = .generatePassword
+    }
+
+    /// 提案を承認する (y)
+    func acceptProposal() {
+        guard let proposal else {
+            return
+        }
+        let pane = proposalPane
+        self.proposal = nil
+        proposalPane = nil
+        switch proposal {
+        case .save(let url, let username, let password):
+            do {
+                try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
+                statusMessage = "保存した: \(username)"
+            } catch {
+                statusMessage = "保存に失敗: \(error)"
+            }
+        case .update(var credential, let password):
+            credential.password = password
+            credential.updatedAt = Date()
+            do {
+                try credentialStore.save(credential: credential)
+                statusMessage = "更新した: \(credential.username)"
+            } catch {
+                statusMessage = "更新に失敗: \(error)"
+            }
+        case .generatePassword:
+            let password = config.passwordGenerator.generate()
+            guard let pane else {
+                return
+            }
+            Task { @MainActor [weak self] in
+                do {
+                    let filled = try await pane.fillNewPassword(password)
+                    self?.statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
+                } catch {
+                    self?.statusMessage = "充填に失敗: \(error)"
+                }
+            }
+        }
+    }
+
+    /// 提案を却下する (n / Escape)
+    func dismissProposal() {
+        proposal = nil
+        proposalPane = nil
+    }
+
+    /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
+    func generatePassword() {
+        proposalPane = currentWindow.focusedPane
+        proposal = .generatePassword
+        acceptProposal()
+    }
+
     /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ
     func fillCredential() {
         cancelPrompt()
@@ -1002,6 +1116,19 @@ final class BrowserWindowModel {
         if prompt != nil {
             return false
         }
+        // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)
+        if proposal != nil, !isAddressBarEditing, keyStroke.modifiers.isEmpty {
+            switch keyStroke.key {
+            case "y":
+                acceptProposal()
+                return true
+            case "n", "Escape":
+                dismissProposal()
+                return true
+            default:
+                break
+            }
+        }
         if chooser != nil {
             // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
             if keyStroke.modifiers.contains(.command) {
@@ -1171,6 +1298,12 @@ final class BrowserWindowModel {
         }
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
+        }
+        window.onLoginSubmit = { [weak self] pane, username, password, isNewPassword in
+            self?.handleLoginSubmit(pane: pane, username: username, password: password, isNewPassword: isNewPassword)
+        }
+        window.onNewPasswordFormChange = { [weak self] pane, hasNewPasswordForm in
+            self?.handleNewPasswordForm(pane: pane, hasNewPasswordForm: hasNewPasswordForm)
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {

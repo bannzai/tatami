@@ -20,6 +20,10 @@ final class PaneWindow {
     var onVisit: ((URL, String) -> Void)?
     /// どのペインでもタイトルだけが変わった時の通知先 (履歴のタイトル更新)
     var onTitleChange: ((URL, String) -> Void)?
+    /// ログインフォームが送信された時の通知先 (ペイン・ユーザー名・パスワード・新規パスワードのフォームか)
+    var onLoginSubmit: ((WebPane, String, String, Bool) -> Void)?
+    /// サインアップ用のパスワード欄の出現の通知先 (ペイン・有無)
+    var onNewPasswordFormChange: ((WebPane, Bool) -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -226,6 +230,18 @@ final class PaneWindow {
         }
         pane.onTitleChange = { [weak self] url, title in
             self?.onTitleChange?(url, title)
+        }
+        pane.onLoginSubmit = { [weak self, weak pane] username, password, isNewPassword in
+            guard let pane else {
+                return
+            }
+            self?.onLoginSubmit?(pane, username, password, isNewPassword)
+        }
+        pane.onNewPasswordFormChange = { [weak self, weak pane] hasNewPasswordForm in
+            guard let pane else {
+                return
+            }
+            self?.onNewPasswordFormChange?(pane, hasNewPasswordForm)
         }
         return pane
     }

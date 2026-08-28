@@ -36,6 +36,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// 表示中のページ (いずれかのフレーム) にパスワード欄があるか。注入スクリプトからの通知で更新する
     private(set) var hasLoginForm = false
+    /// サインアップ / パスワード変更のフォーム (autocomplete=new-password かパスワード欄が 2 つ以上) があるか
+    private(set) var hasNewPasswordForm = false
+    /// ログインフォームが送信された時の通知先 (ユーザー名・パスワード・新規パスワードのフォームか)。保存・更新の提案に使う
+    var onLoginSubmit: ((String, String, Bool) -> Void)?
+    /// サインアップ用のパスワード欄が現れた / 消えた時の通知先
+    var onNewPasswordFormChange: ((Bool) -> Void)?
 
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
@@ -190,7 +196,27 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
         }
-        hasLoginForm = body["hasPassword"] as? Bool ?? false
+        if let hasPassword = body["hasPassword"] as? Bool {
+            hasLoginForm = hasPassword
+        }
+        if let hasNewPassword = body["hasNewPassword"] as? Bool, hasNewPassword != hasNewPasswordForm {
+            hasNewPasswordForm = hasNewPassword
+            onNewPasswordFormChange?(hasNewPassword)
+        }
+        if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
+            onLoginSubmit?(body["username"] as? String ?? "", password, body["isNewPassword"] as? Bool ?? false)
+        }
+    }
+
+    /// 生成したパスワードをページの全てのパスワード欄 (新規と確認) に入れる
+    func fillNewPassword(_ password: String) async throws -> Bool {
+        let result = try await webView.callAsyncJavaScript(
+            "return window.__tatamiFillNewPassword(password);",
+            arguments: ["password": password],
+            in: nil,
+            contentWorld: LoginFormScript.contentWorld
+        )
+        return result as? Bool ?? false
     }
 
     /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false

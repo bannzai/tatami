@@ -297,4 +297,11 @@ struct TatamiConfigTests {
         #expect(TatamiConfigParser.resolvedIncludePath(path: "/abs/x.conf", baseDirectory: "/base") == "/abs/x.conf")
         #expect(TatamiConfigParser.resolvedIncludePath(path: "x.conf", baseDirectory: nil) == "x.conf")
     }
+
+    @Test func passwordGenerationSettings() {
+        var config = TatamiConfig()
+        let errors = TatamiConfigParser.apply(text: "set -g password-length 32\nset -g password-symbols off\nset -g password-length 3\nset -g password-symbols maybe", config: &config)
+        #expect(config.passwordGenerator == PasswordGenerator(length: 32, includesSymbols: false))
+        #expect(errors.map(\.line) == [3, 4])
+    }
 }

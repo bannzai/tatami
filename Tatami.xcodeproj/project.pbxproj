@@ -39,6 +39,8 @@
 		F79DAC4853AB4B6C910D2060 /* CredentialMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */; };
 		5ABD3AFD7CD24C9D83559422 /* LoginFormScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF0D281C1174421A9059B0C /* LoginFormScript.swift */; };
 		4D6E9CFDFF5E4D35BBDD4A1C /* CredentialMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */; };
+		ADAAD7027C0D438F96D5D34B /* PasswordGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */; };
+		1D40C047A0F246938A4B3A1F /* PasswordGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +91,8 @@
 		D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialMatcher.swift; sourceTree = "<group>"; };
 		FFF0D281C1174421A9059B0C /* LoginFormScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginFormScript.swift; sourceTree = "<group>"; };
 		58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialMatcherTests.swift; sourceTree = "<group>"; };
+		42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGenerator.swift; sourceTree = "<group>"; };
+		44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGeneratorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -112,6 +116,7 @@
 				68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */,
 				8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */,
 				58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */,
+				44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */,
 				B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */,
 				F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */,
 			);
@@ -148,6 +153,7 @@
 				4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */,
 				FFF0D281C1174421A9059B0C /* LoginFormScript.swift */,
 				D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */,
+				42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */,
 				C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
 				08C8B351A1564048AD9E3F69 /* PaneWindow.swift */,
@@ -256,6 +262,7 @@
 				BD4878EB44E04B87B955EA20 /* Credential.swift in Sources */,
 				5ABD3AFD7CD24C9D83559422 /* LoginFormScript.swift in Sources */,
 				F79DAC4853AB4B6C910D2060 /* CredentialMatcher.swift in Sources */,
+				ADAAD7027C0D438F96D5D34B /* PasswordGenerator.swift in Sources */,
 				A1C7E3F204B94D6E8F0A2B71 /* PasswordCSV.swift in Sources */,
 				001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */,
 				78976A46B34E4CA8A932A795 /* PaneWindow.swift in Sources */,
@@ -278,6 +285,7 @@
 				F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */,
 				5F1D64B1C3A5455F9EE2D227 /* CredentialStoreTests.swift in Sources */,
 				4D6E9CFDFF5E4D35BBDD4A1C /* CredentialMatcherTests.swift in Sources */,
+				1D40C047A0F246938A4B3A1F /* PasswordGeneratorTests.swift in Sources */,
 				F2D5A96C31B84E07AC1F5D92 /* PasswordCSVTests.swift in Sources */,
 				E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */,
 			);

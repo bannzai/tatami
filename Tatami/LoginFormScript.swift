@@ -38,6 +38,49 @@ enum LoginFormScript {
         const before = candidates.filter((input) => input.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING);
         return before[before.length - 1] || candidates[0] || null;
       };
+      // ログインフォームの送信 (submit イベント、または XHR / fetch でログインするページのために送信ボタンのクリックと
+      // パスワード欄での Enter) を検出し、その時点のユーザー名・パスワードをネイティブへ渡す
+      const capture = (passwordField) => {
+        if (!passwordField || !passwordField.value) { return; }
+        const usernameField = findUsernameField(passwordField);
+        const isNewPassword = (passwordField.autocomplete || '').toLowerCase() === 'new-password'
+          || (passwordField.form ? passwordField.form.querySelectorAll('input[type="password"]').length : 0) >= 2;
+        try {
+          window.webkit.messageHandlers.tatamiLoginForm.postMessage({
+            submitted: true,
+            username: usernameField ? usernameField.value : '',
+            password: passwordField.value,
+            isNewPassword,
+          });
+        } catch (e) {}
+      };
+      document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (form && form.querySelector) { capture(form.querySelector('input[type="password"]')); }
+      }, true);
+      document.addEventListener('click', (event) => {
+        const button = event.target && event.target.closest ? event.target.closest('button, input[type="submit"], [role="button"]') : null;
+        if (!button) { return; }
+        const scope = button.form || button.closest('form') || document;
+        capture(scope.querySelector('input[type="password"]'));
+      }, true);
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && event.target && event.target.type === 'password') { capture(event.target); }
+      }, true);
+      // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
+      const postNewPassword = () => {
+        const fields = Array.from(document.querySelectorAll('input[type="password"]'));
+        const hasNewPassword = fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
+        try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasNewPassword }); } catch (e) {}
+      };
+      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true });
+      postNewPassword();
+      window.__tatamiFillNewPassword = (password) => {
+        const fields = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisible);
+        if (fields.length === 0) { return false; }
+        fields.forEach((field) => setValue(field, password));
+        return true;
+      };
       window.__tatamiFill = (username, password) => {
         const passwordField = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible)
           || document.querySelector('input[type="password"]');

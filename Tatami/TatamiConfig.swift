@@ -10,6 +10,8 @@ struct TatamiConfig: Equatable {
     var searchURL = AddressInput.defaultSearchURL
     /// WKWebView に設定する User-Agent (`set -g user-agent`)。nil は WebKit の既定 (Safari 相当) を使うことを表す
     var userAgent: String?
+    /// パスワード生成の規則 (`set -g password-length` / `set -g password-symbols on|off`)
+    var passwordGenerator = PasswordGenerator()
 }
 
 /// tatami.conf の 1 行を解釈できなかったこと。どこを直せばよいかが分からないと設定を書き直せないため、ファイル名と行番号を必ず持つ
@@ -138,6 +140,20 @@ enum TatamiConfigParser {
             config.searchURL = try url(text: values[1])
         case "user-agent":
             config.userAgent = values[1]
+        case "password-length":
+            guard let length = Int(values[1]), length >= PasswordGenerator.minimumLength else {
+                throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上の整数: \(values[1])")
+            }
+            config.passwordGenerator.length = length
+        case "password-symbols":
+            switch values[1] {
+            case "on":
+                config.passwordGenerator.includesSymbols = true
+            case "off":
+                config.passwordGenerator.includesSymbols = false
+            default:
+                throw LineError(message: "password-symbols は on か off: \(values[1])")
+            }
         default:
             throw LineError(message: "知らないオプション: \(values[0])")
         }
