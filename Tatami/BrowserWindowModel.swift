@@ -190,6 +190,8 @@ final class BrowserWindowModel {
             return
         }
         isActive = true
+        // 拡張が充填する候補は OS 側に保持されるため、起動時にストアの内容と揃える
+        syncCredentialIdentities()
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
             // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
@@ -709,6 +711,7 @@ final class BrowserWindowModel {
                 do {
                     try credentialStore.save(credential: credential)
                     saved += 1
+                    syncCredentialIdentities()
                 } catch {
                     // Keychain への保存は 1 件ずつ確定するためロールバックできない。途中まで反映したことを件数で明示する
                     statusMessage = "インポートを途中で中断: \(saved)/\(changed.count) 件を保存した後に失敗: \(error)"
@@ -962,6 +965,7 @@ final class BrowserWindowModel {
         case .save(let url, let username, let password):
             do {
                 try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
+                syncCredentialIdentities()
                 statusMessage = "保存した: \(username)"
             } catch {
                 statusMessage = "保存に失敗: \(error)"
@@ -971,6 +975,7 @@ final class BrowserWindowModel {
             credential.updatedAt = Date()
             do {
                 try credentialStore.save(credential: credential)
+                syncCredentialIdentities()
                 statusMessage = "更新した: \(credential.username)"
             } catch {
                 statusMessage = "更新に失敗: \(error)"
@@ -1031,6 +1036,14 @@ final class BrowserWindowModel {
             } catch {
                 statusMessage = "\(error)"
             }
+        }
+    }
+
+    /// ストアの内容を OS の自動入力候補 (Credential Provider Extension が充填する) に反映する。保存・更新・インポートの後と起動時に呼ぶ
+    private func syncCredentialIdentities() {
+        let credentials = (try? credentialStore.all()) ?? []
+        Task {
+            await CredentialIdentityRegistrar.sync(credentials: credentials)
         }
     }
 

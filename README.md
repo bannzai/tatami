@@ -26,6 +26,10 @@ make macos         # Release ビルドを /Applications/Tatami.app に配置す�
 
 署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする。ad-hoc 署名のビルドでは Password Manager の資格情報を iCloud Keychain と同期せず、ローカルのログインキーチェーンに置く (共有 access group の entitlement が無いため)。Team 署名と ad-hoc 署名では資格情報の置き場所が異なり互いに読めないので、切り替える前に `:export-passwords` で書き出し、切り替え後に `:import-passwords` で取り込む。
 
+### Safari や他のアプリへの自動入力 (Credential Provider Extension)
+
+`Tatami.app` は Credential Provider Extension (`TatamiCredentialProvider.appex`) を同梱している。システム設定 > 一般 > 自動入力とパスワード で「Tatami」をオンにすると、Safari を含む OS 全体のログインフォームで Tatami に保存した資格情報を自動入力できる (候補の選択時に Touch ID / パスワードで本人確認する)。拡張がアプリと同じ資格情報を読めるのは Team 署名 (`make macos`) のビルドで、ad-hoc 署名では拡張の entitlement (`autofill-credential-provider` と共有 access group) を含められないため自動入力の対象にならない。
+
 ## 公開ページ
 
 - 紹介ページ: https://bannzai.github.io/tatami/
