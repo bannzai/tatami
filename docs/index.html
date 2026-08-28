@@ -200,6 +200,7 @@ bind - split-window -v</code></pre>
 cd tatami
 make macos   # Release ビルドを /Applications/Tatami.app に配置する
 make test    # ユニットテスト</code></pre>
+    <p class="note" style="margin-top: 12px;">署名は既定で作者の Apple Developer Team による自動署名です。その Team に所属していない場合は <code>make macos DEVELOPMENT_TEAM=&lt;自分の Team ID&gt;</code> か、証明書不要の <code>make macos SIGNING=adhoc</code> でビルドしてください。</p>
     <p class="note" style="margin-top: 12px;">ソースコードとロードマップは GitHub の bannzai/tatami リポジトリで公開しています。収益化はしません。</p>
   </section>
 </main>

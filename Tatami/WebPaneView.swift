@@ -27,11 +27,12 @@ struct WebPaneView: NSViewRepresentable {
         webView.isInspectable = true
         webView.uiDelegate = context.coordinator
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する
-        context.coordinator.urlObservation = webView.observe(\.url, options: [.new]) { _, change in
-            if let changedURL = change.newValue ?? nil {
-                Task { @MainActor in
-                    context.coordinator.onNavigate(changedURL)
-                }
+        // observation を Coordinator が所有するため、クロージャからは弱参照にして循環参照を避ける
+        let coordinator = context.coordinator
+        coordinator.urlObservation = webView.observe(\.url, options: [.new]) { [weak coordinator] _, change in
+            guard let coordinator, let changedURL = change.newValue ?? nil else { return }
+            Task { @MainActor in
+                coordinator.onNavigate(changedURL)
             }
         }
         load(request: request, into: webView, coordinator: context.coordinator)
