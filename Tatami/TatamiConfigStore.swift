@@ -19,6 +19,7 @@ final class TatamiConfigStore {
         loadErrors = loaded.errors
     }
 
+<<<<<<< HEAD
     /// コマンドプロンプトからの 1 行 (`set` / `bind` / `unbind` / `source-file`) を現在の設定に適用する。設定ファイルと同じ解釈を使う
     func apply(line: String) -> [TatamiConfigError] {
         var updated = config
@@ -36,10 +37,16 @@ final class TatamiConfigStore {
     }
 
     /// 設定ファイルを読み直す。明示したファイルが無い時は現在の設定を維持し、エラーだけを返す
+||||||| d4abf67
+    /// 設定ファイルを読み直す。明示したファイルが無い時は現在の設定を維持し、エラーだけを返す
+=======
+    /// 設定ファイルを読み直す。ファイルが無い・読めない (ディレクトリ・権限不足) 時は現在の設定を維持し、エラーだけを返す。
+    /// 既定ファイルが無い時の再読込も現在の設定のままにする (既定値へ戻したい時はファイルを空にする)
+>>>>>>> issue-7
     @discardableResult
     func reload(fileURL: URL, requireFile: Bool) -> [TatamiConfigError] {
         let loaded = TatamiConfigLoader.load(fileURL: fileURL, requireFile: requireFile)
-        if loaded.fileExists || !requireFile {
+        if loaded.parsed {
             config = loaded.config
         }
         loadErrors = loaded.errors
