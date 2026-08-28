@@ -56,6 +56,23 @@ struct KeyStroke: Hashable, Sendable {
         self.modifiers = modifiers
     }
 
+    /// NSEvent が表しうるキーの候補。先頭が主な解釈 (`M-8` のように Option を修飾として持つ形)、続いて Option の変換で生成された文字
+    /// (ドイツ語配列の Option+8 = `{` など) を Option なしの文字キーとして扱う形。バインドは先頭から順に照合する
+    static func candidates(event: NSEvent) -> [KeyStroke] {
+        guard let primary = KeyStroke(event: event) else {
+            return []
+        }
+        guard event.modifierFlags.contains(.option), let produced = event.characters, produced.count == 1,
+              let character = produced.first, !character.isLetter, !character.isWhitespace, !character.isNewline,
+              character.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+              produced != primary.key else {
+            return [primary]
+        }
+        var modifiers = primary.modifiers
+        modifiers.remove(.option)
+        return [primary, KeyStroke(key: produced, modifiers: modifiers)]
+    }
+
     /// NSEvent からの変換。文字キーは Shift を含めた入力文字で表し、Ctrl・Option の修飾だけを別に持つ
     /// (tmux が `%` を `S-5` ではなく `%` として扱うのに合わせる)。特殊キーは keyCode で判定する
     init?(event: NSEvent) {
@@ -325,15 +342,25 @@ enum PrefixKeyState: Equatable, Sendable {
 
     /// prefix 待ちの取り消しは tmux と同じく Escape で行う。バインドされていないキーと同じく消費して idle に戻るため、特別な分岐は持たない
     func handling(keyStroke: KeyStroke, table: KeyBindingTable) -> (state: PrefixKeyState, outcome: Outcome) {
+        handling(keyStrokes: [keyStroke], table: table)
+    }
+
+    /// 1 つのキー入力の候補 (KeyStroke.candidates) を先頭から照合する。prefix の判定と bind の検索の両方で、先に一致した候補を使う
+    func handling(keyStrokes: [KeyStroke], table: KeyBindingTable) -> (state: PrefixKeyState, outcome: Outcome) {
         switch self {
         case .idle:
-            return keyStroke == table.prefix ? (.awaitingCommand, .consume) : (.idle, .passThrough)
+            return keyStrokes.contains(table.prefix) ? (.awaitingCommand, .consume) : (.idle, .passThrough)
         case .awaitingCommand:
             // 設定で Escape にコマンドを割り当てた場合はそれを優先し、未設定の時だけ取り消しとして扱う (どちらも消費して idle に戻る)
-            guard let command = table.bindings[keyStroke] else {
+            guard let command = keyStrokes.lazy.compactMap({ table.bindings[$0] }).first else {
                 return (.idle, .consume)
             }
             return (.idle, .perform(command))
         }
+    }
+
+    /// prefix 待ちを取り消す (ウィンドウがキーウィンドウでなくなった時など)
+    var cancelled: PrefixKeyState {
+        .idle
     }
 }
