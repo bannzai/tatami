@@ -55,10 +55,35 @@ final class PaneContainerView: NSView {
         needsDisplay = true
         // 境界線の位置が変わるのはビューの frame ではなく paneTree の変化なので、cursor rect の再計算を明示的に求める
         window?.invalidateCursorRects(for: self)
+        moveFirstResponderIfWebContentWasRemoved()
+    }
+
+    /// ウィンドウ (tmux window) の切り替えで外れた WKWebView に first responder が残っていると、切替先のページがキー入力を受け取れないため、
+    /// Web コンテンツが first responder だった場合はフォーカス中のペインへ移す
+    private func moveFirstResponderIfWebContentWasRemoved() {
+        guard let window, let responder = window.firstResponder as? NSView,
+              let responderWebView = sequence(first: responder, next: \.superview).first(where: { $0 is WKWebView }),
+              responderWebView.superview !== self,
+              let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self else {
+            return
+        }
+        window.makeFirstResponder(focusedWebView)
+    }
+
+    /// bounds が変わった時の通知先 (ポップアップの分割方向の判定に使う)
+    var onBoundsChange: ((CGSize) -> Void)?
+
+    /// フォーカス中のペインの WKWebView を first responder にする (アドレスバーからの送信後など)
+    func focusWebContent() {
+        guard let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self else {
+            return
+        }
+        window?.makeFirstResponder(focusedWebView)
     }
 
     override func layout() {
         super.layout()
+        onBoundsChange?(bounds.size)
         let inset = Self.dividerThickness / 2
         for (paneID, frame) in paneTree.frames(bounds: bounds) {
             // 同じ向きの分割を入れ子にすると比率の下限 (5%) が掛け合わされて境界線の太さより細くなり得るため、インセット後の寸法を非負に留める
@@ -177,10 +202,26 @@ struct PaneContainer: NSViewRepresentable {
         view.onKeyDown = { keyStroke in
             model.handle(keyStroke: keyStroke)
         }
+        view.onBoundsChange = { size in
+            model.update(containerSize: size)
+        }
         return view
     }
 
     func updateNSView(_ view: PaneContainerView, context: Context) {
         view.apply(paneTree: model.currentWindow.paneTree, webViews: model.currentWindow.panes.mapValues(\.webView))
+        if context.coordinator.handledWebContentFocusRequestCount != model.webContentFocusRequestCount {
+            context.coordinator.handledWebContentFocusRequestCount = model.webContentFocusRequestCount
+            view.focusWebContent()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    /// 処理済みの要求回数を覚えて、同じ要求を再描画のたびに繰り返さないようにする
+    final class Coordinator {
+        var handledWebContentFocusRequestCount = 0
     }
 }

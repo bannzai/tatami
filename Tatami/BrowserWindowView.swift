@@ -114,18 +114,30 @@ struct BrowserWindowView: View {
 
     /// choose-window / choose-session の一覧。j / k / 数字 / Enter / Escape はモデルのキー処理で受ける
     private var chooserList: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(model.chooserItems.enumerated()), id: \.offset) { index, name in
-                Text("(\(index)) \(name)")
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(index == model.chooserSelectionIndex ? Color.accentColor.opacity(0.3) : Color.clear)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(model.chooserItems.enumerated()), id: \.offset) { index, name in
+                        Text("(\(index)) \(name)")
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(index == model.chooserSelectionIndex ? Color.accentColor.opacity(0.3) : Color.clear)
+                            .accessibilityIdentifier("chooserRow-\(index)")
+                            .id(index)
+                    }
+                }
+            }
+            .onChange(of: model.chooserSelectionIndex, initial: true) { _, index in
+                proxy.scrollTo(index)
             }
         }
         .font(.system(.body, design: .monospaced))
         .padding(8)
+        // 一覧が長い時に画面の半分程度で止めてスクロールさせる
         .frame(width: 320)
+        .frame(maxHeight: 320)
+        .fixedSize(horizontal: false, vertical: true)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(8)
