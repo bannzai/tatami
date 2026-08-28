@@ -97,6 +97,10 @@ struct BrowserWindowView: View {
                     .onExitCommand {
                         model.cancelPrompt()
                     }
+            } else if let statusMessage = model.statusMessage {
+                Text(statusMessage)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("statusMessage")
             } else {
                 Text(model.statusLineText)
                     .accessibilityIdentifier("windowList")

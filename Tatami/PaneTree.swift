@@ -392,6 +392,16 @@ struct PaneTree: Equatable, Sendable, Codable {
         root.paneIDs
     }
 
+    /// 内部参照が整合しているか (葉に重複が無く、focused / previous / zoomed が葉を指している)。
+    /// 保存ファイルから復元した値の検証に使う。この型の操作だけで作った値は常に true
+    var isConsistent: Bool {
+        let leaves = paneIDs
+        guard Set(leaves).count == leaves.count, leaves.contains(focusedPaneID) else {
+            return false
+        }
+        return [previousFocusedPaneID, zoomedPaneID].allSatisfy { $0 == nil || leaves.contains($0!) }
+    }
+
     /// フォーカス中のペインを分割し、新しいペインへフォーカスを移す (tmux の split-window と同じ)
     @discardableResult
     mutating func split(axis: SplitAxis) -> PaneID {

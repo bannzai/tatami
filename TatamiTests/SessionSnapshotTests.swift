@@ -67,4 +67,38 @@ struct SessionSnapshotTests {
             try SessionStore.load(name: "0", directoryURL: directoryURL)
         }
     }
+
+    @Test func invalidNamesAreRejected() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        for name in ["", ".", "..", "../work", "a/b"] {
+            #expect(!SessionStore.isValidName(name))
+            #expect(throws: SessionStoreError.self) {
+                try SessionStore.save(snapshot: makeSnapshot(name: name), directoryURL: directoryURL)
+            }
+        }
+        #expect(SessionStore.isValidName("work-1"))
+    }
+
+    @Test func inconsistentSnapshotIsRejectedOnLoad() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(makeSnapshot(name: "0"))) as! [String: Any]
+        var windows = json["windows"] as! [[String: Any]]
+        var tree = windows[0]["paneTree"] as! [String: Any]
+        tree["focusedPaneID"] = ["rawValue": UUID().uuidString]
+        windows[0]["paneTree"] = tree
+        json["windows"] = windows
+        try JSONSerialization.data(withJSONObject: json).write(to: SessionStore.fileURL(name: "0", directoryURL: directoryURL))
+        #expect(throws: SessionStoreError.self) {
+            try SessionStore.load(name: "0", directoryURL: directoryURL)
+        }
+    }
+
+    @Test func paneTreeConsistency() {
+        var tree = PaneTree()
+        tree.split(axis: .horizontal)
+        tree.toggleZoom()
+        #expect(tree.isConsistent)
+    }
 }

@@ -22,6 +22,9 @@ final class BrowserWindowModel {
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
     private static let lastSessionNameKey = "lastSessionName"
+    /// 表示中 (activate 済み) のモデルが開いているセッション名。同じセッションを別々のモデルで同時に開くと、古い側の保存が新しい状態を上書きするため、
+    /// 2 つ目以降は新しいセッションで始める
+    private static var openSessionNames: Set<String> = []
     /// 保存の debounce 間隔。連続する操作 (リサイズのドラッグ等) をまとめつつ、クラッシュしても直近の状態が残る程度に短くする
     private static let saveDelay: Duration = .milliseconds(500)
 
@@ -51,6 +54,8 @@ final class BrowserWindowModel {
     private(set) var chooserSelectionIndex = 0
     /// detach の要求回数。View が onChange で拾って macOS のウィンドウを閉じる
     private(set) var detachRequestCount = 0
+    /// status line に出す直近のエラー (保存の失敗など)。次の操作で消える
+    private(set) var statusMessage: String?
     /// debounce 中の保存タスク
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// アプリ終了通知の監視
@@ -90,9 +95,19 @@ final class BrowserWindowModel {
             return
         }
         isActive = true
+        if BrowserWindowModel.openSessionNames.contains(sessionName) {
+            // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
+            let usedNames = BrowserWindowModel.openSessionNames.union(SessionStore.sessionNames())
+            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) }!
+            windows = [makeWindow()]
+            currentWindowIndex = 0
+            previousWindowIndex = nil
+            syncAddressTextToFocusedPane()
+        }
+        BrowserWindowModel.openSessionNames.insert(sessionName)
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.saveNow()
+                _ = self?.saveNow()
             }
         }
     }
@@ -117,54 +132,80 @@ final class BrowserWindowModel {
         }
     }
 
-    /// すぐに保存する (detach やウィンドウを閉じる時)
-    func saveNow() {
+    /// すぐに保存する (detach やウィンドウを閉じる時)。失敗は status line に出し、false を返す
+    @discardableResult
+    func saveNow() -> Bool {
         guard isActive else {
-            return
+            return false
         }
         saveTask?.cancel()
         do {
             try SessionStore.save(snapshot: snapshot)
             UserDefaults.standard.set(sessionName, forKey: BrowserWindowModel.lastSessionNameKey)
+            return true
         } catch {
-            NSLog("セッションの保存に失敗: %@", String(describing: error))
+            statusMessage = "セッションの保存に失敗: \(error)"
+            return false
         }
     }
 
-    /// セッションを保存してウィンドウを閉じる (prefix + d)。再起動時や新しいウィンドウで復元される
+    /// セッションを保存してウィンドウを閉じる (prefix + d)。保存できなければ閉じずにエラーを表示する
     func detach() {
-        saveNow()
+        guard saveNow() else {
+            return
+        }
+        BrowserWindowModel.openSessionNames.remove(sessionName)
         detachRequestCount += 1
     }
 
-    /// 保存済みのセッションを開く (choose-session の確定)。現在のセッションは先に保存する
+    /// 保存済みのセッションを開く (choose-session の確定)。現在のセッションを保存できなければ切り替えない。
+    /// 別のウィンドウが開いているセッションは開かない (同じセッションを 2 つのモデルで持たない)
     func attach(sessionName name: String) {
-        guard name != sessionName else {
+        guard name != sessionName, !BrowserWindowModel.openSessionNames.contains(name) else {
             return
         }
-        saveNow()
-        guard let loaded = try? SessionStore.load(name: name) else {
+        guard saveNow() else {
             return
         }
+        let loaded: SessionSnapshot
+        do {
+            guard let snapshot = try SessionStore.load(name: name) else {
+                return
+            }
+            loaded = snapshot
+        } catch {
+            statusMessage = "セッションの読み込みに失敗: \(error)"
+            return
+        }
+        BrowserWindowModel.openSessionNames.remove(sessionName)
         restore(snapshot: loaded)
+        BrowserWindowModel.openSessionNames.insert(sessionName)
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
         saveNow()
     }
 
-    /// セッションの名前を変える (prefix + $)。保存ファイルも改名する。同名が既にあれば何もしない
+    /// セッションの名前を変える (prefix + $)。保存ファイルも改名する。使えない名前・同名が既にある・保存できない時は変えずにエラーを表示する
     func renameSession(newName: String) {
-        guard !newName.isEmpty, newName != sessionName, !SessionStore.sessionNames().contains(newName) else {
+        guard newName != sessionName else {
             return
         }
-        saveNow()
+        guard SessionStore.isValidName(newName), !SessionStore.sessionNames().contains(newName) else {
+            statusMessage = "その名前は使えない: \(newName)"
+            return
+        }
+        guard saveNow() else {
+            return
+        }
         do {
             try SessionStore.rename(name: sessionName, newName: newName)
         } catch {
-            NSLog("セッションの改名に失敗: %@", String(describing: error))
+            statusMessage = "セッションの改名に失敗: \(error)"
             return
         }
+        BrowserWindowModel.openSessionNames.remove(sessionName)
         sessionName = newName
+        BrowserWindowModel.openSessionNames.insert(sessionName)
         saveNow()
     }
 
@@ -288,6 +329,7 @@ final class BrowserWindowModel {
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
+        scheduleSave()
     }
 
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
@@ -420,13 +462,16 @@ final class BrowserWindowModel {
             return true
         case .perform(let command):
             perform(command: command)
-            scheduleSave()
             return true
         }
     }
 
-    /// キーバインド (と後続のコマンドプロンプト) から呼ばれる操作の入口
+    /// キーバインド・メニュー (と後続のコマンドプロンプト) から呼ばれる操作の入口。状態が変わる操作はここを通るので、保存の予約もここで行う
     func perform(command: BrowserCommand) {
+        statusMessage = nil
+        defer {
+            scheduleSave()
+        }
         switch command {
         case .splitWindowHorizontal:
             currentWindow.split(axis: .horizontal)
