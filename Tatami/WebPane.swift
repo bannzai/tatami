@@ -25,8 +25,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     var onTitleChange: ((URL, String) -> Void)?
     /// 証明書エラーの警告ページを表示している間 true。警告ページは履歴に残さない
     private var isShowingCertificateWarning = false
-    /// セッションの復元による読み込みの間 true。復元は新しい訪問ではないため履歴に記録しない
-    private var isRestoring = false
+    /// セッションの復元による読み込みのナビゲーション。復元は新しい訪問ではないため、このナビゲーションの完了は履歴に記録しない
+    /// (フラグではなくナビゲーションを持つことで、復元が終わる前にユーザーが開いた別ページの完了を復元扱いしない)
+    private var restoringNavigation: WKNavigation?
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -121,8 +122,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// セッション復元による読み込み。完了しても履歴には記録しない
     func loadRestoredURL() {
-        isRestoring = true
-        webView.load(URLRequest(url: url))
+        restoringNavigation = webView.load(URLRequest(url: url))
     }
 
     func load(url: URL) {
@@ -247,12 +247,18 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let wasRestoring = isRestoring
-        isRestoring = false
-        guard !wasRestoring else {
+        if let restoringNavigation, navigation === restoringNavigation {
+            self.restoringNavigation = nil
             return
         }
+        restoringNavigation = nil
         notifyVisitIfWebPage()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        if navigation === restoringNavigation {
+            restoringNavigation = nil
+        }
     }
 
     private func isWebPage(url: URL) -> Bool {
@@ -264,7 +270,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// http / https のページだけを履歴に記録する (about:blank・証明書の警告ページ・セッション復元の読み込みは記録しない)
     private func notifyVisitIfWebPage() {
-        guard let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, !isRestoring else {
+        guard let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning else {
             return
         }
         onVisit?(url, title ?? url.host() ?? url.absoluteString)
@@ -281,6 +287,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 証明書エラー (信頼できない・期限切れ・ホスト名不一致等) は WebKit が既定で通さない。その時は白紙ではなく警告ページを出す。
     /// 例外的に通す手段は持たない (作者の用途では自己署名の開発サーバーは http で使う)
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        if navigation === restoringNavigation {
+            restoringNavigation = nil
+        }
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain, WebPane.certificateErrorCodes.contains(nsError.code),
               let failedURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL else {
