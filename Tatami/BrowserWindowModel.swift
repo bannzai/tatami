@@ -784,7 +784,8 @@ final class BrowserWindowModel {
             BrowsingDataStore.shared.removeBookmark(url: pane.url)
             statusMessage = "ブックマークを解除した: \(pane.url.absoluteString)"
         } else {
-            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString)
+            // 読み込み中はタイトルが未確定のためホスト名を仮に入れ、確定したら置き換える
+            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString, isTitleProvisional: pane.title == nil)
             statusMessage = "ブックマークした: \(pane.url.absoluteString)"
         }
     }

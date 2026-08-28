@@ -36,7 +36,7 @@ struct BrowsingDataTests {
     @Test func updateTitleAlsoRenamesBookmark() {
         var data = BrowsingData()
         let url = URL(string: "https://a.example/")!
-        data.addBookmark(url: url, title: "a.example", date: base)
+        data.addBookmark(url: url, title: "a.example", date: base, isTitleProvisional: true)
         let renamed = data.updateTitle(url: url, title: "A")
         #expect(renamed)
         #expect(data.bookmarks[0].title == "A")
@@ -104,5 +104,23 @@ struct BrowsingDataTests {
         data.addBookmark(url: URL(string: "https://b.example/")!, title: "B", date: base)
         try BrowsingStore.save(data: data, fileURL: fileURL)
         #expect(try BrowsingStore.load(fileURL: fileURL) == data)
+    }
+
+    @Test func provisionalBookmarkTitleIsReplacedOnlyWhileProvisional() {
+        var data = BrowsingData()
+        let base = Date(timeIntervalSince1970: 1_000)
+        let url = URL(string: "https://example.com/")!
+        data.addBookmark(url: url, title: "example.com", date: base, isTitleProvisional: true)
+        let replaced = data.updateTitle(url: url, title: "Example Home")
+        #expect(replaced)
+        #expect(data.bookmarks[0].title == "Example Home")
+        #expect(!data.bookmarks[0].isTitleProvisional)
+        // 確定後は動的なタイトルで書き換えない (正式なタイトルがホスト名と同じ場合も同様)
+        let changedAfterFinal = data.updateTitle(url: url, title: "(3) Example Home")
+        #expect(!changedAfterFinal)
+        data.addBookmark(url: url, title: "example.com", date: base)
+        let changedHostTitle = data.updateTitle(url: url, title: "(1) example.com")
+        #expect(!changedHostTitle)
+        #expect(data.bookmarks[0].title == "example.com")
     }
 }
