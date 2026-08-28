@@ -577,7 +577,8 @@ final class BrowserWindowModel {
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
-            find(text: lastFindText)
+            // find プロンプトと同じく、コマンドプロンプトを閉じて Web コンテンツへフォーカスが移った後に検索する
+            pendingFindText = lastFindText
         case "source-file":
             // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
             perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
