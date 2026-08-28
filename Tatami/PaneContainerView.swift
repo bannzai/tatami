@@ -55,6 +55,19 @@ final class PaneContainerView: NSView {
         needsDisplay = true
         // 境界線の位置が変わるのはビューの frame ではなく paneTree の変化なので、cursor rect の再計算を明示的に求める
         window?.invalidateCursorRects(for: self)
+        moveFirstResponderIfWebContentWasRemoved()
+    }
+
+    /// ウィンドウ (tmux window) の切り替えで外れた WKWebView に first responder が残っていると、切替先のページがキー入力を受け取れないため、
+    /// Web コンテンツが first responder だった場合はフォーカス中のペインへ移す
+    private func moveFirstResponderIfWebContentWasRemoved() {
+        guard let window, let responder = window.firstResponder as? NSView,
+              let responderWebView = sequence(first: responder, next: \.superview).first(where: { $0 is WKWebView }),
+              responderWebView.superview !== self,
+              let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self else {
+            return
+        }
+        window.makeFirstResponder(focusedWebView)
     }
 
     override func layout() {

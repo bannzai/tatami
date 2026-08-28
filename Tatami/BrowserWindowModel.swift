@@ -27,6 +27,8 @@ final class BrowserWindowModel {
     private(set) var prefixKeyState = PrefixKeyState.idle
     /// 表示中のプロンプト。nil なら通常表示
     private(set) var prompt: Prompt?
+    /// rename-window のプロンプトを開いた時点のウィンドウ。プロンプト中にウィンドウを切り替えても、名前はこのウィンドウに付ける
+    private var promptTargetWindow: PaneWindow?
     /// プロンプトの入力欄のテキスト
     var promptText = ""
     /// choose-window の一覧を表示中かどうか。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
@@ -45,9 +47,14 @@ final class BrowserWindowModel {
         windows[currentWindowIndex]
     }
 
+    /// どのウィンドウかを問わず、フォーカス中ペインの URL が変わった回数。automatic-rename の名前は WebPane.url (Observation の対象外) から
+    /// 決まるため、これを読む View がバックグラウンドのウィンドウの名前の変化でも再描画されるようにする
+    private(set) var windowNamesVersion = 0
+
     /// status line の左側の表示
     var statusLineText: String {
-        StatusLine.text(sessionName: sessionName, windowNames: windows.map(\.name), currentWindowIndex: currentWindowIndex)
+        _ = windowNamesVersion
+        return StatusLine.text(sessionName: sessionName, windowNames: windows.map(\.name), currentWindowIndex: currentWindowIndex)
     }
 
     /// アドレスバーの入力をフォーカス中のペインで開く
@@ -97,17 +104,22 @@ final class BrowserWindowModel {
 
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
     func killCurrentWindow() {
-        windows.remove(at: currentWindowIndex)
+        let closingIndex = currentWindowIndex
+        windows.remove(at: closingIndex)
         if windows.isEmpty {
             windows = [makeWindow()]
         }
-        previousWindowIndex = nil
-        currentWindowIndex = min(currentWindowIndex, windows.count - 1)
+        // 直前のウィンドウが生きていれば last-window の戻り先として残し、閉じた位置より後ろなら添字を詰める
+        if let previous = previousWindowIndex {
+            previousWindowIndex = previous == closingIndex ? nil : (previous > closingIndex ? previous - 1 : previous)
+        }
+        currentWindowIndex = min(closingIndex, windows.count - 1)
         syncAddressTextToFocusedPane()
     }
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
     func beginRenameWindow() {
+        promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
     }
@@ -116,7 +128,7 @@ final class BrowserWindowModel {
     func commitPrompt() {
         switch prompt {
         case .renameWindow:
-            currentWindow.renamedName = promptText.isEmpty ? nil : promptText
+            (promptTargetWindow ?? currentWindow).renamedName = promptText.isEmpty ? nil : promptText
         case nil:
             break
         }
@@ -125,6 +137,7 @@ final class BrowserWindowModel {
 
     func cancelPrompt() {
         prompt = nil
+        promptTargetWindow = nil
     }
 
     /// ウィンドウ一覧 (prefix + w) を開く
@@ -230,7 +243,11 @@ final class BrowserWindowModel {
     private func makeWindow() -> PaneWindow {
         let window = PaneWindow()
         window.onFocusedURLChange = { [weak self, weak window] navigatedURL in
-            guard let self, let window, currentWindow === window else {
+            guard let self, let window else {
+                return
+            }
+            windowNamesVersion += 1
+            guard currentWindow === window else {
                 return
             }
             addressText = navigatedURL.absoluteString
