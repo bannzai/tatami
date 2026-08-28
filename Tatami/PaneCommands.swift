@@ -22,12 +22,16 @@ struct PaneCommands: Commands {
         CommandMenu("Navigate") {
             Button("Open Location") { model?.perform(command: .omnibox) }
                 .keyboardShortcut("l", modifiers: [.command])
+                .accessibilityIdentifier("menu-omnibox")
             Button("Back") { model?.perform(command: .goBack) }
                 .keyboardShortcut("[", modifiers: [.command])
+                .accessibilityIdentifier("menu-back")
             Button("Forward") { model?.perform(command: .goForward) }
                 .keyboardShortcut("]", modifiers: [.command])
+                .accessibilityIdentifier("menu-forward")
             Button("Reload") { model?.perform(command: .reload) }
                 .keyboardShortcut("r", modifiers: [.command])
+                .accessibilityIdentifier("menu-reload")
         }
         CommandMenu("Pane") {
             Button("Split Left / Right") { model?.perform(command: .splitWindowHorizontal) }
