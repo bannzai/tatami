@@ -1,9 +1,10 @@
+import AppKit
 import WebKit
 
 /// 1 ペイン分の Web コンテンツ。WKWebView と、その URL / タイトル / 進捗の変化と新規ウィンドウ要求を受ける delegate をまとめて持つ。
 /// ペインツリー (PaneTree) には識別子だけが載り、実体はこのクラスが PaneWindow に保持される
 @MainActor
-final class WebPane: NSObject, WKUIDelegate {
+final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate {
     /// ペインツリー上の識別子
     let id: PaneID
     /// 表示に使う WebKit のビュー
@@ -18,6 +19,18 @@ final class WebPane: NSObject, WKUIDelegate {
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
     /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
     var onClose: (() -> Void)?
+    /// ダウンロードの進捗・完了・失敗を status line に出すための通知先
+    var onDownloadMessage: ((String) -> Void)?
+    /// 進行中のダウンロード。WKDownload は delegate を弱参照するため、完了までここで保持する
+    private var downloads: [WKDownload: DownloadProgress] = [:]
+    /// 1 つのダウンロードの保存先と進捗の監視
+    private final class DownloadProgress {
+        let destinationURL: URL
+        var observation: NSKeyValueObservation?
+        init(destinationURL: URL) {
+            self.destinationURL = destinationURL
+        }
+    }
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -33,6 +46,7 @@ final class WebPane: NSObject, WKUIDelegate {
         webView.isInspectable = true
         webView.customUserAgent = userAgent
         webView.uiDelegate = self
+        webView.navigationDelegate = self
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する。
         // observation をこのインスタンスが所有するため、クロージャからは弱参照にして循環参照を避ける
         observations = [
@@ -121,5 +135,171 @@ final class WebPane: NSObject, WKUIDelegate {
 
     func webViewDidClose(_ webView: WKWebView) {
         onClose?()
+    }
+
+    // MARK: JavaScript のダイアログ (alert / confirm / prompt) をネイティブのシートで出す
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {
+        let alert = NSAlert()
+        alert.messageText = frame.request.url?.host() ?? ""
+        alert.informativeText = message
+        _ = await run(alert: alert)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = frame.request.url?.host() ?? ""
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        return await run(alert: alert) == .alertFirstButtonReturn
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo) async -> String? {
+        let alert = NSAlert()
+        alert.messageText = frame.request.url?.host() ?? ""
+        alert.informativeText = prompt
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(string: defaultText ?? "")
+        // 入力欄の幅。NSAlert の本文幅に合わせた値で、これより狭いと URL などの長い入力が読めない
+        field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+        alert.accessoryView = field
+        return await run(alert: alert) == .alertFirstButtonReturn ? field.stringValue : nil
+    }
+
+    /// カメラ・マイクの権限要求 (WKUIDelegate)。ユーザーがダイアログで許可した時だけ通す。
+    /// 位置情報は macOS の WKWebView が CoreLocation の許可ダイアログを自前で出すため、ここでは扱わない
+    func webView(
+        _ webView: WKWebView,
+        decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo,
+        type: WKMediaCaptureType
+    ) async -> WKPermissionDecision {
+        let alert = NSAlert()
+        alert.messageText = "\(origin.host) が\(WebPane.mediaCaptureName(type: type))の使用を求めています"
+        alert.addButton(withTitle: "許可")
+        alert.addButton(withTitle: "拒否")
+        return await run(alert: alert) == .alertFirstButtonReturn ? .grant : .deny
+    }
+
+    private static func mediaCaptureName(type: WKMediaCaptureType) -> String {
+        switch type {
+        case .camera:
+            return "カメラ"
+        case .microphone:
+            return "マイク"
+        case .cameraAndMicrophone:
+            return "カメラとマイク"
+        @unknown default:
+            return "メディア"
+        }
+    }
+
+    /// ウィンドウがあればシートで、無ければモーダルで出す
+    private func run(alert: NSAlert) async -> NSApplication.ModalResponse {
+        guard let window = webView.window else {
+            return alert.runModal()
+        }
+        return await alert.beginSheetModal(for: window)
+    }
+
+    // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定)
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        navigationResponse.canShowMIMEType ? .allow : .download
+    }
+
+    /// 証明書エラー (信頼できない・期限切れ・ホスト名不一致等) は WebKit が既定で通さない。その時は白紙ではなく警告ページを出す。
+    /// 例外的に通す手段は持たない (作者の用途では自己署名の開発サーバーは http で使う)
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain, WebPane.certificateErrorCodes.contains(nsError.code),
+              let failedURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL else {
+            return
+        }
+        // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)
+        webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
+    }
+
+    /// NSURLError の証明書関連のコード (-1200 SecureConnectionFailed 〜 -1206 ClientCertificateRequired)
+    private static let certificateErrorCodes: Set<Int> = [
+        NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateUntrusted,
+        NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid, NSURLErrorClientCertificateRejected,
+        NSURLErrorClientCertificateRequired,
+    ]
+
+    private static func certificateWarningHTML(url: URL, message: String) -> String {
+        let escapedURL = url.absoluteString.replacingOccurrences(of: "<", with: "&lt;")
+        let escapedMessage = message.replacingOccurrences(of: "<", with: "&lt;")
+        return """
+        <!doctype html><meta charset="utf-8"><title>接続は安全ではありません</title>
+        <body style="font-family: -apple-system, sans-serif; margin: 48px; color: #222">
+        <h1 style="font-size: 20px">接続は安全ではありません</h1>
+        <p>\(escapedURL) の証明書を検証できなかったため、ページを表示しませんでした。</p>
+        <p style="color: #666">\(escapedMessage)</p>
+        </body>
+        """
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    // MARK: ダウンロード。保存先は ~/Downloads で、同名があれば連番を付ける
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        let directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        let destinationURL = WebPane.uniqueFileURL(directoryURL: directoryURL, fileName: suggestedFilename)
+        let progress = DownloadProgress(destinationURL: destinationURL)
+        progress.observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
+            guard let self, let download else {
+                return
+            }
+            let percent = Int(progress.fractionCompleted * 100)
+            Task { @MainActor in
+                // 完了・失敗の後に届く進捗 (100%) で完了のメッセージを上書きしない
+                guard self.downloads[download] != nil else {
+                    return
+                }
+                self.onDownloadMessage?("ダウンロード中 \(percent)%: \(destinationURL.lastPathComponent)")
+            }
+        }
+        downloads[download] = progress
+        onDownloadMessage?("ダウンロード開始: \(destinationURL.lastPathComponent)")
+        return destinationURL
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        if let progress = downloads.removeValue(forKey: download) {
+            onDownloadMessage?("ダウンロード完了: \(progress.destinationURL.path(percentEncoded: false))")
+        }
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        let name = downloads.removeValue(forKey: download)?.destinationURL.lastPathComponent ?? ""
+        onDownloadMessage?("ダウンロード失敗: \(name) \(error.localizedDescription)")
+    }
+
+    /// 既存のファイルを上書きしないよう `name (2).ext` のように連番を付ける
+    private static func uniqueFileURL(directoryURL: URL, fileName: String) -> URL {
+        let base = (fileName as NSString).deletingPathExtension
+        let ext = (fileName as NSString).pathExtension
+        var candidate = directoryURL.appending(path: fileName)
+        var counter = 2
+        while FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) {
+            let numbered = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
+            candidate = directoryURL.appending(path: numbered)
+            counter += 1
+        }
+        return candidate
     }
 }

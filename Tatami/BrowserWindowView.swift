@@ -137,6 +137,8 @@ struct BrowserWindowView: View {
             return "(rename-session)"
         case .command:
             return ":"
+        case .find:
+            return "/"
         }
     }
 

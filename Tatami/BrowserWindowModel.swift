@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import WebKit
 
 /// macOS のウィンドウ 1 つ分 (tmux の session に相当) の状態。複数の PaneWindow (tmux の window) と現在のウィンドウ、
 /// アドレスバー・キーバインド・status line のプロンプトを持ち、メニューとキーバインドの宛先になる
@@ -13,6 +14,8 @@ final class BrowserWindowModel {
         case renameSession
         /// `:` から始まるコマンドの入力 (prefix + :)
         case command
+        /// ページ内検索の語の入力 (prefix + [)
+        case find
     }
 
     /// 一覧から選ぶ操作 (choose-window / choose-session)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
@@ -65,6 +68,10 @@ final class BrowserWindowModel {
     private var commandHistoryIndex = 0
     /// 履歴を辿り始める前に入力していたテキスト。末尾まで戻った時に復元する
     private var commandDraft = ""
+    /// 直近のページ内検索の語。find モードで n / N がこれを使う
+    private(set) var lastFindText = ""
+    /// ページ内検索の結果を n / N で辿っている状態。Escape で抜ける
+    private(set) var isFindModeActive = false
     /// 履歴の上限。tmux の history-limit に合わせる意図はなく、上下キーで辿れる現実的な量として選んだ
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
@@ -403,6 +410,26 @@ final class BrowserWindowModel {
         prompt = .renameSession
     }
 
+    /// ページ内検索のプロンプトを開く (prefix + [)。前回の語を初期値にする
+    func beginFindPrompt() {
+        promptText = lastFindText
+        prompt = .find
+    }
+
+    /// 検索結果を次へ (n) / 前へ (N)
+    func findNext(backwards: Bool) {
+        guard !lastFindText.isEmpty else {
+            return
+        }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        currentWindow.focusedPane.webView.find(lastFindText, configuration: configuration) { [weak self] result in
+            if !result.matchFound {
+                self?.statusMessage = "見つからない: \(self?.lastFindText ?? "")"
+            }
+        }
+    }
+
     /// コマンドプロンプトを開く (prefix + :)
     func beginCommandPrompt() {
         promptText = ""
@@ -500,6 +527,14 @@ final class BrowserWindowModel {
             renameSession(newName: promptText)
         case .command:
             execute(commandLine: promptText)
+        case .find:
+            lastFindText = promptText
+            isFindModeActive = !promptText.isEmpty
+            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて Web コンテンツへフォーカスが戻った後に検索する
+            let text = promptText
+            Task { @MainActor [weak self] in
+                self?.find(text: text)
+            }
         case nil:
             break
         }
@@ -592,6 +627,23 @@ final class BrowserWindowModel {
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
+        // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う
+        if isFindModeActive, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
+            switch keyStroke.key {
+            case "n":
+                findNext(backwards: false)
+                return true
+            case "N":
+                findNext(backwards: true)
+                return true
+            case "Escape":
+                isFindModeActive = false
+                find(text: "")
+                return true
+            default:
+                break
+            }
+        }
         let handled = prefixKeyState.handling(keyStroke: keyStroke, table: keyBindings)
         prefixKeyState = handled.state
         switch handled.outcome {
@@ -670,6 +722,8 @@ final class BrowserWindowModel {
             beginRenameSession()
         case .commandPrompt:
             beginCommandPrompt()
+        case .findPrompt:
+            beginFindPrompt()
         case .sourceFile(let path):
             reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL, requireFile: path != nil)
         }
@@ -713,6 +767,9 @@ final class BrowserWindowModel {
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
+        }
+        window.onDownloadMessage = { [weak self] message in
+            self?.statusMessage = message
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {
