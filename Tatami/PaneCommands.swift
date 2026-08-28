@@ -35,6 +35,13 @@ struct PaneCommands: Commands {
             Divider()
             Button("Set as Default Browser…") { model?.perform(command: .setDefaultBrowser) }
                 .accessibilityIdentifier("menu-set-default-browser")
+            Divider()
+            Button("Bookmark This Page") { model?.toggleBookmark() }
+                .keyboardShortcut("d", modifiers: [.command, .shift, .option])
+                .accessibilityIdentifier("menu-bookmark")
+            Button("Bookmarks…") { model?.perform(command: .chooseBookmark) }
+                .keyboardShortcut("b", modifiers: [.command, .option])
+                .accessibilityIdentifier("menu-choose-bookmark")
         }
         CommandMenu("Pane") {
             Button("Split Left / Right") { model?.perform(command: .splitWindowHorizontal) }

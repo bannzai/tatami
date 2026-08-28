@@ -167,6 +167,8 @@ enum BrowserCommand: Hashable, Sendable {
     case findPrompt
     /// Tatami を既定のブラウザにする (コマンドプロンプトとメニューから。既定バインド無し)
     case setDefaultBrowser
+    /// ブックマークの一覧を開く (prefix + b)
+    case chooseBookmark
     /// セッションを保存したままウィンドウを閉じる (prefix + d)
     case detachClient
     case chooseSession
@@ -234,6 +236,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "find"
         case .setDefaultBrowser:
             return "set-default-browser"
+        case .chooseBookmark:
+            return "choose-bookmark"
         case .detachClient:
             return "detach-client"
         case .chooseSession:
@@ -272,7 +276,7 @@ enum BrowserCommand: Hashable, Sendable {
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
-        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt, .setDefaultBrowser,
+        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt, .setDefaultBrowser, .chooseBookmark,
     ]
 }
 
@@ -316,6 +320,7 @@ struct KeyBindingTable: Equatable, Sendable {
             ("$", .renameSession),
             (":", .commandPrompt),
             ("[", .findPrompt),
+            ("b", .chooseBookmark),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }

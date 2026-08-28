@@ -19,6 +19,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
     /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
     var onClose: (() -> Void)?
+    /// ページの読み込みが完了した時の通知先 (履歴の記録に使う)。URL とその時点のタイトル
+    var onVisit: ((URL, String) -> Void)?
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -53,6 +55,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 }
                 Task { @MainActor in
                     self.onStateChange?()
+                    // 読み込み完了後にタイトルが決まるページがあるため、履歴のタイトルを更新する (同じ URL の記録は 1 件に畳まれる)
+                    self.notifyVisitIfWebPage()
                 }
             },
             webView.observe(\.estimatedProgress) { [weak self] _, _ in
@@ -205,7 +209,19 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         return await alert.beginSheetModal(for: window)
     }
 
-    // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定)
+    // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定・履歴)
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        notifyVisitIfWebPage()
+    }
+
+    /// http / https のページだけを履歴に記録する (about:blank や警告ページは記録しない)
+    private func notifyVisitIfWebPage() {
+        guard let url = webView.url, let scheme = url.scheme, scheme == "http" || scheme == "https", !webView.isLoading || title != nil else {
+            return
+        }
+        onVisit?(url, title ?? url.host() ?? url.absoluteString)
+    }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
         (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
