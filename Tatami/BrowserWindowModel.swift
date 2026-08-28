@@ -112,6 +112,20 @@ final class BrowserWindowModel {
         }
     }
 
+    /// macOS のウィンドウが閉じられた時 (閉じるボタン・⌘W) に呼ぶ。保存してセッションを解放し、後から別のウィンドウで開き直せるようにする
+    func deactivate() {
+        guard isActive else {
+            return
+        }
+        saveNow()
+        BrowserWindowModel.openSessionNames.remove(sessionName)
+        if let terminationObserver {
+            NotificationCenter.default.removeObserver(terminationObserver)
+        }
+        terminationObserver = nil
+        isActive = false
+    }
+
     /// 保存用の内容
     var snapshot: SessionSnapshot {
         SessionSnapshot(name: sessionName, windows: windows.map(\.snapshot), currentWindowIndex: currentWindowIndex)
@@ -190,7 +204,8 @@ final class BrowserWindowModel {
         guard newName != sessionName else {
             return
         }
-        guard SessionStore.isValidName(newName), !SessionStore.sessionNames().contains(newName) else {
+        guard SessionStore.isValidName(newName), !SessionStore.sessionNames().contains(newName),
+              !BrowserWindowModel.openSessionNames.contains(newName) else {
             statusMessage = "その名前は使えない: \(newName)"
             return
         }
@@ -561,6 +576,9 @@ final class BrowserWindowModel {
             addressText = navigatedURL.absoluteString
             focusedPaneStateVersion += 1
             scheduleSave()
+        }
+        window.onAnyPaneURLChange = { [weak self] in
+            self?.scheduleSave()
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {

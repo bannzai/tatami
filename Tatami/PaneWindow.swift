@@ -14,6 +14,8 @@ final class PaneWindow {
     var renamedName: String?
     /// フォーカス中のペインの URL が変わった時の通知先 (アドレスバーと status line の追随に使う)
     var onFocusedURLChange: ((URL) -> Void)?
+    /// フォーカスの有無を問わず、どのペインでも URL が変わった時の通知先 (セッションの保存に使う)
+    var onAnyPaneURLChange: (() -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -155,7 +157,11 @@ final class PaneWindow {
     private func makePane(id: PaneID, url: URL, configuration: WKWebViewConfiguration? = nil) -> WebPane {
         let pane = WebPane(id: id, url: url, configuration: configuration ?? WebPane.defaultConfiguration())
         pane.onNavigate = { [weak self] navigatedURL in
-            guard let self, paneTree.focusedPaneID == id else {
+            guard let self else {
+                return
+            }
+            onAnyPaneURLChange?()
+            guard paneTree.focusedPaneID == id else {
                 return
             }
             onFocusedURLChange?(navigatedURL)
