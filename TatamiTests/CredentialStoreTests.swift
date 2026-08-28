@@ -37,7 +37,7 @@ struct CredentialStoreTests {
     @Test func hostSearchIsExactAndCaseInsensitiveAndNewestFirst() throws {
         let older = makeCredential(url: "https://Example.com/login", username: "alice", date: base)
         let newer = makeCredential(url: "https://example.com/", username: "bob", date: base.addingTimeInterval(5))
-        let sub = makeCredential(url: "https://mail.example.com/", username: "carol", date: base)
+        let sub = makeCredential(url: "https://mail.example.com/", username: "carol", date: base.addingTimeInterval(-5))
         let store = InMemoryCredentialStore(credentials: [older, sub, newer])
         #expect(try store.credentials(host: "EXAMPLE.com").map(\.username) == ["bob", "alice"])
         #expect(try store.credentials(host: "mail.example.com").map(\.username) == ["carol"])
