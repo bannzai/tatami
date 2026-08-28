@@ -636,8 +636,17 @@ final class BrowserWindowModel {
             )
             // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            for credential in result.credentials where existingByID[credential.id] != credential {
-                try credentialStore.save(credential: credential)
+            let changed = result.credentials.filter { existingByID[$0.id] != $0 }
+            var saved = 0
+            for credential in changed {
+                do {
+                    try credentialStore.save(credential: credential)
+                    saved += 1
+                } catch {
+                    // Keychain への保存は 1 件ずつ確定するためロールバックできない。途中まで反映したことを件数で明示する
+                    statusMessage = "インポートを途中で中断: \(saved)/\(changed.count) 件を保存した後に失敗: \(error)"
+                    return
+                }
             }
             statusMessage = "インポート: 追加 \(result.added)・更新 \(result.updated)・変更なし \(result.unchanged)・読み飛ばし \(result.skipped)"
         } catch {
@@ -656,9 +665,15 @@ final class BrowserWindowModel {
         do {
             let credentials = try credentialStore.all()
             let text = PasswordCSV.serialize(rows: PasswordImporter.rows(credentials: credentials))
-            try Data(text.utf8).write(to: fileURL, options: .atomic)
-            // .atomic は一時ファイルの差し替えで既定の権限のファイルを作るため、書き終えた直後に本人だけが読める権限へ落とす
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: filePath)
+            // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう、排他的な新規作成にする
+            try Data(text.utf8).write(to: fileURL, options: .withoutOverwriting)
+            do {
+                // 本人だけが読める権限に落とす。落とせなかった平文ファイルは残さない
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: filePath)
+            } catch {
+                try? FileManager.default.removeItem(at: fileURL)
+                throw error
+            }
             statusMessage = "エクスポート: \(filePath) に \(credentials.count) 件。このファイルは削除するまで平文で残る"
         } catch {
             statusMessage = "エクスポートに失敗: \(error)"

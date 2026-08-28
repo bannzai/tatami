@@ -69,7 +69,41 @@ struct PasswordCSVTests {
 
             """
         let rows = try PasswordCSV.parse(text: text)
-        #expect(rows == [PasswordCSV.Row(name: "example.com", url: "https://example.com/", username: "alice", password: "dummy-alice", note: "")])
+        #expect(rows == [PasswordCSV.Row(name: "example.com", url: "https://example.com/", username: "alice", password: "dummy-alice", note: nil)])
+    }
+
+    @Test func mergeKeepsExistingNoteWhenNoteColumnIsMissing() {
+        let existing = [makeCredential(url: "https://example.com/", username: "alice", password: "dummy-alice", note: "keep me", date: past)]
+        let result = PasswordImporter.merge(
+            rows: [PasswordCSV.Row(name: "example.com", url: "https://example.com/", username: "alice", password: "dummy-alice", note: nil)],
+            existing: existing,
+            now: now
+        )
+        #expect(result.unchanged == 1)
+        #expect(result.credentials[0].note == "keep me")
+        let cleared = PasswordImporter.merge(
+            rows: [PasswordCSV.Row(name: "example.com", url: "https://example.com/", username: "alice", password: "dummy-alice", note: "")],
+            existing: existing,
+            now: now
+        )
+        #expect(cleared.updated == 1)
+        #expect(cleared.credentials[0].note == "")
+    }
+
+    @Test func mergeDistinguishesOrigins() {
+        let existing = [makeCredential(url: "https://example.com/", username: "alice", password: "dummy-alice", date: past)]
+        let result = PasswordImporter.merge(
+            rows: [
+                PasswordCSV.Row(name: "", url: "https://example.com:8443/", username: "alice", password: "dummy-8443", note: ""),
+                PasswordCSV.Row(name: "", url: "http://example.com/", username: "alice", password: "dummy-http", note: ""),
+                PasswordCSV.Row(name: "", url: "https://example.com:443/login", username: "alice", password: "dummy-alice", note: ""),
+            ],
+            existing: existing,
+            now: now
+        )
+        #expect(result.added == 2)
+        #expect(result.unchanged == 1)
+        #expect(result.credentials.map(\.url.absoluteString) == ["https://example.com/", "https://example.com:8443/", "http://example.com/"])
     }
 
     @Test func parseIgnoresBlankLines() throws {

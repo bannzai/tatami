@@ -21,8 +21,8 @@ enum PasswordCSV {
         var url: String
         var username: String
         var password: String
-        /// Chrome の note 列。この列を持たない古い形式では空文字になる
-        var note: String
+        /// Chrome の note 列。この列を持たない古い形式では nil (取り込み時に既存のメモを消さないため、空文字と区別する)
+        var note: String?
     }
 
     /// 書き出す列とその順序。Chrome が出力するヘッダと同じにして、Chrome にそのまま読み戻せるようにする。
@@ -63,7 +63,7 @@ enum PasswordCSV {
                     url: value(fields: record.fields, columnIndexes: columnIndexes, column: "url"),
                     username: value(fields: record.fields, columnIndexes: columnIndexes, column: "username"),
                     password: value(fields: record.fields, columnIndexes: columnIndexes, column: "password"),
-                    note: value(fields: record.fields, columnIndexes: columnIndexes, column: "note")
+                    note: columnIndexes["note"] == nil ? nil : value(fields: record.fields, columnIndexes: columnIndexes, column: "note")
                 )
             )
         }
@@ -74,7 +74,7 @@ enum PasswordCSV {
     static func serialize(rows: [Row]) -> String {
         var text = headerColumns.joined(separator: ",") + "\n"
         for row in rows {
-            text += [row.name, row.url, row.username, row.password, row.note]
+            text += [row.name, row.url, row.username, row.password, row.note ?? ""]
                 .map { escaped(value: $0) }
                 .joined(separator: ",")
             text += "\n"
@@ -183,7 +183,7 @@ enum PasswordImporter {
         var credentials = existing
         var indexesByKey: [String: Int] = [:]
         for (index, credential) in credentials.enumerated() {
-            let key = matchKey(host: credential.host, username: credential.username)
+            let key = matchKey(url: credential.url, username: credential.username)
             // 同じホスト・同じユーザー名が複数ある場合は先頭の 1 件だけを更新の対象にし、残りは触らない
             if indexesByKey[key] == nil {
                 indexesByKey[key] = index
@@ -203,22 +203,24 @@ enum PasswordImporter {
                 skipped += 1
                 continue
             }
-            let key = matchKey(host: host, username: row.username)
+            let key = matchKey(url: url, username: row.username)
             guard let index = indexesByKey[key] else {
                 credentials.append(
-                    Credential(id: UUID(), url: url, username: row.username, password: row.password, note: row.note, updatedAt: now)
+                    Credential(id: UUID(), url: url, username: row.username, password: row.password, note: row.note ?? "", updatedAt: now)
                 )
                 indexesByKey[key] = credentials.count - 1
                 added += 1
                 continue
             }
-            guard credentials[index].password != row.password || credentials[index].note != row.note else {
+            // note 列が無い形式では既存のメモを残す
+            let note = row.note ?? credentials[index].note
+            guard credentials[index].password != row.password || credentials[index].note != note else {
                 unchanged += 1
                 continue
             }
             // URL は既存の値を残す。Chrome の URL はログインページとサイトのトップが混在し、どちらが正しいか決められないため
             credentials[index].password = row.password
-            credentials[index].note = row.note
+            credentials[index].note = note
             credentials[index].updatedAt = now
             updated += 1
         }
@@ -240,9 +242,15 @@ enum PasswordImporter {
 
     /// CSV の行と既存の資格情報を同じものとみなす鍵。Chrome は同じサイトを `https://example.com/` と `https://example.com/login` の
     /// 両方で持つことがあるため、URL 全体ではなくホスト名 (小文字) とユーザー名で照合する
-    private static func matchKey(host: String, username: String) -> String {
-        // ホスト名に改行は現れないため、区切りに使ってもユーザー名との境界が曖昧にならない
-        "\(host)\n\(username)"
+    /// 突き合わせのキー。同じホストでもスキームやポートが違えば別のログイン先なのでオリジン (scheme + host + port) 単位にし、パスは無視する
+    /// (Chrome はログインページとサイトのトップを同じサイトとして持つことがあるため)。既定ポートの明示 (https の 443 等) は省略と同一視する
+    private static func matchKey(url: URL, username: String) -> String {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let host = url.host()?.lowercased() ?? ""
+        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
+        // オリジンの各要素に改行は現れないため、区切りに使ってもユーザー名との境界が曖昧にならない
+        return "\(scheme)\n\(host)\n\(port)\n\(username)"
     }
 }
 
