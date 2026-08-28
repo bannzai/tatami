@@ -62,6 +62,10 @@ struct PaneCommands: Commands {
             Button("Choose Window…") { model?.perform(command: .chooseWindow) }
             Button("Close Window") { model?.perform(command: .killWindow) }
                 .keyboardShortcut("w", modifiers: [.command, .option])
+            Divider()
+            Button("Detach Session") { model?.perform(command: .detachClient) }
+            Button("Choose Session…") { model?.perform(command: .chooseSession) }
+            Button("Rename Session…") { model?.perform(command: .renameSession) }
         }
     }
 }

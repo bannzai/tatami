@@ -161,6 +161,10 @@ enum BrowserCommand: Hashable, Sendable {
     case goBack
     case goForward
     case reload
+    /// セッションを保存したままウィンドウを閉じる (prefix + d)
+    case detachClient
+    case chooseSession
+    case renameSession
 
     /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
     var tmuxName: String {
@@ -215,6 +219,12 @@ enum BrowserCommand: Hashable, Sendable {
             return "forward"
         case .reload:
             return "reload"
+        case .detachClient:
+            return "detach-client"
+        case .chooseSession:
+            return "choose-session"
+        case .renameSession:
+            return "rename-session"
         }
     }
 
@@ -237,6 +247,7 @@ enum BrowserCommand: Hashable, Sendable {
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
+        .detachClient, .chooseSession, .renameSession,
     ]
 }
 
@@ -275,6 +286,9 @@ struct KeyBindingTable: Equatable, Sendable {
             ("&", .killWindow),
             ("w", .chooseWindow),
             ("/", .omnibox),
+            ("d", .detachClient),
+            ("s", .chooseSession),
+            ("$", .renameSession),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }

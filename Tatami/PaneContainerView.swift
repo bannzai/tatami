@@ -168,9 +168,11 @@ struct PaneContainer: NSViewRepresentable {
         view.setAccessibilityIdentifier("paneContainer")
         view.onDividerDrag = { dividerPath, delta in
             model.currentWindow.resize(dividerPath: dividerPath, delta: delta)
+            model.scheduleSave()
         }
         view.onPaneClick = { paneID in
             model.currentWindow.focus(paneID: paneID)
+            model.scheduleSave()
         }
         view.onKeyDown = { keyStroke in
             model.handle(keyStroke: keyStroke)

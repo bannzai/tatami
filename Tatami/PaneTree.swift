@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// ペインを一意に識別する値。ペインの中身 (WKWebView 等) とツリー構造を切り離すため、木には識別子だけを載せる
-struct PaneID: Hashable, Sendable {
+struct PaneID: Hashable, Sendable, Codable {
     /// 生成のたびに一意になる識別子
     let rawValue: UUID
 
@@ -14,7 +14,7 @@ struct PaneID: Hashable, Sendable {
 }
 
 /// 分割した 2 つのペインを並べる向き
-enum SplitAxis: Sendable {
+enum SplitAxis: Sendable, Codable {
     /// 左右に並べる (tmux の split-window -h / prefix %)
     case horizontal
     /// 上下に並べる (tmux の split-window -v / prefix ")
@@ -82,7 +82,7 @@ enum FocusDirection: Sendable {
 }
 
 /// prefix + Space が巡回するレイアウト。tmux の even-horizontal / even-vertical / tiled に対応する
-enum PaneLayout: CaseIterable, Sendable {
+enum PaneLayout: CaseIterable, Sendable, Codable {
     case evenHorizontal
     case evenVertical
     case tiled
@@ -97,7 +97,7 @@ enum PaneLayout: CaseIterable, Sendable {
 }
 
 /// ペインの配置を表す二分木。葉が 1 枚のペイン、節がその位置での分割を表す
-indirect enum PaneNode: Equatable, Sendable {
+indirect enum PaneNode: Equatable, Sendable, Codable {
     case leaf(PaneID)
     /// ratio は first が占める割合。horizontal では first が左、vertical では first が minY 側 (SwiftUI の座標系では上)
     case split(axis: SplitAxis, ratio: Double, first: PaneNode, second: PaneNode)
@@ -368,7 +368,7 @@ indirect enum PaneNode: Equatable, Sendable {
 }
 
 /// 1 つのウィンドウが持つペインの配置とフォーカス状態。tmux の window に相当する
-struct PaneTree: Equatable, Sendable {
+struct PaneTree: Equatable, Sendable, Codable {
     /// ペインの配置
     private(set) var root: PaneNode
     /// キー入力とページ操作の宛先になっているペイン

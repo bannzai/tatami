@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -6,10 +7,23 @@ import Observation
 @MainActor
 @Observable
 final class BrowserWindowModel {
-    /// status line のプロンプト (tmux の command-prompt 相当)。rename-window の入力に使う
+    /// status line のプロンプト (tmux の command-prompt 相当)。rename-window / rename-session の入力に使う
     enum Prompt: Equatable {
         case renameWindow
+        case renameSession
     }
+
+    /// 一覧から選ぶ操作 (choose-window / choose-session)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
+    enum Chooser: Equatable {
+        case window
+        /// 保存済みセッションの名前一覧
+        case session([String])
+    }
+
+    /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
+    private static let lastSessionNameKey = "lastSessionName"
+    /// 保存の debounce 間隔。連続する操作 (リサイズのドラッグ等) をまとめつつ、クラッシュしても直近の状態が残る程度に短くする
+    private static let saveDelay: Duration = .milliseconds(500)
 
     /// tmux の既定のセッション名と同じ 0 から始める。セッション管理 (#6) で名前を付けられるようにする
     private(set) var sessionName = "0"
@@ -29,19 +43,138 @@ final class BrowserWindowModel {
     private(set) var prompt: Prompt?
     /// プロンプトの入力欄のテキスト
     var promptText = ""
-    /// choose-window の一覧を表示中かどうか。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
-    private(set) var isChoosingWindow = false
-    /// choose-window の一覧で選択中の添字
+    /// 表示中の一覧。nil なら通常表示
+    private(set) var chooser: Chooser?
+    /// 一覧で選択中の添字
     private(set) var chooserSelectionIndex = 0
+    /// detach の要求回数。View が onChange で拾って macOS のウィンドウを閉じる
+    private(set) var detachRequestCount = 0
+    /// debounce 中の保存タスク
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// アプリ終了通知の監視
+    @ObservationIgnored private var terminationObserver: NSObjectProtocol?
+    /// 画面に表示されて操作の対象になっているかどうか。SwiftUI は @State の初期値を複数回作ることがあり、
+    /// 表示されなかったインスタンスが保存を行うと直前の状態を初期状態で上書きしてしまうため、activate() 後だけ保存する
+    @ObservationIgnored private var isActive = false
     /// アドレスバーへのフォーカス要求。回数を増やすことで同じ要求を続けて出せる (View 側が onChange で拾う)
     private(set) var addressBarFocusRequestCount = 0
     /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
     private(set) var focusedPaneStateVersion = 0
 
+    /// 最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
     init() {
         windows = []
-        windows = [makeWindow()]
+        let name = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
+        do {
+            if let snapshot = try SessionStore.load(name: name) {
+                restore(snapshot: snapshot)
+            } else {
+                sessionName = name
+                windows = [makeWindow()]
+            }
+        } catch {
+            NSLog("セッションの読み込みに失敗 (新規セッションで始める): %@", String(describing: error))
+            sessionName = name
+            windows = [makeWindow()]
+        }
         addressText = currentWindow.focusedPane.url.absoluteString
+    }
+
+    /// 画面に表示された時に呼ぶ。以後の変更を保存の対象にし、終了時は debounce を待たずに保存する
+    func activate() {
+        guard !isActive else {
+            return
+        }
+        isActive = true
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.saveNow()
+            }
+        }
+    }
+
+    /// 保存用の内容
+    var snapshot: SessionSnapshot {
+        SessionSnapshot(name: sessionName, windows: windows.map(\.snapshot), currentWindowIndex: currentWindowIndex)
+    }
+
+    /// 変更のたびに呼び、少し待ってから保存する。保存の失敗はログに出すだけで操作は止めない
+    func scheduleSave() {
+        guard isActive else {
+            return
+        }
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: BrowserWindowModel.saveDelay)
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            saveNow()
+        }
+    }
+
+    /// すぐに保存する (detach やウィンドウを閉じる時)
+    func saveNow() {
+        guard isActive else {
+            return
+        }
+        saveTask?.cancel()
+        do {
+            try SessionStore.save(snapshot: snapshot)
+            UserDefaults.standard.set(sessionName, forKey: BrowserWindowModel.lastSessionNameKey)
+        } catch {
+            NSLog("セッションの保存に失敗: %@", String(describing: error))
+        }
+    }
+
+    /// セッションを保存してウィンドウを閉じる (prefix + d)。再起動時や新しいウィンドウで復元される
+    func detach() {
+        saveNow()
+        detachRequestCount += 1
+    }
+
+    /// 保存済みのセッションを開く (choose-session の確定)。現在のセッションは先に保存する
+    func attach(sessionName name: String) {
+        guard name != sessionName else {
+            return
+        }
+        saveNow()
+        guard let loaded = try? SessionStore.load(name: name) else {
+            return
+        }
+        restore(snapshot: loaded)
+        syncAddressTextToFocusedPane()
+        focusedPaneStateVersion += 1
+        saveNow()
+    }
+
+    /// セッションの名前を変える (prefix + $)。保存ファイルも改名する。同名が既にあれば何もしない
+    func renameSession(newName: String) {
+        guard !newName.isEmpty, newName != sessionName, !SessionStore.sessionNames().contains(newName) else {
+            return
+        }
+        saveNow()
+        do {
+            try SessionStore.rename(name: sessionName, newName: newName)
+        } catch {
+            NSLog("セッションの改名に失敗: %@", String(describing: error))
+            return
+        }
+        sessionName = newName
+        saveNow()
+    }
+
+    private func restore(snapshot: SessionSnapshot) {
+        sessionName = snapshot.name
+        windows = snapshot.windows.map { PaneWindow(snapshot: $0) }
+        if windows.isEmpty {
+            windows = [makeWindow()]
+        }
+        for window in windows {
+            attachCallbacks(window: window)
+        }
+        currentWindowIndex = min(max(snapshot.currentWindowIndex, 0), windows.count - 1)
+        previousWindowIndex = nil
     }
 
     /// 表示中のウィンドウ
@@ -157,15 +290,24 @@ final class BrowserWindowModel {
         prompt = .renameWindow
     }
 
+    /// rename-session のプロンプトを開く (prefix + $)
+    func beginRenameSession() {
+        promptText = sessionName
+        prompt = .renameSession
+    }
+
     /// プロンプトの入力を確定する。rename-window は空文字なら automatic-rename に戻す
     func commitPrompt() {
         switch prompt {
         case .renameWindow:
             currentWindow.renamedName = promptText.isEmpty ? nil : promptText
+        case .renameSession:
+            renameSession(newName: promptText)
         case nil:
             break
         }
         prompt = nil
+        scheduleSave()
     }
 
     func cancelPrompt() {
@@ -175,26 +317,61 @@ final class BrowserWindowModel {
     /// ウィンドウ一覧 (prefix + w) を開く
     func beginChooseWindow() {
         chooserSelectionIndex = currentWindowIndex
-        isChoosingWindow = true
+        chooser = .window
     }
 
-    /// ウィンドウ一覧のキー操作。一覧を閉じるまで他のキーは消費する
+    /// セッション一覧 (prefix + s) を開く。現在のセッションも保存して一覧に含める
+    func beginChooseSession() {
+        saveNow()
+        let names = SessionStore.sessionNames()
+        chooserSelectionIndex = names.firstIndex(of: sessionName) ?? 0
+        chooser = .session(names)
+    }
+
+    /// 一覧に出す項目名
+    var chooserItems: [String] {
+        switch chooser {
+        case .window:
+            return windows.map(\.name)
+        case .session(let names):
+            return names
+        case nil:
+            return []
+        }
+    }
+
+    /// 一覧のキー操作。一覧を閉じるまで他のキーは消費する
     func handleChooserKey(keyStroke: KeyStroke) {
+        let count = chooserItems.count
         switch keyStroke.key {
         case "j", "Down":
-            chooserSelectionIndex = (chooserSelectionIndex + 1) % windows.count
+            chooserSelectionIndex = (chooserSelectionIndex + 1) % max(count, 1)
         case "k", "Up":
-            chooserSelectionIndex = (chooserSelectionIndex - 1 + windows.count) % windows.count
+            chooserSelectionIndex = (chooserSelectionIndex - 1 + count) % max(count, 1)
         case "Enter":
-            isChoosingWindow = false
-            select(windowIndex: chooserSelectionIndex)
+            confirmChooser(index: chooserSelectionIndex)
         case "Escape", "q":
-            isChoosingWindow = false
+            chooser = nil
         default:
-            if let number = Int(keyStroke.key), windows.indices.contains(number) {
-                isChoosingWindow = false
-                select(windowIndex: number)
+            if let number = Int(keyStroke.key), number < count {
+                confirmChooser(index: number)
             }
+        }
+    }
+
+    private func confirmChooser(index: Int) {
+        let selected = chooser
+        chooser = nil
+        switch selected {
+        case .window:
+            select(windowIndex: index)
+        case .session(let names):
+            guard names.indices.contains(index) else {
+                return
+            }
+            attach(sessionName: names[index])
+        case nil:
+            break
         }
     }
 
@@ -207,7 +384,7 @@ final class BrowserWindowModel {
 
     /// キー入力を prefix キーの検出に通し、アプリが消費したかどうかを返す。true なら Web ページへ渡さない
     func handle(keyStroke: KeyStroke) -> Bool {
-        if isChoosingWindow {
+        if chooser != nil {
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
@@ -220,6 +397,7 @@ final class BrowserWindowModel {
             return true
         case .perform(let command):
             perform(command: command)
+            scheduleSave()
             return true
         }
     }
@@ -277,17 +455,29 @@ final class BrowserWindowModel {
             goForward()
         case .reload:
             reload()
+        case .detachClient:
+            detach()
+        case .chooseSession:
+            beginChooseSession()
+        case .renameSession:
+            beginRenameSession()
         }
     }
 
     private func makeWindow() -> PaneWindow {
         let window = PaneWindow()
+        attachCallbacks(window: window)
+        return window
+    }
+
+    private func attachCallbacks(window: PaneWindow) {
         window.onFocusedURLChange = { [weak self, weak window] navigatedURL in
             guard let self, let window, currentWindow === window else {
                 return
             }
             addressText = navigatedURL.absoluteString
             focusedPaneStateVersion += 1
+            scheduleSave()
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {
@@ -295,7 +485,6 @@ final class BrowserWindowModel {
             }
             focusedPaneStateVersion += 1
         }
-        return window
     }
 
     private func syncAddressTextToFocusedPane() {

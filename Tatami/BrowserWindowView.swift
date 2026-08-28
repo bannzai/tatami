@@ -49,8 +49,8 @@ struct BrowserWindowView: View {
                 .accessibilityIdentifier("loadProgress")
             PaneContainer(model: model)
                 .overlay(alignment: .topLeading) {
-                    if model.isChoosingWindow {
-                        windowChooser
+                    if model.chooser != nil {
+                        chooserList
                     }
                 }
             statusLine
@@ -58,11 +58,18 @@ struct BrowserWindowView: View {
         // 2 分割しても各ペインが実用的な幅になる最小サイズとして、一般的なノート PC の画面の半分程度を選んだ
         .frame(minWidth: 800, minHeight: 600)
         .focusedSceneValue(\.browserWindowModel, model)
+        .onAppear {
+            model.activate()
+        }
         .onChange(of: model.prompt) { _, prompt in
             isPromptFocused = prompt != nil
         }
         .onChange(of: model.addressBarFocusRequestCount) {
             isAddressFieldFocused = true
+        }
+        // detach はセッションを保存した上でこの macOS ウィンドウを閉じる。再起動や File > New Window で復元される
+        .onChange(of: model.detachRequestCount) {
+            NSApplication.shared.keyWindow?.close()
         }
         .navigationTitle(model.focusedPageTitle)
         // Info.plist の CFBundleURLTypes (http / https) で他アプリから渡された URL をフォーカス中のペインで開く
@@ -74,8 +81,8 @@ struct BrowserWindowView: View {
     /// tmux の status line に相当する最下段。左にセッション名とウィンドウ一覧、右に prefix 待ち。プロンプト中は入力欄に置き換わる
     private var statusLine: some View {
         HStack {
-            if model.prompt == .renameWindow {
-                Text("(rename-window)")
+            if let prompt = model.prompt {
+                Text(prompt == .renameWindow ? "(rename-window)" : "(rename-session)")
                 TextField("", text: $model.promptText)
                     .textFieldStyle(.plain)
                     .focused($isPromptFocused)
@@ -105,11 +112,11 @@ struct BrowserWindowView: View {
         .accessibilityIdentifier("statusLine")
     }
 
-    /// choose-window の一覧。j / k / 数字 / Enter / Escape はモデルのキー処理で受ける
-    private var windowChooser: some View {
+    /// choose-window / choose-session の一覧。j / k / 数字 / Enter / Escape はモデルのキー処理で受ける
+    private var chooserList: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(model.windows.enumerated()), id: \.offset) { index, window in
-                Text("(\(index)) \(window.name)")
+            ForEach(Array(model.chooserItems.enumerated()), id: \.offset) { index, name in
+                Text("(\(index)) \(name)")
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -122,6 +129,6 @@ struct BrowserWindowView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(8)
-        .accessibilityIdentifier("windowChooser")
+        .accessibilityIdentifier("chooser")
     }
 }

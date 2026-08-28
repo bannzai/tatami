@@ -24,6 +24,29 @@ final class PaneWindow {
         pane.loadInitialURL()
     }
 
+    /// 保存したセッションからの復元。ツリーの葉に対応する URL が無いペインは空ページで補う
+    init(snapshot: SessionSnapshot.Window) {
+        paneTree = snapshot.paneTree
+        renamedName = snapshot.renamedName
+        let urls = Dictionary(snapshot.panes.map { ($0.id, $0.url) }) { first, _ in first }
+        for paneID in paneTree.paneIDs {
+            let pane = makePane(id: paneID, url: urls[paneID] ?? AddressInput.homeURL)
+            panes[paneID] = pane
+            pane.loadInitialURL()
+        }
+    }
+
+    /// 保存用の内容
+    var snapshot: SessionSnapshot.Window {
+        SessionSnapshot.Window(
+            paneTree: paneTree,
+            panes: paneTree.paneIDs.compactMap { paneID in
+                panes[paneID].map { SessionSnapshot.Window.Pane(id: paneID, url: $0.url) }
+            },
+            renamedName: renamedName
+        )
+    }
+
     /// フォーカス中のペインの実体
     var focusedPane: WebPane {
         panes[paneTree.focusedPaneID]!
