@@ -78,6 +78,8 @@ final class BrowserWindowModel {
     private(set) var lastFindText = ""
     /// ページ内検索の結果を n / N で辿っている状態。Escape で抜ける
     private(set) var isFindModeActive = false
+    /// Web コンテンツへフォーカスが移るのを待っている検索語 (find プロンプトの確定で設定し、webContentDidFocus で実行する)
+    private var pendingFindText: String?
     /// 履歴の上限。tmux の history-limit に合わせる意図はなく、上下キーで辿れる現実的な量として選んだ
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
@@ -109,6 +111,8 @@ final class BrowserWindowModel {
     private var proposalPane: WebPane?
     /// 提案を出した時のペインの URL。別のページへ移った後に承認しても、そのページへ充填・保存しない
     private var proposalURL: URL?
+    /// 生成提案を出した時点の文書の世代。同じ URL の別文書 (再読み込み・DOM の置換) へ生成値を入れないために持つ
+    private var proposalGeneration: Int?
     /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
     var browsingData: BrowsingData {
         BrowsingDataStore.shared.data
@@ -690,7 +694,9 @@ final class BrowserWindowModel {
             )
             // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let changed = result.credentials.filter { existingByID[$0.id] != $0 }
+            // 保存対象も id ごとに先頭の 1 件に限る (同じ id の後続要素で更新済みの項目を戻さない)
+            var seenIDs = Set<UUID>()
+            let changed = result.credentials.filter { seenIDs.insert($0.id).inserted && existingByID[$0.id] != $0 }
             var saved = 0
             for credential in changed {
                 do {
@@ -784,11 +790,9 @@ final class BrowserWindowModel {
         case .find:
             lastFindText = promptText
             isFindModeActive = !promptText.isEmpty
-            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて Web コンテンツへフォーカスが戻った後に検索する
-            let text = promptText
-            Task { @MainActor [weak self] in
-                self?.find(text: text)
-            }
+            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて
+            // Web コンテンツへフォーカスが実際に移った後 (webContentDidFocus) に検索する
+            pendingFindText = promptText
         case nil:
             break
         }
@@ -801,6 +805,18 @@ final class BrowserWindowModel {
             return
         }
         closePrompt()
+    }
+
+    /// PaneContainer が Web コンテンツを first responder にした直後に呼ばれる。フォーカス待ちの検索をここで実行する
+    func webContentDidFocus() {
+        guard let text = pendingFindText else {
+            return
+        }
+        pendingFindText = nil
+        // SwiftUI の更新中に状態を変えないよう、次のターンで検索する (フォーカス自体は既に移っている)
+        Task { @MainActor [weak self] in
+            self?.find(text: text)
+        }
     }
 
     /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
@@ -868,11 +884,19 @@ final class BrowserWindowModel {
             statusMessage = "資格情報を読めない: \(error)"
             return
         }
-        // ユーザー名の無い変更フォーム (現在・新規・確認だけ) では、現在のパスワードが一致する既存の項目を更新対象にする
-        let matched = existing.first(where: { $0.username == username })
-            ?? (username.isEmpty && !currentPassword.isEmpty ? existing.first(where: { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }) : nil)
+        // ユーザー名の無い変更フォーム (現在・新規・確認だけ) では、現在のパスワードが一致する既存の項目を更新対象にする。
+        // 同じ現在のパスワードを使う項目が複数あればどのアカウントか判別できないため、更新を提案しない (誤った項目を上書きしない)
+        let byCurrentPassword = username.isEmpty && !currentPassword.isEmpty
+            ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
+            : []
+        let matched = existing.first(where: { $0.username == username }) ?? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
+        if username.isEmpty, byCurrentPassword.count > 1 {
+            statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
+            return
+        }
         if let same = matched {
-            guard same.password != password else {
+            // 正規化形だけが違う値は別のパスワードとして扱う (サーバーが受け取るバイト列が異なる) ため、スカラー値で比較する
+            guard !same.password.unicodeScalars.elementsEqual(password.unicodeScalars) else {
                 // 保存済みの正しいパスワードで送り直した時は、その前の誤ったパスワードの提案を残さない
                 if proposalPane === pane {
                     dismissProposal()
@@ -898,6 +922,7 @@ final class BrowserWindowModel {
         }
         proposalPane = pane
         proposalURL = pane.url
+        proposalGeneration = pane.documentGeneration
         proposal = .generatePassword
     }
 
@@ -908,6 +933,7 @@ final class BrowserWindowModel {
         }
         proposalPane = pane
         proposalURL = pane.url
+        proposalGeneration = pane.documentGeneration
         proposal = .generatePassword
     }
 
@@ -918,14 +944,13 @@ final class BrowserWindowModel {
         }
         let pane = proposalPane
         let url = proposalURL
+        let generation = proposalGeneration
         self.proposal = nil
         proposalPane = nil
         proposalURL = nil
-        // 提案を出した後に別のページへ移っていたら、そのページへは充填・保存しない
-        if let pane, let url, pane.url != url {
-            statusMessage = "ページが変わったため提案を取り消した"
-            return
-        }
+        proposalGeneration = nil
+        // 保存・更新の提案は送信時に捕捉済みの値なので、送信後の遷移 (ダッシュボードへのリダイレクト等) の後でも承認できる。
+        // ページの同一性を確かめるのは、現在の文書へ充填する生成提案だけ
         switch proposal {
         case .save(let url, let username, let password):
             do {
@@ -948,7 +973,17 @@ final class BrowserWindowModel {
             guard let pane else {
                 return
             }
+            // 提案を出した後に別のページや同じ URL の別文書へ移っていたら、そのフォームへは入れない
+            guard pane.url == url, pane.documentGeneration == generation else {
+                statusMessage = "ページが変わったため提案を取り消した"
+                return
+            }
             Task { @MainActor [weak self] in
+                // 非同期に入るまでに文書が置き換わっていることがあるため、JavaScript を呼ぶ直前にも世代を確かめる
+                guard pane.documentGeneration == generation else {
+                    self?.statusMessage = "ページが変わったため提案を取り消した"
+                    return
+                }
                 do {
                     let filled = try await pane.fillNewPassword(password)
                     self?.statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
@@ -964,12 +999,14 @@ final class BrowserWindowModel {
         proposal = nil
         proposalPane = nil
         proposalURL = nil
+        proposalGeneration = nil
     }
 
     /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
     func generatePassword() {
         proposalPane = currentWindow.focusedPane
         proposalURL = currentWindow.focusedPane.url
+        proposalGeneration = currentWindow.focusedPane.documentGeneration
         proposal = .generatePassword
         acceptProposal()
     }
@@ -1053,8 +1090,11 @@ final class BrowserWindowModel {
         Task { @MainActor [weak self] in
             // 非同期に入るまでにリダイレクトや History API の遷移が起きていることがあるため、JavaScript を呼ぶ直前に
             // トップレベルと充填先フレーム (別オリジンの iframe に欄がある場合) の URL を改めて照合する
-            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
-                  let frameURL = pane.loginFormURL, CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
+            // 充填先が iframe の場合はトップレベルの候補検索 (同じ eTLD+1 を許す) より厳しく、資格情報と同じオリジンだけに渡す
+            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url), let frameURL = pane.loginFormURL,
+                  pane.isLoginFormInSubframe
+                    ? CredentialMatcher.sameOrigin(credentialURL: credential.url, pageURL: frameURL)
+                    : CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
                 self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
                 return
             }
@@ -1120,7 +1160,8 @@ final class BrowserWindowModel {
             BrowsingDataStore.shared.removeBookmark(url: pane.url)
             statusMessage = "ブックマークを解除した: \(pane.url.absoluteString)"
         } else {
-            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString)
+            // 読み込み中はタイトルが未確定のためホスト名を仮に入れ、確定したら置き換える
+            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString, isTitleProvisional: pane.title == nil)
             statusMessage = "ブックマークした: \(pane.url.absoluteString)"
         }
     }

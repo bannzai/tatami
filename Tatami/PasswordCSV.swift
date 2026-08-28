@@ -131,7 +131,8 @@ enum PasswordCSV {
                             isClosed = true
                             break
                         }
-                        if character == "\n" {
+                        // 行番号は LF・CRLF・単独 CR をそれぞれ 1 行として数える (レコード区切りの扱いと揃える)
+                        if character == "\n" || (character == "\r" && characters[safe: index + 1] != "\n") {
                             lineNumber += 1
                         }
                         field.unicodeScalars.append(character)
@@ -254,10 +255,31 @@ enum PasswordImporter {
     /// 両方で持つことがあるため、URL 全体ではなくホスト名 (小文字) とユーザー名で照合する
     /// 突き合わせのキー。同じホストでもスキームやポートが違えば別のログイン先なのでオリジン (scheme + host + port) 単位にし、パスは無視する
     /// (Chrome はログインページとサイトのトップを同じサイトとして持つことがあるため)。既定ポートの明示 (https の 443 等) は省略と同一視する
+    /// IP アドレスのホストは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]`、`::ffff:127.0.0.1` 等) が揃わないため、アドレスとして解釈して標準形にする。
+    /// 名前のホストはそのまま返す
+    static func normalizedHost(host: String) -> String {
+        let bare = host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, bare, &v6) == 1 {
+            var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+            if inet_ntop(AF_INET6, &v6, &buffer, socklen_t(INET6_ADDRSTRLEN)) != nil {
+                return "[\(String(cString: buffer))]"
+            }
+        }
+        var v4 = in_addr()
+        if inet_pton(AF_INET, bare, &v4) == 1 {
+            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            if inet_ntop(AF_INET, &v4, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
+                return String(cString: buffer)
+            }
+        }
+        return host
+    }
+
     private static func matchKey(url: URL, username: String) -> String {
         let scheme = url.scheme?.lowercased() ?? ""
         // IDN は Unicode 表記 (percent-encoded で返る) と punycode (`xn--`) で表現が分かれるため、常に IDNA の ASCII 形に揃える
-        let host = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? "").lowercased()
+        let host = PasswordImporter.normalizedHost(host: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? "").lowercased())
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
         // ユーザー名は正規化形だけが違う値を別アカウントとして扱えるよう、String の等価 (正規化を無視する) ではなくスカラー値の列で表す。

@@ -13,6 +13,17 @@ enum CredentialMatcher {
         return rules.registrableDomain(host: lowered)
     }
 
+    /// 資格情報の URL と充填先フレームの URL が同じオリジン (scheme・host・port の完全一致) か。
+    /// iframe への充填はこの条件に限る (同じ eTLD+1 の別サブドメインの iframe に資格情報を渡さない)
+    static func sameOrigin(credentialURL: URL, pageURL: URL) -> Bool {
+        guard let credentialHost = credentialURL.host()?.lowercased(), let pageHost = pageURL.host()?.lowercased(), !credentialHost.isEmpty else {
+            return false
+        }
+        return credentialHost == pageHost
+            && credentialURL.scheme?.lowercased() == pageURL.scheme?.lowercased()
+            && port(url: credentialURL) == port(url: pageURL)
+    }
+
     /// 資格情報の URL がページの URL に対して候補になるか
     static func matches(credentialURL: URL, pageURL: URL, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> Bool {
         guard let credentialHost = credentialURL.host()?.lowercased(), let pageHost = pageURL.host()?.lowercased(),

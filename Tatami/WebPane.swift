@@ -44,7 +44,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// scheme + host + port のオリジン文字列
     static func origin(url: URL) -> String {
-        "\(url.scheme?.lowercased() ?? "")://\(url.host()?.lowercased() ?? ""):\(url.port.map(String.init) ?? "")"
+        let scheme = url.scheme?.lowercased() ?? ""
+        // 既定ポートの明示 (https の 443・http の 80) は省略と同じオリジン
+        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
+        return "\(scheme)://\(url.host()?.lowercased() ?? ""):\(port)"
     }
     /// Web ページ内のテキスト入力 (input / textarea / contentEditable) にフォーカスがあるか。提案の y / n を横取りしないために使う
     private(set) var isEditingText = false
@@ -52,7 +56,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 別のサイトへ移った (オリジンが変わった) 時は使わない
     private(set) var pendingUsername: (username: String, origin: String)?
     /// フレームごとの新規パスワード欄の有無。ペイン全体の有無はいずれかのフレームが true か
-    private var newPasswordFrames: Set<String> = []
+    private var newPasswordFrames: [String: WKFrameInfo] = [:]
+    /// テキスト入力中のフレーム。いずれかのフレームで入力中ならペインとして入力中 (後から読み込まれた iframe の false で上書きしない)
+    private var editingFrames: Set<String> = []
+    /// 表示中の文書の世代。同じ URL への再読み込みや別文書への置換を検出するため、didCommit のたびに進める
+    private(set) var documentGeneration = 0
     /// サインアップ用のパスワード欄が現れた / 消えた時の通知先
     var onNewPasswordFormChange: ((Bool) -> Void)?
 
@@ -160,6 +168,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func load(url: URL) {
+        // アドレスバーやブックマークからの読み込みは利用者の操作なので、復元に伴う訪問の抑止を終える
+        isSuppressingRestoredVisits = false
         webView.load(URLRequest(url: url))
     }
 
@@ -225,26 +235,39 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
     }
 
-    /// パスワード欄を検出したフレーム。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する
-    private var loginFormFrame: WKFrameInfo?
+    /// パスワード欄を検出したフレーム (フレームの URL ごと)。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する。
+    /// フレームごとに持つのは、欄が消えた iframe の false 通知で他のフレームの欄を見失わないため
+    private var loginFormFrames: [String: WKFrameInfo] = [:]
+
+    /// 充填先のフレーム。トップレベルに欄があればそれを優先し、無ければ検出済みの iframe
+    private var loginFormFrame: WKFrameInfo? {
+        loginFormFrames.values.first(where: \.isMainFrame) ?? loginFormFrames.values.first
+    }
+
+    /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため URL で対応付ける)
+    private static func frameKey(frame: WKFrameInfo) -> String {
+        frame.request.url?.absoluteString ?? (frame.isMainFrame ? "main" : "frame")
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
         }
-        if body["hasPassword"] as? Bool == true {
-            loginFormFrame = message.frameInfo
-        }
         if let hasPassword = body["hasPassword"] as? Bool {
-            hasLoginForm = hasPassword
+            if hasPassword {
+                loginFormFrames[WebPane.frameKey(frame: message.frameInfo)] = message.frameInfo
+            } else {
+                loginFormFrames.removeValue(forKey: WebPane.frameKey(frame: message.frameInfo))
+            }
+            hasLoginForm = !loginFormFrames.isEmpty
         }
         if let hasNewPassword = body["hasNewPassword"] as? Bool {
             // フレームごとに保持し、いずれかのフレームにあればペイン全体としてある (遅れて読み込まれた iframe の false で消さない)
             let frameKey = message.frameInfo.request.url?.absoluteString ?? (message.frameInfo.isMainFrame ? "main" : "frame")
             if hasNewPassword {
-                newPasswordFrames.insert(frameKey)
+                newPasswordFrames[frameKey] = message.frameInfo
             } else {
-                newPasswordFrames.remove(frameKey)
+                newPasswordFrames.removeValue(forKey: frameKey)
             }
             let aggregated = !newPasswordFrames.isEmpty
             if aggregated != hasNewPasswordForm {
@@ -253,7 +276,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             }
         }
         if let editing = body["editing"] as? Bool {
-            isEditingText = editing
+            if editing {
+                editingFrames.insert(WebPane.frameKey(frame: message.frameInfo))
+            } else {
+                editingFrames.remove(WebPane.frameKey(frame: message.frameInfo))
+            }
+            isEditingText = !editingFrames.isEmpty
         }
         if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = message.frameInfo.request.url {
             pendingUsername = (usernameOnly, WebPane.origin(url: frameURL))
@@ -273,12 +301,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// 生成したパスワードをページの全てのパスワード欄 (新規と確認) に入れる
+    /// 生成したパスワードを、新規パスワード欄を検出したフレームの全てのパスワード欄 (新規と確認) に入れる
+    /// (最後にパスワード欄を通知した別フレームのログイン欄へ入れない)
     func fillNewPassword(_ password: String) async throws -> Bool {
         let result = try await webView.callAsyncJavaScript(
             "return window.__tatamiFillNewPassword(password);",
             arguments: ["password": password],
-            in: loginFormFrame,
+            in: newPasswordFrames.values.first(where: \.isMainFrame) ?? newPasswordFrames.values.first ?? loginFormFrame,
             contentWorld: LoginFormScript.contentWorld
         )
         return result as? Bool ?? false
@@ -287,6 +316,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// パスワード欄を検出したフレームの URL (無ければトップレベル)。充填先のオリジンの照合に使う
     var loginFormURL: URL? {
         loginFormFrame?.request.url ?? webView.url
+    }
+
+    /// 充填先が iframe (トップレベルでない) か。iframe へは資格情報と同じオリジンの時だけ充填する
+    var isLoginFormInSubframe: Bool {
+        loginFormFrame.map { !$0.isMainFrame } ?? false
     }
 
     /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
@@ -390,15 +424,16 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard navigation !== certificateWarningNavigation else {
             return
         }
-        // 復元のナビゲーション以外 (ユーザー起点) が始まったら、復元に付随する遷移の抑止を終える
-        if navigation !== restoringNavigation {
-            isSuppressingRestoredVisits = false
-        }
-        // 別のページへ移る時は、前のページで集めた新規パスワード欄の状態を捨てる (ユーザー名はオリジンで照合するため残す)
+        // 別のページへ移る時は、前のページで集めた新規パスワード欄・編集中の状態を捨てる (ユーザー名はオリジンで照合するため残す)
         newPasswordFrames.removeAll()
+        editingFrames.removeAll()
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        documentGeneration += 1
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -412,6 +447,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
         restoringNavigation = nil
         notifyVisitIfWebPage()
+        // 読み込み中は title を nil にしているため、その間の document.title の変化は通知されない。完了時点の確定タイトルをここで通知する
+        if let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, let title {
+            onTitleChange?(url, title)
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
@@ -442,7 +481,17 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
-        (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
+        // 復元したページの自動遷移 (location 変更・meta refresh・認証リダイレクト) は復元の一部として履歴に記録しない。
+        // 利用者の操作 (リンク・フォーム送信・戻る/進む・再読み込み) が起きた時点で抑止を終える
+        switch navigationAction.navigationType {
+        case .linkActivated, .formSubmitted, .formResubmitted, .backForward, .reload:
+            isSuppressingRestoredVisits = false
+        case .other:
+            break
+        @unknown default:
+            break
+        }
+        return (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
