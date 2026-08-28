@@ -19,6 +19,20 @@ struct BrowsingDataTests {
         #expect(data.history.first?.title == "\(BrowsingData.historyLimit + 9)")
     }
 
+    @Test func updateTitleKeepsOrderAndVisitDate() {
+        var data = BrowsingData()
+        data.recordVisit(url: URL(string: "https://a.example/")!, title: "A", date: base)
+        data.recordVisit(url: URL(string: "https://b.example/")!, title: "B", date: base.addingTimeInterval(1))
+        let updated = data.updateTitle(url: URL(string: "https://a.example/")!, title: "A (3)")
+        #expect(updated)
+        #expect(data.history.map(\.title) == ["B", "A (3)"])
+        #expect(data.history[1].visitedAt == base)
+        let unchanged = data.updateTitle(url: URL(string: "https://a.example/")!, title: "A (3)")
+        #expect(!unchanged)
+        let missing = data.updateTitle(url: URL(string: "https://zzz.example/")!, title: "Z")
+        #expect(!missing)
+    }
+
     @Test func bookmarksAreUniqueByURL() {
         var data = BrowsingData()
         let url = URL(string: "https://a.example/")!
