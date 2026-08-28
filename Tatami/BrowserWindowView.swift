@@ -43,6 +43,10 @@ struct BrowserWindowView: View {
                 TextField("", text: $model.promptText)
                     .textFieldStyle(.plain)
                     .focused($isPromptFocused)
+                    // onChange(of: prompt) と同じ更新で入力欄が現れる時に FocusState の反映が抜けることがあるため、出現時にも求める
+                    .onAppear {
+                        isPromptFocused = true
+                    }
                     .accessibilityIdentifier("promptField")
                     .onSubmit {
                         model.commitPrompt()
