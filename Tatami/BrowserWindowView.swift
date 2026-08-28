@@ -83,6 +83,7 @@ struct BrowserWindowView: View {
         HStack {
             if let prompt = model.prompt {
                 Text(prompt == .renameWindow ? "(rename-window)" : "(rename-session)")
+                    .accessibilityIdentifier("promptLabel")
                 TextField("", text: $model.promptText)
                     .textFieldStyle(.plain)
                     .focused($isPromptFocused)
