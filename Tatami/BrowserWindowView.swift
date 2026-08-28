@@ -40,6 +40,7 @@ struct BrowserWindowView: View {
         HStack {
             if model.prompt == .renameWindow {
                 Text("(rename-window)")
+                    .accessibilityIdentifier("promptLabel")
                 TextField("", text: $model.promptText)
                     .textFieldStyle(.plain)
                     .focused($isPromptFocused)

@@ -35,6 +35,8 @@ final class BrowserWindowModel {
     private(set) var isChoosingWindow = false
     /// choose-window の一覧で選択中の添字
     private(set) var chooserSelectionIndex = 0
+    /// フォーカス中のペインの Web コンテンツを first responder にする要求。プロンプトを閉じた後などに使う
+    private(set) var webContentFocusRequestCount = 0
 
     init() {
         windows = []
@@ -105,6 +107,11 @@ final class BrowserWindowModel {
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
     func killCurrentWindow() {
         let closingIndex = currentWindowIndex
+        // 閉じるウィンドウが名前変更の対象なら入力先が無くなるためプロンプトを閉じ、一覧は添字がずれるため閉じる
+        if promptTargetWindow === currentWindow {
+            cancelPrompt()
+        }
+        isChoosingWindow = false
         windows.remove(at: closingIndex)
         if windows.isEmpty {
             windows = [makeWindow()]
@@ -132,12 +139,18 @@ final class BrowserWindowModel {
         case nil:
             break
         }
-        prompt = nil
+        closePrompt()
     }
 
     func cancelPrompt() {
+        closePrompt()
+    }
+
+    /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
+    private func closePrompt() {
         prompt = nil
         promptTargetWindow = nil
+        webContentFocusRequestCount += 1
     }
 
     /// ウィンドウ一覧 (prefix + w) を開く
