@@ -1,0 +1,13 @@
+.DS_Store
+xcuserdata/
+*.xcuserstate
+build/
+DerivedData/
+tmp/
+.claude/settings.local.json
+# 環境固有の値 (Tailscale OIDC の識別子など)。public リポジトリのためコミットしない
+.envrc
+# simtunnel mcp-config が worktree ごとに書き込む接続設定 (セッション固有のためコミットしない)
+.mcp.json
+# ローカルの署名・ビルド設定の上書き用 (実値をコミットしない)
+Config.local.xcconfig
