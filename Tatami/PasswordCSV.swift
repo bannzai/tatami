@@ -255,7 +255,8 @@ enum PasswordImporter {
     /// (Chrome はログインページとサイトのトップを同じサイトとして持つことがあるため)。既定ポートの明示 (https の 443 等) は省略と同一視する
     private static func matchKey(url: URL, username: String) -> String {
         let scheme = url.scheme?.lowercased() ?? ""
-        let host = url.host()?.lowercased() ?? ""
+        // IDN は Unicode 表記 (percent-encoded で返る) と punycode (`xn--`) で表現が分かれるため、常に IDNA の ASCII 形に揃える
+        let host = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? "").lowercased()
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
         // オリジンの各要素に改行は現れないため、区切りに使ってもユーザー名との境界が曖昧にならない

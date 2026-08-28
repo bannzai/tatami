@@ -671,11 +671,16 @@ final class BrowserWindowModel {
             let exportable = PasswordImporter.exportable(credentials: try credentialStore.all())
             let credentials = exportable.rows
             let text = PasswordCSV.serialize(rows: PasswordImporter.rows(credentials: credentials))
-            // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう、排他的な新規作成にする
-            try Data(text.utf8).write(to: fileURL, options: .withoutOverwriting)
+            // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう排他的に新規作成し、
+            // 作成時点から本人だけが読める権限 (0600) にする (後から権限を落とすと、その間に開かれたディスクリプタから読めてしまう)
+            let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             do {
-                // 本人だけが読める権限に落とす。落とせなかった平文ファイルは残さない
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: filePath)
+                try handle.write(contentsOf: Data(text.utf8))
+                try handle.close()
             } catch {
                 try? FileManager.default.removeItem(at: fileURL)
                 throw error
