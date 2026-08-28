@@ -24,6 +24,8 @@ final class BrowserWindowModel {
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
     private static let lastSessionNameKey = "lastSessionName"
+    /// 復元したペインの読み込みを activate() まで遅らせている間 true。表示されないモデル (重複セッションの判定で捨てられる等) が通信を始めないようにする
+    private var hasPendingRestoredLoad = false
     /// 表示中 (activate 済み) のモデルが開いているセッション名。同じセッションを別々のモデルで同時に開くと、古い側の保存が新しい状態を上書きするため、
     /// 2 つ目以降は新しいセッションで始める
     private static var openSessionNames: Set<String> = []
@@ -392,6 +394,8 @@ final class BrowserWindowModel {
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
     func beginRenameWindow() {
+        // メニューから開いた時に prefix 待ちが残っていると、名前の最初の文字がコマンドとして消費されるため取り消す
+        cancelPrefix()
         promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
@@ -533,12 +537,17 @@ final class BrowserWindowModel {
 
     /// ウィンドウ一覧 (prefix + w) を開く
     func beginChooseWindow() {
+        // 一覧と名前変更のプロンプトは排他にする (両方が開くと入力の宛先が曖昧になる)
+        cancelPrompt()
+        cancelPrefix()
         chooserSelectionIndex = currentWindowIndex
         chooser = .window
     }
 
     /// セッション一覧 (prefix + s) を開く。現在のセッションも保存して一覧に含める
     func beginChooseSession() {
+        cancelPrompt()
+        cancelPrefix()
         saveNow()
         let names = SessionStore.sessionNames()
         chooserSelectionIndex = names.firstIndex(of: sessionName) ?? 0
@@ -615,6 +624,10 @@ final class BrowserWindowModel {
             return false
         }
         if chooser != nil {
+            // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
+            if keyStroke.modifiers.contains(.command) {
+                return false
+            }
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
@@ -697,7 +710,11 @@ final class BrowserWindowModel {
         case .commandPrompt:
             beginCommandPrompt()
         case .sourceFile(let path):
-            reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL, requireFile: path != nil)
+            // 相対パスは設定ファイルのディレクトリを基準にする (GUI から起動したアプリのカレントディレクトリは当てにならない)
+            reload(
+                configFileURL: path.map { URL(filePath: TatamiConfigParser.resolvedIncludePath(path: $0, baseDirectory: TatamiConfigLoader.defaultFileURL.deletingLastPathComponent().path(percentEncoded: false))) } ?? TatamiConfigLoader.defaultFileURL,
+                requireFile: path != nil
+            )
         }
     }
 
