@@ -156,10 +156,10 @@ struct PaneContainer: NSViewRepresentable {
         let view = PaneContainerView()
         view.setAccessibilityIdentifier("paneContainer")
         view.onDividerDrag = { dividerPath, delta in
-            model.resize(dividerPath: dividerPath, delta: delta)
+            model.currentWindow.resize(dividerPath: dividerPath, delta: delta)
         }
         view.onPaneClick = { paneID in
-            model.focus(paneID: paneID)
+            model.currentWindow.focus(paneID: paneID)
         }
         view.onKeyDown = { keyStroke in
             model.handle(keyStroke: keyStroke)
@@ -168,6 +168,6 @@ struct PaneContainer: NSViewRepresentable {
     }
 
     func updateNSView(_ view: PaneContainerView, context: Context) {
-        view.apply(paneTree: model.paneTree, webViews: model.panes.mapValues(\.webView))
+        view.apply(paneTree: model.currentWindow.paneTree, webViews: model.currentWindow.panes.mapValues(\.webView))
     }
 }
