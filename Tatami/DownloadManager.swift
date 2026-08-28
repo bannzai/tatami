@@ -7,8 +7,23 @@ import WebKit
 final class DownloadManager: NSObject, WKDownloadDelegate {
     static let shared = DownloadManager()
 
-    /// 進捗・完了・失敗の通知先 (status line)。表示中のウィンドウが登録する
-    var onMessage: ((String) -> Void)?
+    /// 進捗・完了・失敗の通知先 (status line)。表示中の全ウィンドウに配る (どのウィンドウから始めたダウンロードでも見える)。
+    /// 弱参照で持ち、閉じたウィンドウは自然に外れる
+    private let subscribers = NSHashTable<BrowserWindowModel>.weakObjects()
+
+    func subscribe(model: BrowserWindowModel) {
+        subscribers.add(model)
+    }
+
+    func unsubscribe(model: BrowserWindowModel) {
+        subscribers.remove(model)
+    }
+
+    private func onMessage(_ message: String) {
+        for model in subscribers.allObjects {
+            model.showDownloadMessage(message)
+        }
+    }
 
     /// 1 つのダウンロードの保存先と進捗の監視
     private final class Entry {
@@ -40,23 +55,23 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
                 guard self.entries[download] != nil else {
                     return
                 }
-                self.onMessage?("ダウンロード中 \(percent)%: \(destinationURL.lastPathComponent)")
+                self.onMessage("ダウンロード中 \(percent)%: \(destinationURL.lastPathComponent)")
             }
         }
         entries[download] = entry
-        onMessage?("ダウンロード開始: \(destinationURL.lastPathComponent)")
+        onMessage("ダウンロード開始: \(destinationURL.lastPathComponent)")
         return destinationURL
     }
 
     func downloadDidFinish(_ download: WKDownload) {
         if let entry = entries.removeValue(forKey: download) {
-            onMessage?("ダウンロード完了: \(entry.destinationURL.path(percentEncoded: false))")
+            onMessage("ダウンロード完了: \(entry.destinationURL.path(percentEncoded: false))")
         }
     }
 
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         let name = entries.removeValue(forKey: download)?.destinationURL.lastPathComponent ?? ""
-        onMessage?("ダウンロード失敗: \(name) \(error.localizedDescription)")
+        onMessage("ダウンロード失敗: \(name) \(error.localizedDescription)")
     }
 
     /// 既存のファイルと、進行中のダウンロードが予約した保存先を避けて `name (2).ext` のように連番を付ける
