@@ -505,9 +505,10 @@ final class BrowserWindowModel {
             navigate(text: text)
         case "find":
             find(text: arguments.joined(separator: " "))
-        case "source-file" where arguments.isEmpty:
-            perform(command: .sourceFile(nil))
-        case "set", "bind", "bind-key", "unbind", "unbind-key", "source-file":
+        case "source-file":
+            // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
+            perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
+        case "set", "bind", "bind-key", "unbind", "unbind-key":
             let errors = TatamiConfigStore.shared.apply(line: line)
             applyConfigToAllWindows()
             statusMessage = TatamiConfigError.statusMessage(errors: errors)
@@ -531,11 +532,12 @@ final class BrowserWindowModel {
     /// ページ内検索 (find)。空文字なら検索の強調を消す。結果が無ければ status line に知らせる
     func find(text: String) {
         let webView = currentWindow.focusedPane.webView
+        // 空文字は検索の解除。保留中の検索の完了で古い結果を表示しないよう世代も進める
+        findGeneration += 1
         guard !text.isEmpty else {
             webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
             return
         }
-        findGeneration += 1
         let generation = findGeneration
         webView.find(text) { [weak self, weak webView] result in
             // 完了までにペインやウィンドウが移っていたら、古い WebView の結果で status line を更新しない
@@ -556,8 +558,12 @@ final class BrowserWindowModel {
         case .command:
             // 実行するコマンドが次のプロンプト (rename-window 等) を開くことがあるため、先にこのプロンプトを閉じてから実行する
             let commandLine = promptText
-            closePrompt()
+            closePrompt(refocusWebContent: false)
             execute(commandLine: commandLine)
+            // 実行したコマンドが次のプロンプトを開いた時はそちらへ入力を残し、開かなかった時だけ Web コンテンツへフォーカスを戻す
+            if prompt == nil {
+                webContentFocusRequestCount += 1
+            }
             scheduleSave()
             return
         case nil:
@@ -575,10 +581,12 @@ final class BrowserWindowModel {
     }
 
     /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
-    private func closePrompt() {
+    private func closePrompt(refocusWebContent: Bool = true) {
         prompt = nil
         promptTargetWindow = nil
-        webContentFocusRequestCount += 1
+        if refocusWebContent {
+            webContentFocusRequestCount += 1
+        }
     }
 
     /// ウィンドウ一覧 (prefix + w) を開く
@@ -673,6 +681,10 @@ final class BrowserWindowModel {
     /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す。一覧やプロンプトのキー操作は主な解釈 (先頭の候補) で行う
     func handle(keyStrokes: [KeyStroke]) -> Bool {
         guard let keyStroke = keyStrokes.first else {
+            return false
+        }
+        // プロンプト (コマンド・名前変更) の入力中は prefix も含めて全てのキーを入力欄へ渡す (prefix と同じ文字を入力できるように)
+        if prompt != nil {
             return false
         }
         if chooser != nil {
