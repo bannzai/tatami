@@ -347,6 +347,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard navigation !== certificateWarningNavigation else {
             return
         }
+        // 別のページへ移る時は、破棄される旧文書のフレーム情報 (false 通知は届かない) を捨てる
+        loginFormFrames.removeAll()
+        hasLoginForm = false
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
