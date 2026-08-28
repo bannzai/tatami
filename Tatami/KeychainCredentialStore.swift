@@ -67,6 +67,10 @@ final class KeychainCredentialStore: CredentialStore {
         item.merge(attributes) { _, new in new }
         // ロック中の Mac では読めなくてよい (充填はアンロック中にしか行わない) が、初回アンロック後は常に読める必要がある
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // 新規の項目だけを共有 group に置く (拡張 #17 と共有するため)。既存の項目の group は変えない
+        if let accessGroup {
+            item[kSecAttrAccessGroup as String] = accessGroup
+        }
         let addStatus = SecItemAdd(item as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw KeychainError(status: addStatus)
@@ -86,16 +90,14 @@ final class KeychainCredentialStore: CredentialStore {
         try all().filter { $0.host == host.lowercased() }
     }
 
-    /// 全操作に共通する属性。synchronizable を明示しないと同期アイテムが検索から漏れるため、検索にも kSecAttrSynchronizable を付ける
+    /// 全操作に共通する属性。synchronizable を明示しないと同期アイテムが検索から漏れるため、検索にも kSecAttrSynchronizable を付ける。
+    /// access group は検索・更新・削除には指定しない (指定しないとアプリが読める全ての group が対象になるため、ad-hoc 署名で保存した
+    /// group なしの項目と Team 署名で保存した共有 group の項目の両方が見え、署名方式を切り替えても資格情報を失わない)
     private func baseQuery() -> [String: Any] {
-        var query: [String: Any] = [
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: KeychainCredentialStore.service,
             kSecAttrSynchronizable as String: true,
         ]
-        if let accessGroup {
-            query[kSecAttrAccessGroup as String] = accessGroup
-        }
-        return query
     }
 }
