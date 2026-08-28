@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- GENERATE_INFOPLIST_FILE = YES の生成内容にマージされる部分 Info.plist。
+	     CFBundleURLTypes は INFOPLIST_KEY_* build setting で表現できないためここに置く。
+	     http / https を宣言することで、既定ブラウザの候補になり他アプリからの URL オープンを受けられる。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Web site URL</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>http</string>
+				<string>https</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
+	<!-- ブラウザとして http:// のサイトも表示するため、ATS の緩和を WKWebView の Web コンテンツに限定して許可する。
+	     アプリ自身の URLSession 通信 (将来の更新確認等) は ATS の既定のまま https に限る。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

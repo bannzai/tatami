@@ -1,0 +1,50 @@
+# macOS アプリを GitHub Actions の macOS runner の GUI セッション上で起動し、Tailscale (simtunnel) 経由で
+# ローカルから操作・スクリーンショット取得するための caller workflow。実体は bannzai/simtunnel の
+# macos-session.yml (reusable workflow)。使い方は /macos-simtunnel skill と
+# https://github.com/bannzai/simtunnel の PROJECT.md「macOS アプリの操作（WebDriverAgentMac）」を参照。
+# 起動例:
+#   SIMTUNNEL_REPO=bannzai/tatami SIMTUNNEL_WORKFLOW=macos-app-session.yml \
+#     ~/ghq/github.com/bannzai/simtunnel/local/simtunnel up tatami --wait
+name: macos-app-session
+# run-name は local/simtunnel CLI が run を特定するキー（session=<name> で始める必要がある）
+run-name: "session=${{ inputs.session }} runner=${{ inputs.runner }}"
+
+on:
+  workflow_dispatch: # fork PR に Secrets を渡さないため workflow_dispatch のみ
+    # session / device / duration_minutes は local/simtunnel の up が常に送るため宣言必須
+    # （未定義の input を送ると dispatch が拒否される）
+    inputs:
+      session:
+        description: "セッション名。tailnet ホスト名 simtunnel-<session> になる（小文字英数字とハイフンのみ）"
+        required: true
+        default: tatami
+      device:
+        description: "（macOS では未使用。local CLI 互換のため）"
+        required: false
+        default: "-"
+      duration_minutes:
+        description: "セッション維持時間（分）"
+        required: true
+        default: "60"
+      runner:
+        description: "実行する macOS runner ラベル。最小デプロイターゲットが macOS 26 のため macos-26 を既定にする"
+        required: false
+        default: macos-26
+
+jobs:
+  session:
+    # id-token: write が必要なのは reusable workflow を呼ぶこの job だけのため、job 単位で最小権限にする
+    permissions:
+      id-token: write # Tailscale の OIDC (workload identity federation) 認証に必要
+      contents: read
+    # タグ運用はしないため main の commit SHA で固定する（更新時は SHA を書き換える）
+    uses: bannzai/simtunnel/.github/workflows/macos-session.yml@c4013f4b664de1e4373b2aca6afc48584e759344 # main 2026-08-28
+    with:
+      session: ${{ inputs.session }}
+      runner: ${{ inputs.runner }}
+      duration_minutes: ${{ inputs.duration_minutes }}
+      build_project: Tatami.xcodeproj
+      build_scheme: Tatami
+    secrets:
+      TS_OIDC_CLIENT_ID: ${{ secrets.TS_OIDC_CLIENT_ID }}
+      TS_OIDC_AUDIENCE: ${{ secrets.TS_OIDC_AUDIENCE }}

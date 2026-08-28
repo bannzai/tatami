@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tatami - tmux のキーバインドで動く macOS のタイル型ブラウザ</title>
+<meta name="description" content="Tatami は prefix + 1 打鍵でペインを分割・移動する、tmux ユーザーのための macOS ネイティブブラウザ。設定は tatami.conf、パスワードマネージャー内蔵。収益化なし・データはすべて端末内。" />
+<link rel="canonical" href="https://bannzai.github.io/tatami/" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Tatami" />
+<meta property="og:title" content="Tatami - tmux のキーバインドで動く macOS のタイル型ブラウザ" />
+<meta property="og:description" content="prefix + &quot; で上下分割、prefix + % で左右分割、prefix + o で次のペインへ。tmux の指の記憶のままブラウザを操作する。" />
+<meta property="og:url" content="https://bannzai.github.io/tatami/" />
+<meta property="og:image" content="https://bannzai.github.io/tatami/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Tatami - tmux のキーバインドで動く macOS のタイル型ブラウザ" />
+<meta name="twitter:description" content="prefix + &quot; で上下分割、prefix + % で左右分割、prefix + o で次のペインへ。tmux の指の記憶のままブラウザを操作する。" />
+<meta name="twitter:image" content="https://bannzai.github.io/tatami/og.png" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Tatami",
+  "operatingSystem": "macOS 26",
+  "applicationCategory": "BrowserApplication",
+  "url": "https://bannzai.github.io/tatami/",
+  "image": "https://bannzai.github.io/tatami/og.png",
+  "description": "tmux のキーバインドで動く macOS のタイル型ブラウザ。パスワードマネージャー内蔵。",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
+  "author": { "@type": "Person", "name": "bannzai" }
+}
+</script>
+<style>
+  :root {
+    --tatami: #7C8B5A;
+    --tatami-deep: #4F5C36;
+    --tatami-soft: #E9EDDC;
+    --heri: #2B2B2B;
+    --paper: #F6F3EA;
+    --card: #FFFFFF;
+    --ink: #1E1E1A;
+    --ink2: #4C4B44;
+    --ink3: #81806F;
+    --line: #D9D5C6;
+    --code: #1C1F17;
+    --code-ink: #D7E0B7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.8;
+  }
+  code, pre, kbd { font-family: "SF Mono", Menlo, Consolas, monospace; }
+  kbd {
+    display: inline-block; padding: 1px 7px; border-radius: 6px; font-size: 0.9em;
+    background: var(--tatami-soft); color: var(--tatami-deep); border: 1px solid var(--line);
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 20px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 6px; background: var(--tatami);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 4px;
+  }
+  .brand-mark span { background: var(--tatami-soft); border-radius: 2px; }
+  .hero { padding: 48px 0 56px; display: flex; flex-wrap: wrap; gap: 48px; align-items: center; }
+  .hero-copy { flex: 1 1 380px; }
+  .hero h1 { font-size: 38px; line-height: 1.4; letter-spacing: 0.02em; }
+  .hero h1 .accent { color: var(--tatami-deep); }
+  .hero p.lead { margin-top: 20px; font-size: 16px; color: var(--ink2); }
+  .cta { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .button {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    border-radius: 10px; padding: 12px 20px; font-size: 14px; font-weight: 600;
+  }
+  .button.primary { background: var(--heri); color: #fff; }
+  .button.secondary { background: var(--tatami-soft); color: var(--tatami-deep); }
+  .note { font-size: 13px; color: var(--ink3); }
+
+  .screen {
+    flex: 0 0 380px; margin: 0 auto; background: var(--code); color: var(--code-ink);
+    border-radius: 14px; padding: 12px; box-shadow: 0 24px 48px rgba(30, 30, 26, 0.25);
+    font-size: 12px; line-height: 1.5;
+  }
+  .titlebar { display: flex; gap: 6px; padding: 2px 4px 10px; }
+  .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: #5a5f4c; }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 120px 90px; gap: 6px; }
+  .pane { border: 1px solid #3a4030; border-radius: 6px; padding: 8px; overflow: hidden; }
+  .pane.active { border-color: var(--tatami); }
+  .pane .url { color: #9aa87a; margin-bottom: 4px; }
+  .pane.wide { grid-column: 1 / span 2; }
+  .status { margin-top: 8px; color: #9aa87a; display: flex; justify-content: space-between; }
+
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+  .card { background: var(--card); border-radius: 14px; padding: 24px; border: 1px solid var(--line); }
+  .card h3 { font-size: 17px; margin-bottom: 10px; }
+  .card p { font-size: 14px; color: var(--ink2); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--card); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--tatami-soft); color: var(--tatami-deep); font-weight: 600; }
+  pre.conf {
+    background: var(--code); color: var(--code-ink); padding: 18px 20px; border-radius: 12px;
+    font-size: 13px; overflow-x: auto; margin-top: 16px;
+  }
+  footer { padding: 40px 0 60px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink3); }
+  footer a { color: var(--tatami-deep); }
+  footer .links { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; }
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 30px; }
+    .screen { flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<header class="container">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    Tatami
+  </div>
+</header>
+
+<main>
+  <section class="hero container" style="border-top: none;">
+    <div class="hero-copy">
+      <h1><span class="accent">tmux のキーバインド</span>で動く<br />macOS のタイル型ブラウザ</h1>
+      <p class="lead">
+        <kbd>prefix</kbd> + <kbd>"</kbd> で上下に、<kbd>prefix</kbd> + <kbd>%</kbd> で左右に分割。<kbd>prefix</kbd> + <kbd>o</kbd> で次のペインへ。
+        どのサイトの上でも prefix が効く。tmux の指の記憶のまま、調べものを並べて進める。
+      </p>
+      <div class="cta">
+        <a class="button primary" href="./#build">ソースからビルドする</a>
+        <a class="button secondary" href="./#keys">キーバインドを見る</a>
+      </div>
+      <p class="note" style="margin-top: 14px;">macOS 26 以上。無料・広告なし・アカウント不要。データはすべて端末内。</p>
+    </div>
+    <div class="screen" role="img" aria-label="Tatami のウィンドウを 3 ペインに分割した画面のイメージ">
+      <div class="titlebar"><span></span><span></span><span></span></div>
+      <div class="panes">
+        <div class="pane active"><div class="url">https://developer.apple.com/documentation/webkit</div>WKWebView<br />A view that embeds web content in your app.</div>
+        <div class="pane"><div class="url">https://man.openbsd.org/tmux</div>tmux(1) manual<br />DESCRIPTION · KEY BINDINGS · COMMANDS</div>
+        <div class="pane wide"><div class="url">https://www.google.com/search?q=tmux+split+pane</div>tmux split pane - 検索結果</div>
+      </div>
+      <div class="status"><span>[work] 0:docs 1:issue* 2:search</span><span>prefix: C-b</span></div>
+    </div>
+  </section>
+
+  <section class="container">
+    <h2>tmux ユーザーがブラウザで困っていたこと (Tatami が目指す解決)</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>分割は prefix + 1 打鍵で</h3>
+        <p>マウスでタブをドラッグして並べる操作をやめる。ペインは tmux と同じ二分木で管理し、zoom・入れ替え・レイアウト切り替えまで同じキーで扱う。</p>
+      </div>
+      <div class="card">
+        <h3>どのサイト上でも効く</h3>
+        <p>キーはアプリ側で捕捉する。Chrome 拡張方式のように、設定ページやストアの上でショートカットが効かなくなる穴を作らない。</p>
+      </div>
+      <div class="card">
+        <h3>設定はテキストファイル</h3>
+        <p><code>~/.config/tatami/tatami.conf</code> に <code>.tmux.conf</code> 風の文法でキーバインドと既定値を書く。dotfiles と一緒に管理できる。</p>
+      </div>
+      <div class="card">
+        <h3>パスワードマネージャー内蔵</h3>
+        <p>拡張機能に頼らず、macOS のキーチェーンを金庫にした自前のストアを持つ。Chrome 互換 CSV で入出力でき、いつでも他のブラウザに戻れる。Safari など OS 全体からの自動入力にも対応予定。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container" id="keys">
+    <h2>キーバインド (設計上の既定値)</h2>
+    <p style="font-size: 14px; color: var(--ink2); margin-bottom: 16px;">Tatami は開発中です。以下のキーバインド・設定ファイル・パスワードマネージャーは設計済みの仕様で、実装は順次進めています。現在の実装状況はソースリポジトリのロードマップ issue を参照してください。</p>
+    <table>
+      <thead><tr><th>キー</th><th>動作</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>prefix</kbd> + <kbd>"</kbd> / <kbd>%</kbd></td><td>ペインを上下 / 左右に分割する</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>o</kbd> / <kbd>;</kbd></td><td>次のペイン / 直前のペインへ移動する</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></td><td>方向でペインを選ぶ</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>x</kbd> / <kbd>z</kbd></td><td>ペインを閉じる / zoom を切り替える</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>c</kbd> / <kbd>n</kbd> / <kbd>p</kbd> / <kbd>0-9</kbd></td><td>ウィンドウを作る / 移動する / 番号で選ぶ</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>/</kbd></td><td>URL または検索語を入力する</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>a</kbd></td><td>保存した資格情報を検索して入力する</td></tr>
+        <tr><td><kbd>prefix</kbd> + <kbd>:</kbd></td><td>コマンドプロンプト (<code>:open</code>, <code>:find</code>, <code>:bind</code>, <code>:source-file</code>)</td></tr>
+      </tbody>
+    </table>
+<pre class="conf"><code># ~/.config/tatami/tatami.conf
+set -g prefix C-a
+set -g search-engine "https://duckduckgo.com/?q="
+bind | split-window -h
+bind - split-window -v</code></pre>
+  </section>
+
+  <section class="container" id="build">
+    <h2>使い始める</h2>
+    <p style="font-size: 15px; color: var(--ink2);">Tatami は開発中で、配布パッケージはまだありません。macOS 26 以上と Xcode 26.5 以上の環境で、ソースからビルドして <code>/Applications</code> に配置します。</p>
+<pre class="conf"><code>gh repo clone bannzai/tatami   # ソースコードは GitHub の bannzai/tatami で公開
+cd tatami
+make macos   # Release ビルドを /Applications/Tatami.app に配置する
+make test    # ユニットテスト</code></pre>
+    <p class="note" style="margin-top: 12px;">署名は既定で作者の Apple Developer Team による自動署名です。その Team に所属していない場合は <code>make macos DEVELOPMENT_TEAM=&lt;自分の Team ID&gt;</code> か、証明書不要の <code>make macos SIGNING=adhoc</code> でビルドしてください。</p>
+    <p class="note" style="margin-top: 12px;">ソースコードとロードマップは GitHub の bannzai/tatami リポジトリで公開しています。収益化はしません。</p>
+  </section>
+</main>
+
+<footer class="container">
+  <div class="links">
+    <a href="./Terms-ja">利用規約</a>
+    <a href="./PrivacyPolicy-ja">プライバシーポリシー</a>
+    <a href="mailto:bannzai.app@gmail.com">お問い合わせ</a>
+  </div>
+  <div>© bannzai</div>
+</footer>
+</body>
+</html>
