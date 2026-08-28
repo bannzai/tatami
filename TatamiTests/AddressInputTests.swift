@@ -37,5 +37,6 @@ struct AddressInputTests {
     @Test func searchURLKeepsConfiguredQueryParameters() {
         #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?p=&lang=ja")!) == URL(string: "https://search.example/?p=tmux&lang=ja"))
         #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?safe=1")!) == URL(string: "https://search.example/?safe=1&q=tmux"))
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?flag")!) == URL(string: "https://search.example/?flag&q=tmux"))
     }
 }

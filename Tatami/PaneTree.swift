@@ -117,6 +117,16 @@ indirect enum PaneNode: Equatable, Sendable, Codable {
         }
     }
 
+    /// 全ての分割の割合が有限で 0 < ratio < 1 か。保存ファイルから復元した値の検証に使う (負や 1 以上だと矩形が壊れる)
+    var hasValidRatios: Bool {
+        switch self {
+        case .leaf:
+            return true
+        case .split(_, let ratio, let first, let second):
+            return ratio.isFinite && ratio > 0 && ratio < 1 && first.hasValidRatios && second.hasValidRatios
+        }
+    }
+
     /// この部分木に含まれる葉かどうか
     func contains(paneID: PaneID) -> Bool {
         switch self {
@@ -396,7 +406,7 @@ struct PaneTree: Equatable, Sendable, Codable {
     /// 保存ファイルから復元した値の検証に使う。この型の操作だけで作った値は常に true
     var isConsistent: Bool {
         let leaves = paneIDs
-        guard Set(leaves).count == leaves.count, leaves.contains(focusedPaneID) else {
+        guard Set(leaves).count == leaves.count, leaves.contains(focusedPaneID), root.hasValidRatios else {
             return false
         }
         return [previousFocusedPaneID, zoomedPaneID].allSatisfy { $0 == nil || leaves.contains($0!) }
