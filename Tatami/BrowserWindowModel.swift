@@ -142,11 +142,15 @@ final class BrowserWindowModel {
     /// 資格情報の保存先。既定は Keychain で、ユニットテストからはメモリ実装に差し替える。
     /// Debug と Release で Keychain の領域が分かれる扱いは KeychainCredentialStore.sharedAccessGroup が持つ
     @ObservationIgnored private let credentialStore: any CredentialStore
+    /// 資格情報のロック状態。充填・一覧・エクスポートの前に本人確認を求める。既定はアプリ全体で共有する 1 つの状態
+    @ObservationIgnored private let credentialLock: CredentialLock
 
     /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション。
     /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
     /// @MainActor の KeychainCredentialStore を呼べないため
-    init(credentialStore: (any CredentialStore)? = nil) {
+    init(credentialStore: (any CredentialStore)? = nil, credentialLock: CredentialLock? = nil) {
+        // credentialStore と同じ理由で、共有のロック状態も本体で解決する
+        self.credentialLock = credentialLock ?? CredentialLock.shared
         #if DEBUG
         // 開発中の動作確認で本物の Keychain (iCloud 同期) にダミーの資格情報を書かないための切り替え。
         // `defaults write com.bannzai.Tatami TatamiUseInMemoryCredentialStore -bool YES` で有効になる (Debug ビルドのみ)
@@ -173,6 +177,7 @@ final class BrowserWindowModel {
         }
         addressText = currentWindow.focusedPane.url.absoluteString
         statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
+        self.credentialLock.apply(lockTimeout: config.lockTimeout)
     }
 
     /// 画面に表示された時に呼ぶ。以後の変更を保存の対象にし、終了時は debounce を待たずに保存する
@@ -645,7 +650,13 @@ final class BrowserWindowModel {
                 statusMessage = "export-passwords は CSV のパスを取る"
                 return
             }
-            exportPasswords(path: arguments.joined(separator: " "))
+            let path = arguments.joined(separator: " ")
+            withUnlockedCredentials(reason: "資格情報を CSV に書き出す") { [weak self] in
+                self?.exportPasswords(path: path)
+            }
+        case "lock":
+            credentialLock.lock()
+            statusMessage = "資格情報をロックした"
         case "source-file":
             // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
             perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
@@ -963,7 +974,28 @@ final class BrowserWindowModel {
         acceptProposal()
     }
 
-    /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ
+    /// 資格情報がロック中なら Touch ID / パスワードで本人確認してから action を実行する。確認中はキー入力を受け付けられるよう、
+    /// 待つ間も UI を止めない (非同期)。失敗・キャンセルは status line に出して何もしない
+    private func withUnlockedCredentials(reason: String, action: @escaping @MainActor () -> Void) {
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            do {
+                try await credentialLock.ensureUnlocked(reason: reason)
+                action()
+            } catch {
+                statusMessage = "\(error)"
+            }
+        }
+    }
+
+    /// 資格情報がロックされているか (status line の表示用)
+    var isCredentialLocked: Bool {
+        credentialLock.isLocked
+    }
+
+    /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ。ロック中は先に本人確認する
     func fillCredential() {
         cancelPrompt()
         cancelPrefix()
@@ -973,6 +1005,13 @@ final class BrowserWindowModel {
             statusMessage = "このページには充填できない: \(pane.url.absoluteString)"
             return
         }
+        withUnlockedCredentials(reason: "\(host) の資格情報を充填する") { [weak self] in
+            self?.presentCredentialCandidates(pane: pane, host: host)
+        }
+    }
+
+    /// アンロック後に候補を探し、1 件なら充填・複数なら一覧を出す
+    private func presentCredentialCandidates(pane: WebPane, host: String) {
         let candidates: [Credential]
         do {
             candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
@@ -994,6 +1033,14 @@ final class BrowserWindowModel {
     /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
     /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
     private func fill(credential: Credential, pane: WebPane) {
+        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)
+        withUnlockedCredentials(reason: "\(credential.username) を充填する") { [weak self] in
+            self?.fillUnlocked(credential: credential, pane: pane)
+        }
+    }
+
+    /// アンロック確認後の充填本体
+    private func fillUnlocked(credential: Credential, pane: WebPane) {
         // 候補元のペインが閉じられていたら (別のペインが表示されていて誤認しやすい) 充填しない
         guard windows.contains(where: { $0.panes[pane.id] === pane }) else {
             statusMessage = "ペインが閉じられたため充填しない"
