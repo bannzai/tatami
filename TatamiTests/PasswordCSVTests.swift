@@ -329,4 +329,16 @@ struct PasswordCSVTests {
         #expect(BrowserWindowModel.commandFileURL(path: "~/x/passwords.csv").path(percentEncoded: false) == home + "x/passwords.csv")
         #expect(BrowserWindowModel.commandFileURL(path: "/tmp/passwords.csv").path(percentEncoded: false) == "/tmp/passwords.csv")
     }
+
+    @Test func mergeDistinguishesAndroidCertificateHashes() {
+        let result = PasswordImporter.merge(
+            rows: [
+                PasswordCSV.Row(name: "app", url: "android://hash-one@com.example.app/", username: "alice", password: "dummy-1", note: ""),
+                PasswordCSV.Row(name: "app", url: "android://hash-two@com.example.app/", username: "alice", password: "dummy-2", note: ""),
+            ],
+            existing: [],
+            now: now
+        )
+        #expect(result.added == 2)
+    }
 }
