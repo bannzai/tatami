@@ -50,6 +50,10 @@ struct BrowserWindowView: View {
             .onChange(of: model.currentWindowIndex, initial: true) { _, index in
                 proxy.scrollTo(index)
             }
+            // 名前の変化 (rename・automatic-rename) で項目の幅が変わっても現在の項目が見えるよう追従する
+            .onChange(of: model.statusLineText) {
+                proxy.scrollTo(model.currentWindowIndex)
+            }
         }
         .accessibilityIdentifier("windowList")
         .accessibilityLabel(model.statusLineText)
