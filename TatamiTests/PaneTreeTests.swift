@@ -369,4 +369,31 @@ struct PaneTreeTests {
         tree.applyNextLayout()
         #expect(tree.appliedLayout == .evenHorizontal)
     }
+
+    @Test func directionalFocusDoesNotSkipThinNeighbor() {
+        var tree = PaneTree()
+        let leftPaneID = tree.focusedPaneID
+        let middlePaneID = tree.split(axis: .horizontal)
+        let rightPaneID = tree.split(axis: .horizontal)
+        tree.resize(paneID: middlePaneID, axis: .horizontal, delta: -1)
+        tree.focus(paneID: rightPaneID)
+        tree.focus(direction: .left)
+        #expect(tree.focusedPaneID == middlePaneID)
+        tree.focus(direction: .left)
+        #expect(tree.focusedPaneID == leftPaneID)
+        tree.focus(direction: .right)
+        #expect(tree.focusedPaneID == middlePaneID)
+    }
+
+    @Test func directionalFocusPicksLargestOverlapAmongEdgePanes() {
+        var tree = PaneTree()
+        let leftPaneID = tree.focusedPaneID
+        let rightTopPaneID = tree.split(axis: .horizontal)
+        let rightBottomPaneID = tree.split(axis: .vertical)
+        tree.resize(paneID: rightBottomPaneID, axis: .vertical, delta: 0.3)
+        tree.focus(paneID: leftPaneID)
+        tree.focus(direction: .right)
+        #expect(tree.focusedPaneID == rightBottomPaneID)
+        #expect(tree.paneIDs == [leftPaneID, rightTopPaneID, rightBottomPaneID])
+    }
 }
