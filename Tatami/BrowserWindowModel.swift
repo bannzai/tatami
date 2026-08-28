@@ -105,8 +105,11 @@ final class BrowserWindowModel {
         currentWindow.focusedPane.load(url: url)
     }
 
-    /// アドレスバーへフォーカスを移す (prefix + /)
+    /// アドレスバーへフォーカスを移す (prefix + /)。一覧やプロンプトが開いていると通常のキーがそちらへ吸われるため先に閉じる
     func focusAddressBar() {
+        isChoosingWindow = false
+        cancelPrompt()
+        cancelPrefix()
         addressBarFocusRequestCount += 1
     }
 
