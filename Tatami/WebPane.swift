@@ -241,9 +241,16 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定・履歴)
 
+    /// 警告 HTML 自体の読み込み。この開始と完了では証明書エラーの状態を解除しない
+    private var certificateWarningNavigation: WKNavigation?
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard navigation !== certificateWarningNavigation else {
+            return
+        }
         isShowingCertificateWarning = false
         certificateFailedURL = nil
+        certificateWarningNavigation = nil
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -262,7 +269,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     private func isWebPage(url: URL) -> Bool {
-        guard let scheme = url.scheme else {
+        WebPane.isWebPage(url: url)
+    }
+
+    /// http / https のページか。スキームは大小文字を区別しない (`HTTPS://example.com` も有効な URL)
+    static func isWebPage(url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else {
             return false
         }
         return scheme == "http" || scheme == "https"
@@ -298,7 +310,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)。警告ページは履歴に記録しない
         isShowingCertificateWarning = true
         certificateFailedURL = failedURL
-        webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
+        certificateWarningNavigation = webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
     }
 
     /// NSURLError の証明書関連のコード (-1200 SecureConnectionFailed 〜 -1206 ClientCertificateRequired)
