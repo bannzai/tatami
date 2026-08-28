@@ -15,9 +15,18 @@ XCODEBUILD_FLAGS = -project $(XCODEPROJ) -scheme $(SCHEME) -configuration $(CONF
 
 .PHONY: build-macos macos test clean
 
+# ログは全文を tmp/ に保存し、終了後に warning / error の行を切り詰めずに表示する (AGENTS.md「検証方法」)。
+# xcodebuild の終了ステータスは pipefail で受け取る。warning はビルドを失敗にしないが、報告に含めるために列挙する
+define run_xcodebuild_with_log
+	mkdir -p tmp
+	set -o pipefail; xcodebuild $(XCODEBUILD_FLAGS) $(1) 2>&1 | tee $(2)
+	@echo "--- warning / error in $(2) ---"
+	@grep -i -e 'warning:' -e 'error:' $(2) || true
+endef
+
 # macOS アプリのビルドだけを行う (配置・起動はしない)
 build-macos:
-	xcodebuild $(XCODEBUILD_FLAGS) build
+	$(call run_xcodebuild_with_log,build,tmp/build.log)
 
 # Release ビルドを /Applications に配置して普段使いできるようにする (target の内容は macos-install-app skill の生成物と同じ)
 macos: CONFIGURATION := Release
@@ -27,7 +36,7 @@ macos: build-macos
 	$(LSREGISTER) -f $(INSTALL_APP)
 
 test:
-	xcodebuild $(XCODEBUILD_FLAGS) test
+	$(call run_xcodebuild_with_log,test,tmp/test.log)
 
 clean:
 	rm -rf $(DERIVED_DATA)

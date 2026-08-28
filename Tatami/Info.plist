@@ -19,5 +19,12 @@
 			<string>Viewer</string>
 		</dict>
 	</array>
+	<!-- ブラウザとして http:// のサイトも表示するため、ATS の緩和を WKWebView の Web コンテンツに限定して許可する。
+	     アプリ自身の URLSession 通信 (将来の更新確認等) は ATS の既定のまま https に限る。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
