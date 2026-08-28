@@ -31,8 +31,10 @@
 		A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */; };
 		F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */; };
 		BD4878EB44E04B87B955EA20 /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */; };
+		A1C7E3F204B94D6E8F0A2B71 /* PasswordCSV.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */; };
 		1E2C56B249C44C49ACB512B5 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */; };
 		5F1D64B1C3A5455F9EE2D227 /* CredentialStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */; };
+		F2D5A96C31B84E07AC1F5D92 /* PasswordCSVTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */; };
 		001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */; };
 /* End PBXBuildFile section */
 
@@ -75,8 +77,10 @@
 		06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingData.swift; sourceTree = "<group>"; };
 		68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataTests.swift; sourceTree = "<group>"; };
 		4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Credential.swift; sourceTree = "<group>"; };
+		C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordCSV.swift; sourceTree = "<group>"; };
 		542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
 		8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStoreTests.swift; sourceTree = "<group>"; };
+		B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordCSVTests.swift; sourceTree = "<group>"; };
 		7F8B859B6FA14E06B050C34D /* Tatami.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tatami.Debug.entitlements; sourceTree = "<group>"; };
 		46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -101,6 +105,7 @@
 				3D4021D3BE364E5FB0820129 /* SessionSnapshotTests.swift */,
 				68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */,
 				8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */,
+				B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */,
 				F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */,
 			);
 			path = TatamiTests;
@@ -134,6 +139,7 @@
 				06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */,
 				542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */,
 				4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */,
+				C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
 				08C8B351A1564048AD9E3F69 /* PaneWindow.swift */,
 				4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */,
@@ -239,6 +245,7 @@
 				A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */,
 				1E2C56B249C44C49ACB512B5 /* KeychainCredentialStore.swift in Sources */,
 				BD4878EB44E04B87B955EA20 /* Credential.swift in Sources */,
+				A1C7E3F204B94D6E8F0A2B71 /* PasswordCSV.swift in Sources */,
 				001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */,
 				78976A46B34E4CA8A932A795 /* PaneWindow.swift in Sources */,
 				B36C8CD7DDD84F199564C66C /* KeyBinding.swift in Sources */,
@@ -259,6 +266,7 @@
 				1F673FE893444F6187ABEAB9 /* SessionSnapshotTests.swift in Sources */,
 				F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */,
 				5F1D64B1C3A5455F9EE2D227 /* CredentialStoreTests.swift in Sources */,
+				F2D5A96C31B84E07AC1F5D92 /* PasswordCSVTests.swift in Sources */,
 				E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
