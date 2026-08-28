@@ -41,7 +41,13 @@ struct KeyStroke: Hashable, Sendable {
             return nil
         }
         if rest.count == 1 {
-            self.key = rest == " " ? KeyStroke.spaceKeyName : String(rest)
+            // Shift 付きの英字は NSEvent 側の表現 (大文字・Shift なし) に揃え、`S-x` と `X` を同じキーとして扱う
+            if modifiers.contains(.shift), rest.first!.isLetter {
+                self.key = rest.uppercased()
+                modifiers.remove(.shift)
+            } else {
+                self.key = rest == " " ? KeyStroke.spaceKeyName : String(rest)
+            }
         } else if KeyStroke.specialKeyNames.contains(String(rest)) {
             self.key = String(rest)
         } else {
@@ -103,7 +109,8 @@ struct KeyStroke: Hashable, Sendable {
         switch keyCode {
         case 0x31:
             return spaceKeyName
-        case 0x24:
+        case 0x24, 0x4C:
+            // 0x4C はテンキーの Enter。Return と同じキーとして扱う
             return "Enter"
         case 0x35:
             return "Escape"

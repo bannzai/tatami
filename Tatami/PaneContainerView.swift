@@ -27,6 +27,8 @@ final class PaneContainerView: NSView {
     private var clickMonitor: Any?
     /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
     private var keyMonitor: Any?
+    /// 直前に消費したキーの keyCode。押し続けた時のリピートイベントも同じ扱い (消費) にして Web ページへ流さないために覚える
+    private var consumedKeyCode: UInt16?
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
     override var isFlipped: Bool { true }
@@ -121,10 +123,19 @@ final class PaneContainerView: NSView {
             return
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === window, let keyStroke = KeyStroke(event: event) else {
+            guard let self, event.window === window else {
                 return event
             }
-            return onKeyDown?(keyStroke) == true ? nil : event
+            if event.isARepeat, event.keyCode == consumedKeyCode {
+                return nil
+            }
+            guard let keyStroke = KeyStroke(event: event) else {
+                consumedKeyCode = nil
+                return event
+            }
+            let consumed = onKeyDown?(keyStroke) == true
+            consumedKeyCode = consumed ? event.keyCode : nil
+            return consumed ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, event.window === window else {
