@@ -265,4 +265,24 @@ struct TatamiConfigTests {
         #expect(required.errors[0].message.hasPrefix("設定ファイルが無い"))
         #expect(!required.fileExists)
     }
+
+    @Test func relativeSourceFileIsResolvedFromConfigDirectory() {
+        var config = TatamiConfig()
+        var requestedPaths: [String] = []
+        let errors = TatamiConfigParser.apply(
+            text: "source-file common.conf",
+            config: &config,
+            fileName: "tatami.conf",
+            includeResolver: { path in
+                requestedPaths.append(path)
+                return "set -g prefix C-t"
+            },
+            baseDirectory: "/home/user/.config/tatami"
+        )
+        #expect(errors.isEmpty)
+        #expect(requestedPaths == ["/home/user/.config/tatami/common.conf"])
+        #expect(config.keyBindings.prefix == KeyStroke(tmuxKeyName: "C-t"))
+        #expect(TatamiConfigParser.resolvedIncludePath(path: "/abs/x.conf", baseDirectory: "/base") == "/abs/x.conf")
+        #expect(TatamiConfigParser.resolvedIncludePath(path: "x.conf", baseDirectory: nil) == "x.conf")
+    }
 }

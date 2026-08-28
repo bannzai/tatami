@@ -56,9 +56,20 @@ enum TatamiConfigParser {
         text: String,
         config: inout TatamiConfig,
         fileName: String = "tatami.conf",
-        includeResolver: ((String) throws -> String)? = nil
+        includeResolver: ((String) throws -> String)? = nil,
+        baseDirectory: String? = nil
     ) -> [TatamiConfigError] {
-        apply(text: text, config: &config, fileName: fileName, includeResolver: includeResolver, includeDepth: 0)
+        apply(text: text, config: &config, fileName: fileName, includeResolver: includeResolver, baseDirectory: baseDirectory, includeDepth: 0)
+    }
+
+    /// source-file のパスの解決。`~` を展開し、相対パスは baseDirectory (読み込み中の設定ファイルのディレクトリ) を基準にする。
+    /// GUI から起動したアプリのカレントディレクトリは設定ファイルの場所と一致しないため、カレントディレクトリ基準にしない
+    static func resolvedIncludePath(path: String, baseDirectory: String?) -> String {
+        let expanded = expandedPath(path: path)
+        guard !expanded.hasPrefix("/"), let baseDirectory else {
+            return expanded
+        }
+        return NSString(string: baseDirectory).appendingPathComponent(expanded)
     }
 
     /// `~` から始まるパスの展開。tatami.conf の source-file と、コマンドからの再読込で同じ解釈にするためここに置く
@@ -71,6 +82,7 @@ enum TatamiConfigParser {
         config: inout TatamiConfig,
         fileName: String,
         includeResolver: ((String) throws -> String)?,
+        baseDirectory: String?,
         includeDepth: Int
     ) -> [TatamiConfigError] {
         var errors: [TatamiConfigError] = []
@@ -98,6 +110,7 @@ enum TatamiConfigParser {
                         arguments: arguments,
                         config: &config,
                         includeResolver: includeResolver,
+                        baseDirectory: baseDirectory,
                         includeDepth: includeDepth
                     )
                 default:
@@ -165,12 +178,13 @@ enum TatamiConfigParser {
         arguments: [String],
         config: inout TatamiConfig,
         includeResolver: ((String) throws -> String)?,
+        baseDirectory: String?,
         includeDepth: Int
     ) throws(LineError) -> [TatamiConfigError] {
         guard arguments.count == 1 else {
             throw LineError(message: "source-file はパスを 1 つ取る")
         }
-        let path = expandedPath(path: arguments[0])
+        let path = resolvedIncludePath(path: arguments[0], baseDirectory: baseDirectory)
         guard includeDepth < maxIncludeDepth else {
             throw LineError(message: "source-file の入れ子が深すぎる (\(maxIncludeDepth) 段で打ち切る): \(path)")
         }
@@ -183,7 +197,14 @@ enum TatamiConfigParser {
         } catch {
             throw LineError(message: "source-file を読み込めない: \(path): \(error)")
         }
-        return apply(text: text, config: &config, fileName: path, includeResolver: includeResolver, includeDepth: includeDepth + 1)
+        return apply(
+            text: text,
+            config: &config,
+            fileName: path,
+            includeResolver: includeResolver,
+            baseDirectory: NSString(string: path).deletingLastPathComponent,
+            includeDepth: includeDepth + 1
+        )
     }
 
     private static func keyStroke(tmuxKeyName: String) throws(LineError) -> KeyStroke {
@@ -309,7 +330,8 @@ enum TatamiConfigLoader {
             fileName: fileURL.lastPathComponent,
             includeResolver: { path in
                 try String(contentsOf: URL(filePath: path), encoding: .utf8)
-            }
+            },
+            baseDirectory: fileURL.deletingLastPathComponent().path(percentEncoded: false)
         )
         return LoadResult(config: config, errors: errors, fileExists: true)
     }

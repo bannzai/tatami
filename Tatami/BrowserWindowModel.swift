@@ -85,7 +85,7 @@ final class BrowserWindowModel {
         let name = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
         do {
             if let snapshot = try SessionStore.load(name: name) {
-                restore(snapshot: snapshot)
+                restore(snapshot: snapshot, name: name)
             } else {
                 sessionName = name
                 windows = [makeWindow()]
@@ -204,7 +204,7 @@ final class BrowserWindowModel {
             return
         }
         BrowserWindowModel.openSessionNames.remove(sessionName)
-        restore(snapshot: loaded)
+        restore(snapshot: loaded, name: name)
         BrowserWindowModel.openSessionNames.insert(sessionName)
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
@@ -236,8 +236,9 @@ final class BrowserWindowModel {
         saveNow()
     }
 
-    private func restore(snapshot: SessionSnapshot) {
-        sessionName = snapshot.name
+    /// 要求した名前で復元する。改名直後の終了などでファイル内の name が古いままでも、ファイル名 (= 選んだ名前) を正とする
+    private func restore(snapshot: SessionSnapshot, name: String) {
+        sessionName = name
         windows = snapshot.windows.map { PaneWindow(snapshot: $0, homeURL: config.homeURL, userAgent: config.userAgent) }
         if windows.isEmpty {
             windows = [makeWindow()]
@@ -603,7 +604,7 @@ final class BrowserWindowModel {
             focusedPaneStateVersion += 1
             scheduleSave()
         }
-        window.onAnyPaneURLChange = { [weak self] in
+        window.onContentChange = { [weak self] in
             self?.scheduleSave()
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in

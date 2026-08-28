@@ -14,8 +14,8 @@ final class PaneWindow {
     var renamedName: String?
     /// フォーカス中のペインの URL が変わった時の通知先 (アドレスバーと status line の追随に使う)
     var onFocusedURLChange: ((URL) -> Void)?
-    /// フォーカスの有無を問わず、どのペインでも URL が変わった時の通知先 (セッションの保存に使う)
-    var onAnyPaneURLChange: (() -> Void)?
+    /// フォーカスの有無を問わず、どのペインの URL が変わった時も、WebKit 起点でペインが閉じた時も呼ぶ通知先 (セッションの保存に使う)
+    var onContentChange: (() -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -116,6 +116,7 @@ final class PaneWindow {
         }
         panes[paneID] = nil
         notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+        onContentChange?()
         return true
     }
 
@@ -177,7 +178,7 @@ final class PaneWindow {
             guard let self else {
                 return
             }
-            onAnyPaneURLChange?()
+            onContentChange?()
             guard paneTree.focusedPaneID == id else {
                 return
             }
