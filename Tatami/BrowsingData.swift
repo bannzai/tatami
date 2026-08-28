@@ -44,11 +44,17 @@ struct BrowsingData: Codable, Equatable {
 
     /// 履歴のタイトルだけを更新する (順序と訪問日時は変えない)。該当する URL が無ければ false
     mutating func updateTitle(url: URL, title: String) -> Bool {
-        guard let index = history.firstIndex(where: { $0.url == url }), history[index].title != title else {
-            return false
+        var changed = false
+        if let index = history.firstIndex(where: { $0.url == url }), history[index].title != title {
+            history[index] = HistoryEntry(url: url, title: title, visitedAt: history[index].visitedAt)
+            changed = true
         }
-        history[index] = HistoryEntry(url: url, title: title, visitedAt: history[index].visitedAt)
-        return true
+        // 読み込み中に付けたブックマークが前ページのタイトルを持つことがあるため、同じ URL のブックマーク名も確定したタイトルに揃える
+        if let index = bookmarks.firstIndex(where: { $0.url == url }), bookmarks[index].title != title {
+            bookmarks[index] = Bookmark(url: url, title: title, addedAt: bookmarks[index].addedAt)
+            changed = true
+        }
+        return changed
     }
 
     /// ブックマークを追加する。同じ URL があればタイトルだけ更新する
@@ -120,11 +126,14 @@ enum BrowsingStore {
     }
 
     /// 起動時の読み込み。壊れていれば空から始める (履歴は失っても致命的でない。ログに出す)
-    static func loadOrEmpty() -> BrowsingData {
+    static func loadOrEmpty(fileURL: URL = defaultFileURL) -> BrowsingData {
         do {
-            return try load()
+            return try load(fileURL: fileURL)
         } catch {
-            NSLog("履歴の読み込みに失敗 (空から始める): %@", String(describing: error))
+            // 壊れたファイルを空のデータで上書きしてブックマークまで失わないよう、元のファイルを退避してから空で始める
+            let backupURL = fileURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.moveItem(at: fileURL, to: backupURL)
+            NSLog("履歴の読み込みに失敗 (%@ に退避して空から始める): %@", backupURL.path(percentEncoded: false), String(describing: error))
             return BrowsingData()
         }
     }

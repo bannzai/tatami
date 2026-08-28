@@ -33,6 +33,27 @@ struct BrowsingDataTests {
         #expect(!missing)
     }
 
+    @Test func updateTitleAlsoRenamesBookmark() {
+        var data = BrowsingData()
+        let url = URL(string: "https://a.example/")!
+        data.addBookmark(url: url, title: "Loading", date: base)
+        let renamed = data.updateTitle(url: url, title: "A")
+        #expect(renamed)
+        #expect(data.bookmarks[0].title == "A")
+    }
+
+    @Test func corruptedFileIsBackedUpInsteadOfOverwritten() throws {
+        let directoryURL = FileManager.default.temporaryDirectory.appending(path: "tatami-browsing-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appending(path: "browsing.json")
+        try Data("not json".utf8).write(to: fileURL)
+        #expect(BrowsingStore.loadOrEmpty(fileURL: fileURL) == BrowsingData())
+        let remaining = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil).map(\.lastPathComponent)
+        #expect(remaining.count == 1)
+        #expect(remaining[0].hasPrefix("browsing.json.corrupt-"))
+    }
+
     @Test func bookmarksAreUniqueByURL() {
         var data = BrowsingData()
         let url = URL(string: "https://a.example/")!
