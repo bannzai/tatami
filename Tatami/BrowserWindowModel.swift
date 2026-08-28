@@ -94,6 +94,10 @@ final class BrowserWindowModel {
     private(set) var statusMessage: String?
     /// debounce 中の保存タスク
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// 未保存の変更を最初に予約した時刻。maxSaveDelay の判定に使い、保存で nil に戻す
+    @ObservationIgnored private var firstScheduledAt: ContinuousClock.Instant?
+    /// 変更が続いても保存を待たせる上限。クラッシュ時に失う操作を数秒分に抑える値として選んだ
+    private static let maxSaveDelay: Duration = .seconds(5)
     /// アプリ終了通知の監視
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     /// 画面に表示されて操作の対象になっているかどうか。SwiftUI は @State の初期値を複数回作ることがあり、
@@ -134,8 +138,9 @@ final class BrowserWindowModel {
         isActive = true
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
-            let usedNames = BrowserWindowModel.openSessionNames.union(SessionStore.sessionNames())
-            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) }!
+            // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
+            let usedNames = BrowserWindowModel.openSessionNames.union((try? SessionStore.sessionNames()) ?? [])
+            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) && !SessionStore.fileExists(name: $0) }!
             windows = [makeWindow()]
             currentWindowIndex = 0
             previousWindowIndex = nil
@@ -186,6 +191,15 @@ final class BrowserWindowModel {
         guard isActive else {
             return
         }
+        // 連続する変更 (replaceState を繰り返すページ等) で debounce が延び続けても、最大待ち時間を超えたら保存する
+        let now = ContinuousClock.now
+        if let firstScheduledAt, now - firstScheduledAt >= BrowserWindowModel.maxSaveDelay {
+            saveNow()
+            return
+        }
+        if firstScheduledAt == nil {
+            firstScheduledAt = now
+        }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: BrowserWindowModel.saveDelay)
@@ -208,6 +222,7 @@ final class BrowserWindowModel {
             return false
         }
         saveTask?.cancel()
+        firstScheduledAt = nil
         do {
             try SessionStore.save(snapshot: snapshot)
             UserDefaults.standard.set(sessionName, forKey: BrowserWindowModel.lastSessionNameKey)
@@ -263,7 +278,14 @@ final class BrowserWindowModel {
         guard newName != sessionName else {
             return
         }
-        guard SessionStore.isValidName(newName), !SessionStore.sessionNames().contains(newName),
+        let existingNames: [String]
+        do {
+            existingNames = try SessionStore.sessionNames()
+        } catch {
+            statusMessage = "セッション一覧を読めない: \(error)"
+            return
+        }
+        guard SessionStore.isValidName(newName), !existingNames.contains(newName),
               !BrowserWindowModel.openSessionNames.contains(newName) else {
             statusMessage = "その名前は使えない: \(newName)"
             return
@@ -561,9 +583,10 @@ final class BrowserWindowModel {
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
             find(text: lastFindText)
-        case "source-file" where arguments.isEmpty:
-            perform(command: .sourceFile(nil))
-        case "set", "bind", "bind-key", "unbind", "unbind-key", "source-file":
+        case "source-file":
+            // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
+            perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
+        case "set", "bind", "bind-key", "unbind", "unbind-key":
             let errors = TatamiConfigStore.shared.apply(line: line)
             applyConfigToAllWindows()
             statusMessage = TatamiConfigError.statusMessage(errors: errors)
@@ -587,11 +610,12 @@ final class BrowserWindowModel {
     /// ページ内検索 (find)。空文字なら検索の強調を消す。結果が無ければ status line に知らせる
     func find(text: String) {
         let webView = currentWindow.focusedPane.webView
+        // 空文字は検索の解除。保留中の検索の完了で古い結果を表示しないよう世代も進める
+        findGeneration += 1
         guard !text.isEmpty else {
             webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
             return
         }
-        findGeneration += 1
         let generation = findGeneration
         webView.find(text) { [weak self, weak webView] result in
             // 完了までにペインやウィンドウが移っていたら、古い WebView の結果で status line を更新しない
@@ -612,8 +636,12 @@ final class BrowserWindowModel {
         case .command:
             // 実行するコマンドが次のプロンプト (rename-window 等) を開くことがあるため、先にこのプロンプトを閉じてから実行する
             let commandLine = promptText
-            closePrompt()
+            closePrompt(refocusWebContent: false)
             execute(commandLine: commandLine)
+            // 実行したコマンドが次のプロンプトを開いた時はそちらへ入力を残し、開かなかった時だけ Web コンテンツへフォーカスを戻す
+            if prompt == nil {
+                webContentFocusRequestCount += 1
+            }
             scheduleSave()
             return
         case .find:
@@ -639,10 +667,12 @@ final class BrowserWindowModel {
     }
 
     /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
-    private func closePrompt() {
+    private func closePrompt(refocusWebContent: Bool = true) {
         prompt = nil
         promptTargetWindow = nil
-        webContentFocusRequestCount += 1
+        if refocusWebContent {
+            webContentFocusRequestCount += 1
+        }
     }
 
     /// ウィンドウ一覧 (prefix + w) を開く
@@ -659,7 +689,13 @@ final class BrowserWindowModel {
         cancelPrompt()
         cancelPrefix()
         saveNow()
-        let names = SessionStore.sessionNames()
+        let names: [String]
+        do {
+            names = try SessionStore.sessionNames()
+        } catch {
+            statusMessage = "セッション一覧を読めない: \(error)"
+            return
+        }
         chooserSelectionIndex = names.firstIndex(of: sessionName) ?? 0
         chooser = .session(names)
     }
@@ -823,6 +859,10 @@ final class BrowserWindowModel {
         guard let keyStroke = keyStrokes.first else {
             return false
         }
+        // プロンプト (コマンド・名前変更) の入力中は prefix も含めて全てのキーを入力欄へ渡す (prefix と同じ文字を入力できるように)
+        if prompt != nil {
+            return false
+        }
         if chooser != nil {
             // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
             if keyStroke.modifiers.contains(.command) {
@@ -877,6 +917,8 @@ final class BrowserWindowModel {
             closeFocusedPane()
         case .selectPaneNext:
             currentWindow.focusNext()
+        case .selectPanePrevious:
+            currentWindow.focusPrevious()
         case .selectPaneLast:
             currentWindow.focusLastPane()
         case .selectPaneLeft:
