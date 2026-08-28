@@ -8,14 +8,21 @@ import Observation
 final class BrowsingDataStore {
     static let shared = BrowsingDataStore()
 
-    private(set) var data = BrowsingStore.loadOrEmpty()
+    private(set) var data: BrowsingData
     /// 保存の失敗を表示するための直近のエラー
     private(set) var lastSaveError: String?
+    /// 読み込みに失敗して退避もできなかった時 false。元のファイルを空のデータで上書きしないよう保存しない
+    private let isWritable: Bool
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// セッションの保存と同じ間隔 (BrowserWindowModel.saveDelay と同じ根拠)
     private static let saveDelay: Duration = .milliseconds(500)
 
-    private init() {}
+    private init() {
+        let loaded = BrowsingStore.loadOrEmpty()
+        data = loaded.data
+        isWritable = loaded.isWritable
+        lastSaveError = loaded.problem
+    }
 
     /// 実際のナビゲーションによる訪問。履歴の先頭へ移し、訪問日時を更新する
     func recordVisit(url: URL, title: String) {
@@ -69,6 +76,9 @@ final class BrowsingDataStore {
     func saveNow() {
         saveTask?.cancel()
         firstScheduledAt = nil
+        guard isWritable else {
+            return
+        }
         do {
             try BrowsingStore.save(data: data)
             lastSaveError = nil

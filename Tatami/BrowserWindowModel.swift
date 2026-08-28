@@ -1089,6 +1089,7 @@ final class BrowserWindowModel {
             let url = browsingData.bookmarks[index].url
             addressText = url.absoluteString
             currentWindow.focusedPane.load(url: url)
+            webContentFocusRequestCount += 1
         case .credential(let credentials, let pane):
             guard credentials.indices.contains(index) else {
                 return

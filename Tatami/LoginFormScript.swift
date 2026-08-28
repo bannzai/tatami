@@ -89,8 +89,9 @@ enum LoginFormScript {
         // 登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れない。current-password を優先する
         const fields = Array.from(document.querySelectorAll('input[type="password"]'))
           .filter((field) => (field.autocomplete || '').toLowerCase() !== 'new-password');
-        const passwordField = fields.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password' && isVisible(field))
-          || fields.find(isVisible) || fields[0];
+        // 可視で操作できる欄だけを対象にする。非表示の欄 (honeypot 等) へ充填するとページのスクリプトに平文を渡してしまう
+        const usable = fields.filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+        const passwordField = usable.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password') || usable[0];
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
         if (usernameField && username) { setValue(usernameField, username); }
