@@ -27,13 +27,22 @@ enum LoginFormScript {
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
       };
+      // 祖先を含む実際の表示状態で判定する (opacity: 0 や visibility: hidden の honeypot に平文を入れない)
       const isVisible = (element) => {
         const rect = element.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden';
+        if (!(rect.width > 0 && rect.height > 0)) { return false; }
+        if (typeof element.checkVisibility === 'function') {
+          return element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+        }
+        return getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).opacity !== '0';
       };
+      // autocomplete は空白区切りのトークン列 (`section-signup new-password` 等) なので、値全体ではなくトークンで判定する
+      const hasAutocomplete = (field, token) => (field.autocomplete || field.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/).includes(token);
+      // form 属性で関連付けられた (DOM 上はフォームの子孫でない) 欄も含めるため、フォームでは elements を使う
+      const inputsIn = (scope) => Array.from(scope.elements ? scope.elements : scope.querySelectorAll('input')).filter((element) => element.tagName === 'INPUT');
       const findUsernameField = (passwordField) => {
         const form = passwordField.form || document;
-        const candidates = Array.from(form.querySelectorAll('input')).filter((input) => {
+        const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
           return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input);
         });
@@ -143,10 +152,10 @@ enum LoginFormScript {
       window.__tatamiFill = (username, password) => {
         // 登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れない。current-password を優先する
         const fields = Array.from(document.querySelectorAll('input[type="password"]'))
-          .filter((field) => (field.autocomplete || '').toLowerCase() !== 'new-password');
+          .filter((field) => !hasAutocomplete(field, 'new-password'));
         // 可視で操作できる欄だけを対象にする。非表示の欄 (honeypot 等) へ充填するとページのスクリプトに平文を渡してしまう
         const usable = fields.filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
-        const passwordField = usable.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password') || usable[0];
+        const passwordField = usable.find((field) => hasAutocomplete(field, 'current-password')) || usable[0];
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
         if (usernameField && username) { setValue(usernameField, username); }

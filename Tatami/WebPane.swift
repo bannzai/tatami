@@ -424,6 +424,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard navigation !== certificateWarningNavigation else {
             return
         }
+        // 別のページへ移る時は、破棄される旧文書のフレーム情報 (false 通知は届かない) を捨てる
+        loginFormFrames.removeAll()
+        hasLoginForm = false
         // 別のページへ移る時は、前のページで集めた新規パスワード欄・編集中の状態を捨てる (ユーザー名はオリジンで照合するため残す)
         newPasswordFrames.removeAll()
         editingFrames.removeAll()
