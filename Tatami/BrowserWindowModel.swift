@@ -127,7 +127,17 @@ final class BrowserWindowModel {
             syncAddressTextToFocusedPane()
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
+<<<<<<< HEAD
         BrowserWindowModel.activeModels.add(self)
+||||||| 4da9884
+=======
+        if hasPendingRestoredLoad {
+            hasPendingRestoredLoad = false
+            for window in windows {
+                window.loadRestoredPanes()
+            }
+        }
+>>>>>>> issue-6
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
@@ -218,6 +228,10 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         restore(snapshot: loaded, name: name)
         BrowserWindowModel.openSessionNames.insert(sessionName)
+        hasPendingRestoredLoad = false
+        for window in windows {
+            window.loadRestoredPanes()
+        }
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
         saveNow()
@@ -251,7 +265,14 @@ final class BrowserWindowModel {
     /// 要求した名前で復元する。改名直後の終了などでファイル内の name が古いままでも、ファイル名 (= 選んだ名前) を正とする
     private func restore(snapshot: SessionSnapshot, name: String) {
         sessionName = name
+<<<<<<< HEAD
         windows = snapshot.windows.map { PaneWindow(snapshot: $0, homeURL: config.homeURL, userAgent: config.userAgent) }
+||||||| 4da9884
+        windows = snapshot.windows.map { PaneWindow(snapshot: $0) }
+=======
+        windows = snapshot.windows.map { PaneWindow(snapshot: $0) }
+        hasPendingRestoredLoad = !windows.isEmpty
+>>>>>>> issue-6
         if windows.isEmpty {
             windows = [makeWindow()]
         }
