@@ -133,6 +133,10 @@ final class BrowserWindowModel {
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
         BrowserWindowModel.activeModels.add(self)
+        // ダウンロードはアプリ全体で 1 つの DownloadManager が持つ。表示中のウィンドウの status line に出す
+        DownloadManager.shared.onMessage = { [weak self] message in
+            self?.statusMessage = message
+        }
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
@@ -423,6 +427,8 @@ final class BrowserWindowModel {
         }
         let configuration = WKFindConfiguration()
         configuration.backwards = backwards
+        // 末尾の一致から n (先頭から N) でページの反対側へ折り返す (ブラウザと vi の反復検索と同じ)
+        configuration.wraps = true
         currentWindow.focusedPane.webView.find(lastFindText, configuration: configuration) { [weak self] result in
             if !result.matchFound {
                 self?.statusMessage = "見つからない: \(self?.lastFindText ?? "")"
@@ -485,7 +491,9 @@ final class BrowserWindowModel {
             addressText = text
             navigate(text: text)
         case "find":
-            find(text: arguments.joined(separator: " "))
+            lastFindText = arguments.joined(separator: " ")
+            isFindModeActive = !lastFindText.isEmpty
+            find(text: lastFindText)
         case "source-file" where arguments.isEmpty:
             perform(command: .sourceFile(nil))
         case "set", "bind", "bind-key", "unbind", "unbind-key", "source-file":
@@ -635,7 +643,7 @@ final class BrowserWindowModel {
             return true
         }
         // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う
-        if isFindModeActive, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
+        if isFindModeActive, prompt == nil, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
             switch keyStroke.key {
             case "n":
                 findNext(backwards: false)
@@ -774,9 +782,6 @@ final class BrowserWindowModel {
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
-        }
-        window.onDownloadMessage = { [weak self] message in
-            self?.statusMessage = message
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {

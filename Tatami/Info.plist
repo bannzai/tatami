@@ -5,6 +5,11 @@
 	<!-- ダウンロード先 (~/Downloads) へ書き込むための利用目的。これが無いと macOS は許可ダイアログを出さずに拒否する -->
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>ダウンロードしたファイルを Downloads フォルダに保存します。</string>
+	<!-- Web ページの getUserMedia でカメラ・マイクを使う時の利用目的。これが無いと macOS はアプリを終了させる -->
+	<key>NSCameraUsageDescription</key>
+	<string>Web ページがカメラを使う時に利用します。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Web ページがマイクを使う時に利用します。</string>
 	<!-- GENERATE_INFOPLIST_FILE = YES の生成内容にマージされる部分 Info.plist。
 	     CFBundleURLTypes は INFOPLIST_KEY_* build setting で表現できないためここに置く。
 	     http / https を宣言することで、既定ブラウザの候補になり他アプリからの URL オープンを受けられる。 -->
