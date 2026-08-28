@@ -91,13 +91,16 @@ final class KeychainCredentialStore: CredentialStore {
     }
 
     /// 全操作に共通する属性。synchronizable を明示しないと同期アイテムが検索から漏れるため、検索にも kSecAttrSynchronizable を付ける。
-    /// access group は検索・更新・削除には指定しない (指定しないとアプリが読める全ての group が対象になるため、ad-hoc 署名で保存した
-    /// group なしの項目と Team 署名で保存した共有 group の項目の両方が見え、署名方式を切り替えても資格情報を失わない)
+    /// access group は検索・更新・削除には指定しない (指定しないとアプリが読める全ての group が対象になる)。
+    /// 同期 (iCloud Keychain) の項目は Data Protection Keychain に置かれ、keychain-access-groups の entitlement が無い署名
+    /// (ad-hoc / Debug) では SecItemAdd が errSecMissingEntitlement (-34018) になるため、entitlement が無い時は同期しない
+    /// ローカルのログインキーチェーンに置く (実測: entitlement 無しのプロセスでは synchronizable true / Data Protection Keychain の
+    /// いずれも -34018 で、ファイルベースのキーチェーンだけが成功する)。Team 署名と ad-hoc 署名の間で項目は共有されない
     private func baseQuery() -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: KeychainCredentialStore.service,
-            kSecAttrSynchronizable as String: true,
+            kSecAttrSynchronizable as String: accessGroup != nil,
         ]
     }
 }
