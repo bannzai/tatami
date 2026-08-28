@@ -77,12 +77,19 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     /// 既存のファイルと、進行中のダウンロードが予約した保存先を避けて `name (2).ext` のように連番を付ける
     /// (同名を同時に落とすと、最初のファイルが作られる前に両方が同じ名前を選んでしまうため)
     private func uniqueFileURL(directoryURL: URL, fileName: String) -> URL {
-        let reserved = Set(entries.values.map(\.destinationURL))
+        // 大文字小文字を区別しないボリューム (macOS の既定) では `Report.pdf` と `report.pdf` が同じファイルになるため、
+        // 予約済みの保存先もボリュームの規則に合わせて照合する
+        let isCaseSensitive = (try? directoryURL.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) ?? false
+        let normalize: (URL) -> String = { url in
+            let path = url.path(percentEncoded: false)
+            return isCaseSensitive ? path : path.lowercased()
+        }
+        let reserved = Set(entries.values.map { normalize($0.destinationURL) })
         let base = (fileName as NSString).deletingPathExtension
         let ext = (fileName as NSString).pathExtension
         var candidate = directoryURL.appending(path: fileName)
         var counter = 2
-        while FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) || reserved.contains(candidate) {
+        while FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) || reserved.contains(normalize(candidate)) {
             let numbered = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
             candidate = directoryURL.appending(path: numbered)
             counter += 1
