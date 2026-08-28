@@ -30,6 +30,7 @@
 		8620771B769049D7AA26F29F /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623175DED39C4C3F8906160A /* DownloadManager.swift */; };
 		A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */; };
 		F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */; };
+		001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 		FFEF1F93A53047EAAFD51DC7 /* Tatami.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tatami.entitlements; sourceTree = "<group>"; };
 		06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingData.swift; sourceTree = "<group>"; };
 		68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataTests.swift; sourceTree = "<group>"; };
+		46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -121,6 +123,7 @@
 				DD0AAE174D2B4CF8BB7650B8 /* StatusLine.swift */,
 				47A3CDFFBBD9408794530CEA /* SessionSnapshot.swift */,
 				06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */,
+				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
 				08C8B351A1564048AD9E3F69 /* PaneWindow.swift */,
 				4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */,
 				D2B8F51CA3E2406B9C4E6F81 /* TatamiConfig.swift */,
@@ -223,6 +226,7 @@
 				B9049D8593FE40CF9E764ECC /* StatusLine.swift in Sources */,
 				BA99ED9D4DB14361A5156BD9 /* SessionSnapshot.swift in Sources */,
 				A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */,
+				001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */,
 				78976A46B34E4CA8A932A795 /* PaneWindow.swift in Sources */,
 				B36C8CD7DDD84F199564C66C /* KeyBinding.swift in Sources */,
 				C1A7E40B92D14F6A8B3D5E70 /* TatamiConfig.swift in Sources */,

@@ -19,8 +19,14 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
     /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
     var onClose: (() -> Void)?
-    /// ページの読み込みが完了した時の通知先 (履歴の記録に使う)。URL とその時点のタイトル
+    /// 実際のナビゲーション (読み込み完了・History API の遷移) の通知先 (履歴の記録に使う)。URL とその時点のタイトル
     var onVisit: ((URL, String) -> Void)?
+    /// 表示中のページのタイトルだけが変わった時の通知先 (履歴のタイトル更新。順序は変えない)
+    var onTitleChange: ((URL, String) -> Void)?
+    /// 証明書エラーの警告ページを表示している間 true。警告ページは履歴に残さない
+    private var isShowingCertificateWarning = false
+    /// セッションの復元による読み込みの間 true。復元は新しい訪問ではないため履歴に記録しない
+    private var isRestoring = false
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -47,6 +53,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 Task { @MainActor in
                     self.url = changedURL
                     self.onNavigate?(changedURL)
+                    // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する
+                    if !self.webView.isLoading {
+                        self.notifyVisitIfWebPage()
+                    }
                 }
             },
             webView.observe(\.title) { [weak self] _, _ in
@@ -55,8 +65,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 }
                 Task { @MainActor in
                     self.onStateChange?()
-                    // 読み込み完了後にタイトルが決まるページがあるため、履歴のタイトルを更新する (同じ URL の記録は 1 件に畳まれる)
-                    self.notifyVisitIfWebPage()
+                    // 読み込み完了後にタイトルが決まるページや、未読件数をタイトルに出すページのために、履歴のタイトルだけを更新する (順序と訪問日時は変えない)
+                    if let url = self.webView.url, self.isWebPage(url: url), !self.isShowingCertificateWarning, let title = self.title {
+                        self.onTitleChange?(url, title)
+                    }
                 }
             },
             webView.observe(\.estimatedProgress) { [weak self] _, _ in
@@ -104,6 +116,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// 初期 URL の読み込み。window.open で作られたペインは WebKit 側が要求を読み込むため、呼び出し側が通常のペインにだけ使う
     func loadInitialURL() {
+        webView.load(URLRequest(url: url))
+    }
+
+    /// セッション復元による読み込み。完了しても履歴には記録しない
+    func loadRestoredURL() {
+        isRestoring = true
         webView.load(URLRequest(url: url))
     }
 
@@ -211,13 +229,29 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定・履歴)
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        isShowingCertificateWarning = false
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let wasRestoring = isRestoring
+        isRestoring = false
+        guard !wasRestoring else {
+            return
+        }
         notifyVisitIfWebPage()
     }
 
-    /// http / https のページだけを履歴に記録する (about:blank や警告ページは記録しない)
+    private func isWebPage(url: URL) -> Bool {
+        guard let scheme = url.scheme else {
+            return false
+        }
+        return scheme == "http" || scheme == "https"
+    }
+
+    /// http / https のページだけを履歴に記録する (about:blank・証明書の警告ページ・セッション復元の読み込みは記録しない)
     private func notifyVisitIfWebPage() {
-        guard let url = webView.url, let scheme = url.scheme, scheme == "http" || scheme == "https", !webView.isLoading || title != nil else {
+        guard let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, !isRestoring else {
             return
         }
         onVisit?(url, title ?? url.host() ?? url.absoluteString)
@@ -239,7 +273,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
               let failedURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL else {
             return
         }
-        // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)
+        // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)。警告ページは履歴に記録しない
+        isShowingCertificateWarning = true
         webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
     }
 

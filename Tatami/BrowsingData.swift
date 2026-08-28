@@ -42,6 +42,15 @@ struct BrowsingData: Codable, Equatable {
         }
     }
 
+    /// 履歴のタイトルだけを更新する (順序と訪問日時は変えない)。該当する URL が無ければ false
+    mutating func updateTitle(url: URL, title: String) -> Bool {
+        guard let index = history.firstIndex(where: { $0.url == url }), history[index].title != title else {
+            return false
+        }
+        history[index] = HistoryEntry(url: url, title: title, visitedAt: history[index].visitedAt)
+        return true
+    }
+
     /// ブックマークを追加する。同じ URL があればタイトルだけ更新する
     mutating func addBookmark(url: URL, title: String, date: Date) {
         if let index = bookmarks.firstIndex(where: { $0.url == url }) {

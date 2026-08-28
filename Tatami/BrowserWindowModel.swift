@@ -80,10 +80,10 @@ final class BrowserWindowModel {
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
-    /// 履歴とブックマーク (アプリ全体で 1 つ)
-    private(set) var browsingData = BrowsingStore.loadOrEmpty()
-    /// 履歴の保存の debounce タスク
-    @ObservationIgnored private var browsingSaveTask: Task<Void, Never>?
+    /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
+    var browsingData: BrowsingData {
+        BrowsingDataStore.shared.data
+    }
     /// アドレスバーの候補で選択中の添字。nil なら未選択 (入力そのものを開く)
     private(set) var addressSuggestionIndex: Int?
     /// 一覧で選択中の添字
@@ -154,6 +154,7 @@ final class BrowserWindowModel {
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
+                BrowsingDataStore.shared.saveNow()
             }
         }
     }
@@ -164,6 +165,7 @@ final class BrowserWindowModel {
             return
         }
         saveNow()
+        BrowsingDataStore.shared.saveNow()
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
         DownloadManager.shared.unsubscribe(model: self)
@@ -703,13 +705,12 @@ final class BrowserWindowModel {
             return
         }
         if browsingData.isBookmarked(url: pane.url) {
-            browsingData.removeBookmark(url: pane.url)
+            BrowsingDataStore.shared.removeBookmark(url: pane.url)
             statusMessage = "ブックマークを解除した: \(pane.url.absoluteString)"
         } else {
-            browsingData.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString, date: Date())
+            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString)
             statusMessage = "ブックマークした: \(pane.url.absoluteString)"
         }
-        scheduleBrowsingSave()
     }
 
     /// ブックマークの一覧を開く (prefix + b)
@@ -720,23 +721,9 @@ final class BrowserWindowModel {
 
     /// 訪問を履歴に記録する
     private func recordVisit(url: URL, title: String) {
-        browsingData.recordVisit(url: url, title: title, date: Date())
-        scheduleBrowsingSave()
-    }
-
-    /// 履歴・ブックマークの保存。セッションと同じ間隔で debounce する
-    private func scheduleBrowsingSave() {
-        browsingSaveTask?.cancel()
-        browsingSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: BrowserWindowModel.saveDelay)
-            guard !Task.isCancelled, let self else {
-                return
-            }
-            do {
-                try BrowsingStore.save(data: browsingData)
-            } catch {
-                statusMessage = "履歴の保存に失敗: \(error)"
-            }
+        BrowsingDataStore.shared.recordVisit(url: url, title: title)
+        if let error = BrowsingDataStore.shared.lastSaveError {
+            statusMessage = error
         }
     }
 
@@ -756,9 +743,8 @@ final class BrowserWindowModel {
             guard browsingData.bookmarks.indices.contains(chooserSelectionIndex) else {
                 return
             }
-            browsingData.removeBookmark(url: browsingData.bookmarks[chooserSelectionIndex].url)
+            BrowsingDataStore.shared.removeBookmark(url: browsingData.bookmarks[chooserSelectionIndex].url)
             chooserSelectionIndex = min(chooserSelectionIndex, max(browsingData.bookmarks.count - 1, 0))
-            scheduleBrowsingSave()
             if browsingData.bookmarks.isEmpty {
                 chooser = nil
             }
@@ -975,6 +961,9 @@ final class BrowserWindowModel {
         }
         window.onVisit = { [weak self] url, title in
             self?.recordVisit(url: url, title: title)
+        }
+        window.onTitleChange = { url, title in
+            BrowsingDataStore.shared.updateTitle(url: url, title: title)
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {
