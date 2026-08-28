@@ -5,20 +5,20 @@ import Testing
 struct CredentialLockTests {
     @Test func locksAfterTimeoutSinceLastUse() {
         var policy = CredentialLockPolicy(lockTimeout: 60)
-        let start = Date(timeIntervalSince1970: 1_000)
+        let start = ContinuousClock.now
         #expect(policy.isLocked(now: start))
         policy.touch(now: start)
-        #expect(!policy.isLocked(now: start.addingTimeInterval(60)))
-        #expect(policy.isLocked(now: start.addingTimeInterval(61)))
-        policy.touch(now: start.addingTimeInterval(50))
-        #expect(!policy.isLocked(now: start.addingTimeInterval(100)))
+        #expect(!policy.isLocked(now: start.advanced(by: .seconds(60))))
+        #expect(policy.isLocked(now: start.advanced(by: .seconds(61))))
+        policy.touch(now: start.advanced(by: .seconds(50)))
+        #expect(!policy.isLocked(now: start.advanced(by: .seconds(100))))
         policy.lock()
-        #expect(policy.isLocked(now: start.addingTimeInterval(50)))
+        #expect(policy.isLocked(now: start.advanced(by: .seconds(50))))
     }
 
     @Test func zeroTimeoutLocksImmediately() {
         var policy = CredentialLockPolicy(lockTimeout: 0)
-        let now = Date(timeIntervalSince1970: 1_000)
+        let now = ContinuousClock.now
         policy.touch(now: now)
         #expect(policy.isLocked(now: now))
     }

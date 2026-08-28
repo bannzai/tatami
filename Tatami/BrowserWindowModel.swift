@@ -148,6 +148,8 @@ final class BrowserWindowModel {
     @ObservationIgnored private let credentialStore: any CredentialStore
     /// 資格情報のロック状態。充填・一覧・エクスポートの前に本人確認を求める。既定はアプリ全体で共有する 1 つの状態
     @ObservationIgnored private let credentialLock: CredentialLock
+    /// ロック通知の購読 (deinit で解除される)
+    @ObservationIgnored private var lockObservation: (any NSObjectProtocol)?
 
     /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション。
     /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
@@ -192,6 +194,13 @@ final class BrowserWindowModel {
         isActive = true
         // 拡張が充填する候補は OS 側に保持されるため、起動時にストアの内容と揃える
         syncCredentialIdentities()
+        // ロックされたら、本人確認後にだけ見せる候補一覧を閉じる (別ウィンドウの :lock や自動ロックでも)。
+        // init では stored property の初期化が終わる前に self を捕捉できないため、ここで購読する
+        lockObservation = NotificationCenter.default.addObserver(forName: CredentialLock.didLockNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.closeCredentialChooserIfLocked()
+            }
+        }
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
             // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
@@ -505,6 +514,8 @@ final class BrowserWindowModel {
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
+        // 非表示のウィンドウで検出した登録フォームの生成提案は、表示された時に出す
+        evaluateNewPasswordProposal()
         scheduleSave()
     }
 
@@ -938,6 +949,11 @@ final class BrowserWindowModel {
 
     /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
     private func handleNewPasswordForm(pane: WebPane, hasNewPasswordForm: Bool) {
+        // 欄が消えた (モーダルを閉じた・SPA がログインフォームへ置き換えた) 時は、そのペインの生成提案を取り下げる
+        if !hasNewPasswordForm, proposal == .generatePassword, proposalPane === pane {
+            dismissProposal()
+            return
+        }
         guard hasNewPasswordForm, proposal == nil, pane === currentWindow.focusedPane else {
             return
         }
@@ -1047,6 +1063,14 @@ final class BrowserWindowModel {
         }
     }
 
+    /// ロックされた時に、表示中の資格情報の候補一覧を閉じる
+    private func closeCredentialChooserIfLocked() {
+        if case .credential = chooser {
+            chooser = nil
+            statusMessage = "資格情報がロックされたため一覧を閉じた"
+        }
+    }
+
     /// 資格情報がロックされているか (status line の表示用)
     var isCredentialLocked: Bool {
         credentialLock.isLocked
@@ -1062,7 +1086,14 @@ final class BrowserWindowModel {
             statusMessage = "このページには充填できない: \(pane.url.absoluteString)"
             return
         }
+        // 本人確認の間に別のページへ移っていたら、確認した時のサイトとは別のページへ充填しない
+        let url = pane.url
+        let generation = pane.documentGeneration
         withUnlockedCredentials(reason: "\(host) の資格情報を充填する") { [weak self] in
+            guard pane.url == url, pane.documentGeneration == generation else {
+                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+                return
+            }
             self?.presentCredentialCandidates(pane: pane, host: host)
         }
     }

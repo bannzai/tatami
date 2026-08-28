@@ -6,8 +6,8 @@ import Observation
 struct CredentialLockPolicy: Equatable {
     /// 自動ロックまでの秒数 (`set -g lock-timeout`)。0 は操作のたびに本人確認を求める
     var lockTimeout: TimeInterval = CredentialLockPolicy.defaultLockTimeout
-    /// 最後に資格情報を操作した時刻。nil はロック中
-    var lastUsedAt: Date?
+    /// 最後に資格情報を操作した時刻。nil はロック中。システム時計の変更 (過去への補正) でロックが遅れないよう単調時計で持つ
+    var lastUsedAt: ContinuousClock.Instant?
 
     /// 既定の自動ロック時間。ログインフォームを開いてから送信までの一連の操作 (候補の選択・2 段階目の入力) を
     /// 再確認なしで済ませられ、かつ席を離れてから戻るまでの時間よりは短い値として 5 分を選んだ。
@@ -18,15 +18,15 @@ struct CredentialLockPolicy: Equatable {
     static let maximumLockTimeout = 86_400
 
     /// now 時点でロックされているか
-    func isLocked(now: Date) -> Bool {
+    func isLocked(now: ContinuousClock.Instant) -> Bool {
         guard let lastUsedAt, lockTimeout > 0 else {
             return true
         }
-        return now.timeIntervalSince(lastUsedAt) > lockTimeout
+        return now - lastUsedAt > .seconds(lockTimeout)
     }
 
     /// 本人確認が通った (または操作した) 時刻を記録し、そこから lockTimeout の間アンロックされた状態にする
-    mutating func touch(now: Date) {
+    mutating func touch(now: ContinuousClock.Instant) {
         lastUsedAt = now
     }
 
@@ -49,6 +49,8 @@ struct CredentialLockError: Error, CustomStringConvertible {
 final class CredentialLock {
     /// アプリ全体で 1 つのロック状態
     static let shared = CredentialLock()
+    /// ロック状態へ移った時 (`:lock`・自動ロック) の通知。表示中の候補一覧などロック前提の UI を閉じるために使う
+    static let didLockNotification = Notification.Name("CredentialLock.didLock")
 
     /// 現在の状態。UI の表示は isLocked を通して参照する
     private(set) var policy = CredentialLockPolicy()
@@ -66,7 +68,7 @@ final class CredentialLock {
 
     /// 現在ロックされているか
     var isLocked: Bool {
-        policy.isLocked(now: Date())
+        policy.isLocked(now: .now)
     }
 
     /// 自動ロックまでの時間を設定から反映する。短くなった場合はその時点で期限切れになることがある
@@ -80,19 +82,20 @@ final class CredentialLock {
         policy.lock()
         lockGeneration += 1
         expiryTask?.cancel()
+        NotificationCenter.default.post(name: CredentialLock.didLockNotification, object: self)
     }
 
     /// アンロック済みなら期限を延ばし、ロック中なら本人確認を行ってからアンロックする。失敗・キャンセルは throw する。
     /// 待機中に `lock()` が実行された要求は、本人確認が通っても実行しない
     func ensureUnlocked(reason: String) async throws {
         let generation = lockGeneration
-        if policy.isLocked(now: Date()) {
+        if policy.isLocked(now: .now) {
             try await authenticate(reason)
         }
         guard generation == lockGeneration else {
             throw CredentialLockError(description: "本人確認の間にロックされたため中断")
         }
-        policy.touch(now: Date())
+        policy.touch(now: .now)
         scheduleExpiry()
     }
 
@@ -103,18 +106,20 @@ final class CredentialLock {
         guard let lastUsedAt = policy.lastUsedAt else {
             return
         }
-        let remaining = policy.lockTimeout - Date().timeIntervalSince(lastUsedAt)
-        guard remaining > 0 else {
+        let remaining = Duration.seconds(policy.lockTimeout) - (ContinuousClock.now - lastUsedAt)
+        guard remaining > .zero else {
             policy.lock()
+            NotificationCenter.default.post(name: CredentialLock.didLockNotification, object: self)
             return
         }
         expiryTask = Task { [weak self] in
             // 期限ちょうどでは isLocked が false (境界は「超えたら」) のため 1 秒待ってから確認する
-            try? await Task.sleep(for: .seconds(remaining + 1))
-            guard let self, !Task.isCancelled, self.policy.isLocked(now: Date()) else {
+            try? await Task.sleep(for: remaining + .seconds(1))
+            guard let self, !Task.isCancelled, self.policy.isLocked(now: .now) else {
                 return
             }
             self.policy.lock()
+            NotificationCenter.default.post(name: CredentialLock.didLockNotification, object: self)
         }
     }
 
