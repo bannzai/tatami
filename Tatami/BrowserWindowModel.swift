@@ -1067,7 +1067,8 @@ final class BrowserWindowModel {
         case 0:
             statusMessage = "\(host) の資格情報は無い"
         case 1:
-            fill(credential: candidates[0], pane: pane)
+            // 候補の取得で本人確認したばかりなので、もう一度は求めない (lock-timeout 0 では fill の再確認が二重になるため)
+            fillUnlocked(credential: candidates[0], pane: pane)
         default:
             chooserSelectionIndex = 0
             chooser = .credential(candidates, pane: pane)
@@ -1419,6 +1420,8 @@ final class BrowserWindowModel {
 
     /// 共有の設定を、表示中の全ウィンドウのペインへ反映する
     private func applyConfigToAllWindows() {
+        // 自動ロックまでの時間は共有のロック状態に反映する (:set / :source-file で変えた値を次の操作から使う)
+        credentialLock.apply(lockTimeout: config.lockTimeout)
         for model in BrowserWindowModel.activeModels.allObjects {
             // 旧設定の prefix で始めた入力が新しい対応表で実行されないよう prefix 待ちも解除する
             model.cancelPrefix()

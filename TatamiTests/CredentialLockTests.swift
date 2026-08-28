@@ -40,6 +40,23 @@ struct CredentialLockTests {
         #expect(authenticated == 2)
     }
 
+    @Test func lockDuringAuthenticationInvalidatesPendingRequest() async {
+        let lock = CredentialLock { _ in
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        lock.apply(lockTimeout: 60)
+        let pending = Task {
+            try await lock.ensureUnlocked(reason: "test")
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+        lock.lock()
+        let outcome = await pending.result
+        #expect(throws: CredentialLockError.self) {
+            try outcome.get()
+        }
+        #expect(lock.isLocked)
+    }
+
     @Test func staysLockedWhenAuthenticationFails() async {
         let lock = CredentialLock { _ in
             throw CredentialLockError(description: "denied")

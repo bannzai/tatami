@@ -56,6 +56,8 @@ final class CredentialLock {
     @ObservationIgnored private let authenticate: (_ reason: String) async throws -> Void
     /// 自動ロックの時刻に isLocked の表示を更新するためのタスク
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    /// 明示的なロック (`:lock`) の回数。本人確認の待機中にロックされた要求を、確認が通っても無効にするために持つ
+    @ObservationIgnored private var lockGeneration = 0
 
     /// authenticate の既定は LocalAuthentication。テストからは差し替える
     init(authenticate: ((_ reason: String) async throws -> Void)? = nil) {
@@ -76,25 +78,39 @@ final class CredentialLock {
     /// 即座にロックする (`:lock` コマンド)
     func lock() {
         policy.lock()
+        lockGeneration += 1
         expiryTask?.cancel()
     }
 
-    /// アンロック済みなら期限を延ばし、ロック中なら本人確認を行ってからアンロックする。失敗・キャンセルは throw する
+    /// アンロック済みなら期限を延ばし、ロック中なら本人確認を行ってからアンロックする。失敗・キャンセルは throw する。
+    /// 待機中に `lock()` が実行された要求は、本人確認が通っても実行しない
     func ensureUnlocked(reason: String) async throws {
+        let generation = lockGeneration
         if policy.isLocked(now: Date()) {
             try await authenticate(reason)
+        }
+        guard generation == lockGeneration else {
+            throw CredentialLockError(description: "本人確認の間にロックされたため中断")
         }
         policy.touch(now: Date())
         scheduleExpiry()
     }
 
-    /// 期限が来た時に policy を更新して表示を変える。lockTimeout 0 は操作直後にロックされるため即時
+    /// 期限が来た時に policy を更新して表示を変える。残り時間は最後の操作時刻から数える (別ウィンドウの作成などで
+    /// apply が呼ばれても期限を延ばさない)。既に期限切れなら即座にロックの状態にする
     private func scheduleExpiry() {
         expiryTask?.cancel()
-        let timeout = policy.lockTimeout
+        guard let lastUsedAt = policy.lastUsedAt else {
+            return
+        }
+        let remaining = policy.lockTimeout - Date().timeIntervalSince(lastUsedAt)
+        guard remaining > 0 else {
+            policy.lock()
+            return
+        }
         expiryTask = Task { [weak self] in
             // 期限ちょうどでは isLocked が false (境界は「超えたら」) のため 1 秒待ってから確認する
-            try? await Task.sleep(for: .seconds(timeout + 1))
+            try? await Task.sleep(for: .seconds(remaining + 1))
             guard let self, !Task.isCancelled, self.policy.isLocked(now: Date()) else {
                 return
             }
