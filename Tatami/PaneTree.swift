@@ -21,6 +21,24 @@ enum SplitAxis: Sendable {
     case vertical
 }
 
+/// 分割の 2 つの子のどちら側か。根からの経路 ([SplitSide]) で木の中の分割を指す
+enum SplitSide: Sendable {
+    case first
+    case second
+}
+
+/// 隣り合うペインの間にある境界線。ドラッグでその分割の割合を変えるために、どの分割かを根からの経路で指す
+struct PaneDivider: Equatable, Sendable {
+    /// 境界線が属する分割の向き。horizontal なら縦線、vertical なら横線になる
+    let axis: SplitAxis
+    /// 根からその分割へ辿る経路。根の分割なら空
+    let path: [SplitSide]
+    /// 境界線の位置。分割の向きと直交する方向の太さは 0 で、描画側が太さを足す
+    let line: CGRect
+    /// 割合 1.0 に対応する長さ (分割している矩形の幅または高さ)。ドラッグ量を割合の変化に換算する
+    let extent: CGFloat
+}
+
 /// h / j / k / l と矢印キーで選ぶペインの方向。単位矩形の座標系 (y は下向きに増える) で解釈する
 enum FocusDirection: Sendable {
     case left
@@ -149,6 +167,28 @@ indirect enum PaneNode: Equatable, Sendable {
         }
     }
 
+    /// 各分割の境界線。zoom 中は境界が無いため、呼び出し側 (PaneTree) が空にする
+    func dividers(bounds: CGRect) -> [PaneDivider] {
+        dividers(bounds: bounds, path: [])
+    }
+
+    /// 経路で指した分割の割合を delta 分動かした木を返す。経路が分割を指していなければそのまま返す
+    func resizing(dividerPath: [SplitSide], delta: Double) -> PaneNode {
+        guard case .split(let splitAxis, let ratio, let first, let second) = self else {
+            return self
+        }
+        guard let side = dividerPath.first else {
+            return .split(axis: splitAxis, ratio: clampedRatio(ratio: ratio + delta), first: first, second: second)
+        }
+        let childPath = Array(dividerPath.dropFirst())
+        switch side {
+        case .first:
+            return .split(axis: splitAxis, ratio: ratio, first: first.resizing(dividerPath: childPath, delta: delta), second: second)
+        case .second:
+            return .split(axis: splitAxis, ratio: ratio, first: first, second: second.resizing(dividerPath: childPath, delta: delta))
+        }
+    }
+
     /// paneIDs の並び順を保ったまま、レイアウトどおりに組み直した木を返す。paneIDs が空なら nil
     static func arranged(paneIDs: [PaneID], layout: PaneLayout) -> PaneNode? {
         switch layout {
@@ -183,6 +223,33 @@ indirect enum PaneNode: Equatable, Sendable {
             first: first,
             second: second
         )
+    }
+
+    private func dividers(bounds: CGRect, path: [SplitSide]) -> [PaneDivider] {
+        guard case .split(let splitAxis, let ratio, let first, let second) = self else {
+            return []
+        }
+        let dividedBounds = PaneNode.dividing(bounds: bounds, axis: splitAxis, ratio: ratio)
+        let divider: PaneDivider
+        switch splitAxis {
+        case .horizontal:
+            divider = PaneDivider(
+                axis: splitAxis,
+                path: path,
+                line: CGRect(x: dividedBounds.second.minX, y: bounds.minY, width: 0, height: bounds.height),
+                extent: bounds.width
+            )
+        case .vertical:
+            divider = PaneDivider(
+                axis: splitAxis,
+                path: path,
+                line: CGRect(x: bounds.minX, y: dividedBounds.second.minY, width: bounds.width, height: 0),
+                extent: bounds.height
+            )
+        }
+        return [divider]
+            + first.dividers(bounds: dividedBounds.first, path: path + [.first])
+            + second.dividers(bounds: dividedBounds.second, path: path + [.second])
     }
 
     private func clampedRatio(ratio: Double) -> Double {
@@ -246,6 +313,8 @@ struct PaneTree: Equatable, Sendable {
     private(set) var previousFocusedPaneID: PaneID?
     /// prefix + z で全面表示しているペイン
     private(set) var zoomedPaneID: PaneID?
+    /// prefix + Space で最後に適用したレイアウト。次に巡回する先を決めるために覚える。分割・閉じるで配置が変わっても保持する (tmux と同じ)
+    private(set) var appliedLayout: PaneLayout?
 
     /// 起動直後のウィンドウは 1 枚のペインから始まる
     init() {
@@ -358,6 +427,25 @@ struct PaneTree: Equatable, Sendable {
         }
         root = arrangedRoot
         zoomedPaneID = nil
+        appliedLayout = layout
+    }
+
+    /// 最後に適用したレイアウトの次を適用する (prefix + Space)。まだ適用していなければ巡回順の先頭から始める
+    mutating func applyNextLayout() {
+        apply(layout: appliedLayout?.next ?? PaneLayout.allCases[0])
+    }
+
+    /// 境界線のドラッグで、その境界線が属する分割の割合を動かす
+    mutating func resize(dividerPath: [SplitSide], delta: Double) {
+        root = root.resizing(dividerPath: dividerPath, delta: delta)
+    }
+
+    /// ペイン間の境界線。全面表示中は境界が無い
+    func dividers(bounds: CGRect) -> [PaneDivider] {
+        if zoomedPaneID != nil {
+            return []
+        }
+        return root.dividers(bounds: bounds)
     }
 
     /// 指定したペインを含む最も近い同じ向きの分割の割合を動かす
