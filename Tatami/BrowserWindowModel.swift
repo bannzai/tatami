@@ -345,8 +345,11 @@ final class BrowserWindowModel {
         currentWindow.focusedPane.load(url: url)
     }
 
-    /// アドレスバーへフォーカスを移す (prefix + /)
+    /// アドレスバーへフォーカスを移す (prefix + /)。一覧やプロンプトが開いていると通常のキーがそちらへ吸われるため先に閉じる
     func focusAddressBar() {
+        chooser = nil
+        cancelPrompt()
+        cancelPrefix()
         addressBarFocusRequestCount += 1
     }
 
@@ -420,8 +423,9 @@ final class BrowserWindowModel {
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
     func beginRenameWindow() {
-        // メニューから開いた時に prefix 待ちが残っていると、名前の最初の文字がコマンドとして消費されるため取り消す
+        // メニューから開いた時に prefix 待ちや一覧が残っていると、名前の最初の文字がコマンドや一覧の操作として消費されるため取り消す
         cancelPrefix()
+        chooser = nil
         promptTargetWindow = currentWindow
         promptText = currentWindow.name
         prompt = .renameWindow
@@ -429,6 +433,8 @@ final class BrowserWindowModel {
 
     /// rename-session のプロンプトを開く (prefix + $)
     func beginRenameSession() {
+        cancelPrefix()
+        chooser = nil
         promptText = sessionName
         prompt = .renameSession
     }
@@ -457,6 +463,9 @@ final class BrowserWindowModel {
 
     /// コマンドプロンプトを開く (prefix + :)
     func beginCommandPrompt() {
+        // prefix 待ちや一覧が残っていると最初の文字がそちらに消費されるため、コマンドプロンプトを排他的な入力状態にする
+        cancelPrefix()
+        chooser = nil
         promptText = ""
         commandHistoryIndex = commandHistory.count
         commandDraft = ""
@@ -584,6 +593,9 @@ final class BrowserWindowModel {
     }
 
     func cancelPrompt() {
+        guard prompt != nil else {
+            return
+        }
         closePrompt()
     }
 
