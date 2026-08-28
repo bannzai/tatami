@@ -27,7 +27,7 @@ final class PaneContainerView: NSView {
     private var clickMonitor: Any?
     /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
     private var keyMonitor: Any?
-    /// 直前に消費したキーの keyCode。押し続けた時のリピートイベントも同じ扱い (消費) にして Web ページへ流さないために覚える
+    /// 消費したキーの keyCode。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために、keyUp まで覚える
     private var consumedKeyCode: UInt16?
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
@@ -55,16 +55,22 @@ final class PaneContainerView: NSView {
         needsDisplay = true
         // 境界線の位置が変わるのはビューの frame ではなく paneTree の変化なので、cursor rect の再計算を明示的に求める
         window?.invalidateCursorRects(for: self)
-        moveFirstResponderIfWebContentWasRemoved()
+        syncFirstResponderWithFocusedPane()
     }
 
-    /// ウィンドウ (tmux window) の切り替えで外れた WKWebView に first responder が残っていると、切替先のページがキー入力を受け取れないため、
-    /// Web コンテンツが first responder だった場合はフォーカス中のペインへ移す
-    private func moveFirstResponderIfWebContentWasRemoved() {
+    /// 直前に apply した時のフォーカス中ペイン。フォーカスの変化を検出して first responder を追従させる
+    private var lastFocusedPaneID: PaneID?
+
+    /// モデルのフォーカス (paneTree.focusedPaneID) と AppKit の first responder を揃える。
+    /// Web コンテンツが first responder の時にフォーカスが別のペインへ移った、または first responder だった WKWebView が外れた場合に、
+    /// フォーカス中のペインの WKWebView を first responder にする (アドレスバー等にフォーカスがある時は動かさない)
+    private func syncFirstResponderWithFocusedPane() {
+        let focusChanged = lastFocusedPaneID != paneTree.focusedPaneID
+        lastFocusedPaneID = paneTree.focusedPaneID
         guard let window, let responder = window.firstResponder as? NSView,
               let responderWebView = sequence(first: responder, next: \.superview).first(where: { $0 is WKWebView }),
-              responderWebView.superview !== self,
-              let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self else {
+              let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self,
+              focusChanged || responderWebView.superview !== self else {
             return
         }
         window.makeFirstResponder(focusedWebView)
@@ -147,19 +153,27 @@ final class PaneContainerView: NSView {
         guard window != nil else {
             return
         }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, event.window === window else {
                 return event
+            }
+            if event.type == .keyUp {
+                guard event.keyCode == consumedKeyCode else {
+                    return event
+                }
+                consumedKeyCode = nil
+                return nil
             }
             if event.isARepeat, event.keyCode == consumedKeyCode {
                 return nil
             }
             guard let keyStroke = KeyStroke(event: event) else {
-                consumedKeyCode = nil
                 return event
             }
             let consumed = onKeyDown?(keyStroke) == true
-            consumedKeyCode = consumed ? event.keyCode : nil
+            if consumed {
+                consumedKeyCode = event.keyCode
+            }
             return consumed ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
