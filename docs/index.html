@@ -149,7 +149,7 @@
   </section>
 
   <section class="container">
-    <h2>tmux ユーザーがブラウザで困っていたこと</h2>
+    <h2>tmux ユーザーがブラウザで困っていたこと (Tatami が目指す解決)</h2>
     <div class="grid">
       <div class="card">
         <h3>分割は prefix + 1 打鍵で</h3>
@@ -171,7 +171,8 @@
   </section>
 
   <section class="container" id="keys">
-    <h2>キーバインド (既定値)</h2>
+    <h2>キーバインド (設計上の既定値)</h2>
+    <p style="font-size: 14px; color: var(--ink2); margin-bottom: 16px;">Tatami は開発中です。以下のキーバインド・設定ファイル・パスワードマネージャーは設計済みの仕様で、実装は順次進めています。現在の実装状況はソースリポジトリのロードマップ issue を参照してください。</p>
     <table>
       <thead><tr><th>キー</th><th>動作</th></tr></thead>
       <tbody>
@@ -195,9 +196,11 @@ bind - split-window -v</code></pre>
   <section class="container" id="build">
     <h2>使い始める</h2>
     <p style="font-size: 15px; color: var(--ink2);">Tatami は開発中で、配布パッケージはまだありません。macOS 26 以上と Xcode 26.5 以上の環境で、ソースからビルドして <code>/Applications</code> に配置します。</p>
-<pre class="conf"><code>make macos   # Release ビルドを /Applications/Tatami.app に配置する
+<pre class="conf"><code>gh repo clone bannzai/tatami   # ソースコードは GitHub の bannzai/tatami で公開
+cd tatami
+make macos   # Release ビルドを /Applications/Tatami.app に配置する
 make test    # ユニットテスト</code></pre>
-    <p class="note" style="margin-top: 12px;">ソースコードと進捗はこのページの提供元リポジトリで公開しています。収益化はしません。</p>
+    <p class="note" style="margin-top: 12px;">ソースコードとロードマップは GitHub の bannzai/tatami リポジトリで公開しています。収益化はしません。</p>
   </section>
 </main>
 
