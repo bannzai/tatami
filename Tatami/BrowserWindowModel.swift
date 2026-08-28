@@ -133,10 +133,8 @@ final class BrowserWindowModel {
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
         BrowserWindowModel.activeModels.add(self)
-        // ダウンロードはアプリ全体で 1 つの DownloadManager が持つ。表示中のウィンドウの status line に出す
-        DownloadManager.shared.onMessage = { [weak self] message in
-            self?.statusMessage = message
-        }
+        // ダウンロードはアプリ全体で 1 つの DownloadManager が持ち、表示中の全ウィンドウの status line に出す
+        DownloadManager.shared.subscribe(model: self)
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
@@ -152,6 +150,7 @@ final class BrowserWindowModel {
         saveNow()
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
+        DownloadManager.shared.unsubscribe(model: self)
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -177,6 +176,11 @@ final class BrowserWindowModel {
             }
             saveNow()
         }
+    }
+
+    /// ダウンロードの進捗などを status line に出す (DownloadManager から)
+    func showDownloadMessage(_ message: String) {
+        statusMessage = message
     }
 
     /// すぐに保存する (detach やウィンドウを閉じる時)。失敗は status line に出し、false を返す
@@ -644,6 +648,19 @@ final class BrowserWindowModel {
 
     /// キー入力を prefix キーの検出に通し、アプリが消費したかどうかを返す。true なら Web ページへ渡さない
     func handle(keyStroke: KeyStroke) -> Bool {
+        handle(keyStrokes: [keyStroke])
+    }
+
+    /// ウィンドウがキーウィンドウでなくなった時に prefix 待ちを取り消す (戻った後の最初のキーをコマンドとして消費しないため)
+    func cancelPrefix() {
+        prefixKeyState = prefixKeyState.cancelled
+    }
+
+    /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す。一覧やプロンプトのキー操作は主な解釈 (先頭の候補) で行う
+    func handle(keyStrokes: [KeyStroke]) -> Bool {
+        guard let keyStroke = keyStrokes.first else {
+            return false
+        }
         if chooser != nil {
             handleChooserKey(keyStroke: keyStroke)
             return true
@@ -665,7 +682,7 @@ final class BrowserWindowModel {
                 break
             }
         }
-        let handled = prefixKeyState.handling(keyStroke: keyStroke, table: keyBindings)
+        let handled = prefixKeyState.handling(keyStrokes: keyStrokes, table: keyBindings)
         prefixKeyState = handled.state
         switch handled.outcome {
         case .passThrough:
