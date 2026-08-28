@@ -1,0 +1,423 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */; };
+		BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AFEAE9B940E262E5784834 /* TatamiApp.swift */; };
+		CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */; };
+		DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3506726C2C6A10CB80A88648 /* WebPaneView.swift */; };
+		FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9AD0444BF3275872E8529FB9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6576996440293AD3D9A47631 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E6DF933D1FBE98F7BD191271;
+			remoteInfo = Tatami;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1F1DC872C75B96AAEBF30600 /* Tatami.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tatami.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3506726C2C6A10CB80A88648 /* WebPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPaneView.swift; sourceTree = "<group>"; };
+		53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
+		7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressInput.swift; sourceTree = "<group>"; };
+		A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressInputTests.swift; sourceTree = "<group>"; };
+		A8AFEAE9B940E262E5784834 /* TatamiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiApp.swift; sourceTree = "<group>"; };
+		B11310D9049C8AB6CB4A5A76 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TatamiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		406AF31CFC46E1944BB1400C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1F1DC872C75B96AAEBF30600 /* Tatami.app */,
+				CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		91A575C0C75AE8A8B9B0B1BC /* TatamiTests */ = {
+			isa = PBXGroup;
+			children = (
+				A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */,
+			);
+			path = TatamiTests;
+			sourceTree = "<group>";
+		};
+		A7378DA067D6A4EB8EDAC990 = {
+			isa = PBXGroup;
+			children = (
+				D2C81896EF16B4D53E0B028F /* Tatami */,
+				91A575C0C75AE8A8B9B0B1BC /* TatamiTests */,
+				406AF31CFC46E1944BB1400C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D2C81896EF16B4D53E0B028F /* Tatami */ = {
+			isa = PBXGroup;
+			children = (
+				7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */,
+				53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */,
+				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
+				A8AFEAE9B940E262E5784834 /* TatamiApp.swift */,
+				3506726C2C6A10CB80A88648 /* WebPaneView.swift */,
+			);
+			path = Tatami;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2EC76EB2324F80FE7C9277DE /* TatamiTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 968A3C99110A4DE4D446F5E5 /* Build configuration list for PBXNativeTarget "TatamiTests" */;
+			buildPhases = (
+				D78AD2059FF2EF6454FA0378 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ADE323DF649008875044FE71 /* PBXTargetDependency */,
+			);
+			name = TatamiTests;
+			packageProductDependencies = (
+			);
+			productName = TatamiTests;
+			productReference = CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E6DF933D1FBE98F7BD191271 /* Tatami */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */;
+			buildPhases = (
+				800E9E7A78EBD0D58413C11C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Tatami;
+			packageProductDependencies = (
+			);
+			productName = Tatami;
+			productReference = 1F1DC872C75B96AAEBF30600 /* Tatami.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6576996440293AD3D9A47631 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					2EC76EB2324F80FE7C9277DE = {
+						DevelopmentTeam = TQPN82UBBY;
+						ProvisioningStyle = Automatic;
+					};
+					E6DF933D1FBE98F7BD191271 = {
+						DevelopmentTeam = TQPN82UBBY;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = A8A224BD0F7457AB2DD60A42 /* Build configuration list for PBXProject "Tatami" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A7378DA067D6A4EB8EDAC990;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E6DF933D1FBE98F7BD191271 /* Tatami */,
+				2EC76EB2324F80FE7C9277DE /* TatamiTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		800E9E7A78EBD0D58413C11C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */,
+				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
+				BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */,
+				DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D78AD2059FF2EF6454FA0378 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ADE323DF649008875044FE71 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E6DF933D1FBE98F7BD191271 /* Tatami */;
+			targetProxy = 9AD0444BF3275872E8529FB9 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0865A8D999CAC753239B851E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = TQPN82UBBY;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2A7C7F069687213BEE210D60 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.TatamiTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tatami.app/Contents/MacOS/Tatami";
+			};
+			name = Debug;
+		};
+		49AADDA635D58EB550310F3F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tatami/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.Tatami;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		8AD10AA145A6A427FF97E4DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.TatamiTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tatami.app/Contents/MacOS/Tatami";
+			};
+			name = Release;
+		};
+		CDEBE98EE3E24FB1AAF53497 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = TQPN82UBBY;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		EA839FADD8DA5380513C2EE5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tatami/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.Tatami;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EA839FADD8DA5380513C2EE5 /* Debug */,
+				49AADDA635D58EB550310F3F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		968A3C99110A4DE4D446F5E5 /* Build configuration list for PBXNativeTarget "TatamiTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A7C7F069687213BEE210D60 /* Debug */,
+				8AD10AA145A6A427FF97E4DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A8A224BD0F7457AB2DD60A42 /* Build configuration list for PBXProject "Tatami" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0865A8D999CAC753239B851E /* Debug */,
+				CDEBE98EE3E24FB1AAF53497 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6576996440293AD3D9A47631 /* Project object */;
+}
