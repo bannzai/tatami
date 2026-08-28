@@ -322,4 +322,11 @@ struct PasswordCSVTests {
             try PasswordCSV.parse(text: "name,url,username,password,note\nx,https://example.com/,alice,\"a\rb\",memo\nbad,row,here\n")
         }
     }
+
+    @Test @MainActor func commandFileURLResolvesRelativePathAgainstHome() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        #expect(BrowserWindowModel.commandFileURL(path: "passwords.csv").path(percentEncoded: false) == home + "passwords.csv")
+        #expect(BrowserWindowModel.commandFileURL(path: "~/x/passwords.csv").path(percentEncoded: false) == home + "x/passwords.csv")
+        #expect(BrowserWindowModel.commandFileURL(path: "/tmp/passwords.csv").path(percentEncoded: false) == "/tmp/passwords.csv")
+    }
 }
