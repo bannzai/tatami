@@ -61,7 +61,7 @@ enum LoginFormScript {
         }
         const usernameField = findUsernameField(passwordField);
         const isNewPassword = (passwordField.autocomplete || '').toLowerCase() === 'new-password'
-          || (passwordField.form ? passwordField.form.querySelectorAll('input[type="password"]').length : 0) >= 2;
+          || (passwordField.form ? Array.from(passwordField.form.querySelectorAll('input[type="password"]')).filter(isVisible).length : 0) >= 2;
         try {
           window.webkit.messageHandlers.tatamiLoginForm.postMessage({
             submitted: true,
@@ -94,9 +94,19 @@ enum LoginFormScript {
         if (event.key === 'Enter' && event.target && event.target.type === 'password') { capture(event.target.form || document); }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
+      // 複数欄の判定は同じ (可視の) フォーム内の組で行う (デスクトップ用・モバイル用に独立したログインフォームが並ぶページを誤検出しない)。
+      // 状態が変わった時だけ送る
+      const isNewPasswordForm = (scope) => {
+        const fields = Array.from(scope.querySelectorAll('input[type="password"]')).filter(isVisible);
+        return fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
+      };
+      let lastHasNewPassword = null;
       const postNewPassword = () => {
-        const fields = Array.from(document.querySelectorAll('input[type="password"]'));
-        const hasNewPassword = fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
+        const scopes = Array.from(document.querySelectorAll('form'));
+        const hasNewPassword = scopes.some(isNewPasswordForm)
+          || isNewPasswordForm({ querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) });
+        if (hasNewPassword === lastHasNewPassword) { return; }
+        lastHasNewPassword = hasNewPassword;
         try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasNewPassword }); } catch (e) {}
       };
       // SPA が既存の input の type / autocomplete を後から変える場合も検出する
