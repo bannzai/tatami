@@ -601,11 +601,24 @@ final class BrowserWindowModel {
 
     /// キー入力を prefix キーの検出に通し、アプリが消費したかどうかを返す。true なら Web ページへ渡さない
     func handle(keyStroke: KeyStroke) -> Bool {
+        handle(keyStrokes: [keyStroke])
+    }
+
+    /// ウィンドウがキーウィンドウでなくなった時に prefix 待ちを取り消す (戻った後の最初のキーをコマンドとして消費しないため)
+    func cancelPrefix() {
+        prefixKeyState = prefixKeyState.cancelled
+    }
+
+    /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す。一覧やプロンプトのキー操作は主な解釈 (先頭の候補) で行う
+    func handle(keyStrokes: [KeyStroke]) -> Bool {
+        guard let keyStroke = keyStrokes.first else {
+            return false
+        }
         if chooser != nil {
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
-        let handled = prefixKeyState.handling(keyStroke: keyStroke, table: keyBindings)
+        let handled = prefixKeyState.handling(keyStrokes: keyStrokes, table: keyBindings)
         prefixKeyState = handled.state
         switch handled.outcome {
         case .passThrough:

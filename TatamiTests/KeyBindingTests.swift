@@ -76,4 +76,19 @@ struct KeyBindingTests {
         #expect(result.state == .idle)
         #expect(result.outcome == .perform(.resizePaneZoom))
     }
+
+    @Test func optionProducedSymbolFallsBackToCharacterBinding() {
+        let table = KeyBindingTable.default
+        // ドイツ語配列の Option+8 は主な解釈が M-8、Option の変換で生成される文字が {
+        let candidates = [KeyStroke(key: "8", modifiers: [.option]), KeyStroke(key: "{", modifiers: [])]
+        let result = PrefixKeyState.awaitingCommand.handling(keyStrokes: candidates, table: table)
+        #expect(result.outcome == .perform(.swapPaneUp))
+        var custom = table
+        custom.bindings[KeyStroke(tmuxKeyName: "M-8")!] = .nextLayout
+        #expect(PrefixKeyState.awaitingCommand.handling(keyStrokes: candidates, table: custom).outcome == .perform(.nextLayout))
+    }
+
+    @Test func cancelledStateIsIdle() {
+        #expect(PrefixKeyState.awaitingCommand.cancelled == .idle)
+    }
 }
