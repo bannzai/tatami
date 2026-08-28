@@ -216,7 +216,8 @@ enum PasswordImporter {
             }
             // note 列が無い形式では既存のメモを残す
             let note = row.note ?? credentials[index].note
-            guard credentials[index].password != row.password || credentials[index].note != note else {
+            // Unicode の正規化形だけが違う値 (U+00E9 と U+0065 U+0301) はサイト側で別のパスワードになりうるため、String の等価ではなくスカラー列で比較する
+            guard !credentials[index].password.unicodeScalars.elementsEqual(row.password.unicodeScalars) || !credentials[index].note.unicodeScalars.elementsEqual(note.unicodeScalars) else {
                 unchanged += 1
                 continue
             }
@@ -259,8 +260,10 @@ enum PasswordImporter {
         let host = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? "").lowercased()
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
+        // ユーザー名は正規化形だけが違う値を別アカウントとして扱えるよう、String の等価 (正規化を無視する) ではなくスカラー値の列で表す。
         // オリジンの各要素に改行は現れないため、区切りに使ってもユーザー名との境界が曖昧にならない
-        return "\(scheme)\n\(host)\n\(port)\n\(username)"
+        let usernameKey = username.unicodeScalars.map { String($0.value, radix: 16) }.joined(separator: " ")
+        return "\(scheme)\n\(host)\n\(port)\n\(usernameKey)"
     }
 }
 

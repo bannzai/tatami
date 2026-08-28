@@ -49,8 +49,9 @@ struct BrowsingData: Codable, Equatable {
             history[index] = HistoryEntry(url: url, title: title, visitedAt: history[index].visitedAt)
             changed = true
         }
-        // 読み込み中に付けたブックマークが前ページのタイトルを持つことがあるため、同じ URL のブックマーク名も確定したタイトルに揃える
-        if let index = bookmarks.firstIndex(where: { $0.url == url }), bookmarks[index].title != title {
+        // 読み込み中に付けたブックマークは仮の名前 (ホスト名) を持つため、その場合だけ確定したタイトルに揃える。
+        // 未読件数などで変わる動的なタイトルで、利用者が付けた (または確定済みの) 名前を書き換えない
+        if let index = bookmarks.firstIndex(where: { $0.url == url }), bookmarks[index].title == (url.host() ?? ""), bookmarks[index].title != title {
             bookmarks[index] = Bookmark(url: url, title: title, addedAt: bookmarks[index].addedAt)
             changed = true
         }

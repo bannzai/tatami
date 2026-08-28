@@ -283,4 +283,22 @@ struct PasswordCSVTests {
         #expect(result.unchanged == 1)
         #expect(result.credentials.count == 1)
     }
+
+    @Test func mergeComparesByUnicodeScalarsNotNormalization() {
+        let composed = "caf\u{00E9}"
+        let decomposed = "cafe\u{0301}"
+        let existing = [makeCredential(url: "https://example.com/", username: composed, password: composed, date: past)]
+        let result = PasswordImporter.merge(
+            rows: [
+                PasswordCSV.Row(name: "", url: "https://example.com/", username: composed, password: decomposed, note: ""),
+                PasswordCSV.Row(name: "", url: "https://example.com/", username: decomposed, password: "dummy", note: ""),
+            ],
+            existing: existing,
+            now: now
+        )
+        #expect(result.updated == 1)
+        #expect(result.added == 1)
+        #expect(result.credentials.count == 2)
+        #expect(result.credentials[0].password.unicodeScalars.elementsEqual(decomposed.unicodeScalars))
+    }
 }

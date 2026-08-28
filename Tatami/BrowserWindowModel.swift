@@ -926,6 +926,10 @@ final class BrowserWindowModel {
 
     /// 訪問を履歴に記録する
     private func recordVisit(url: URL, title: String) {
+        // 表示されなかったモデル (SwiftUI が作って捨てた @State の初期値等) の初期読み込みを履歴にしない
+        guard isActive else {
+            return
+        }
         BrowsingDataStore.shared.recordVisit(url: url, title: title)
     }
 

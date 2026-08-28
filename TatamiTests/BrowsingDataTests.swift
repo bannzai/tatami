@@ -36,9 +36,13 @@ struct BrowsingDataTests {
     @Test func updateTitleAlsoRenamesBookmark() {
         var data = BrowsingData()
         let url = URL(string: "https://a.example/")!
-        data.addBookmark(url: url, title: "Loading", date: base)
+        data.addBookmark(url: url, title: "a.example", date: base)
         let renamed = data.updateTitle(url: url, title: "A")
         #expect(renamed)
+        #expect(data.bookmarks[0].title == "A")
+        // 確定済みの名前は動的なタイトル (未読件数等) で書き換えない
+        let dynamic = data.updateTitle(url: url, title: "(3) A")
+        #expect(!dynamic)
         #expect(data.bookmarks[0].title == "A")
     }
 
