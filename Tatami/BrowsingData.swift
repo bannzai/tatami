@@ -126,15 +126,28 @@ enum BrowsingStore {
     }
 
     /// 起動時の読み込み。壊れていれば空から始める (履歴は失っても致命的でない。ログに出す)
-    static func loadOrEmpty(fileURL: URL = defaultFileURL) -> BrowsingData {
+    /// 起動時の読み込みの結果。isWritable が false なら元のファイルを守るため自動保存を止める
+    struct LoadResult {
+        let data: BrowsingData
+        let isWritable: Bool
+        /// 読み込めなかった時の説明 (status line に出す)
+        let problem: String?
+    }
+
+    /// 起動時の読み込み。壊れていれば退避してから空で始める。退避もできなければ、元のファイルを空のデータで上書きしないよう保存を止める
+    static func loadOrEmpty(fileURL: URL = defaultFileURL) -> LoadResult {
         do {
-            return try load(fileURL: fileURL)
+            return LoadResult(data: try load(fileURL: fileURL), isWritable: true, problem: nil)
         } catch {
-            // 壊れたファイルを空のデータで上書きしてブックマークまで失わないよう、元のファイルを退避してから空で始める
             let backupURL = fileURL.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
-            try? FileManager.default.moveItem(at: fileURL, to: backupURL)
-            NSLog("履歴の読み込みに失敗 (%@ に退避して空から始める): %@", backupURL.path(percentEncoded: false), String(describing: error))
-            return BrowsingData()
+            do {
+                try FileManager.default.moveItem(at: fileURL, to: backupURL)
+                NSLog("履歴の読み込みに失敗 (%@ に退避して空から始める): %@", backupURL.path(percentEncoded: false), String(describing: error))
+                return LoadResult(data: BrowsingData(), isWritable: true, problem: "履歴を読めなかったため \(backupURL.lastPathComponent) に退避した")
+            } catch let moveError {
+                NSLog("履歴の読み込みと退避に失敗 (保存を止める): %@ / %@", String(describing: error), String(describing: moveError))
+                return LoadResult(data: BrowsingData(), isWritable: false, problem: "履歴を読めず退避もできないため、履歴・ブックマークを保存しない: \(error)")
+            }
         }
     }
 
