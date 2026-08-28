@@ -32,6 +32,9 @@ struct PaneCommands: Commands {
             Button("Reload") { model?.perform(command: .reload) }
                 .keyboardShortcut("r", modifiers: [.command])
                 .accessibilityIdentifier("menu-reload")
+            Divider()
+            Button("Set as Default Browser…") { model?.perform(command: .setDefaultBrowser) }
+                .accessibilityIdentifier("menu-set-default-browser")
         }
         CommandMenu("Pane") {
             Button("Split Left / Right") { model?.perform(command: .splitWindowHorizontal) }

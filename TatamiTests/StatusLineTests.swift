@@ -33,6 +33,7 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: "$")!] == .renameSession)
         #expect(table.bindings[KeyStroke(tmuxKeyName: ":")!] == .commandPrompt)
         #expect(BrowserCommand(tmuxName: "command-prompt") == .commandPrompt)
+        #expect(BrowserCommand(tmuxName: "set-default-browser") == .setDefaultBrowser)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "[")!] == .findPrompt)
     }
 }

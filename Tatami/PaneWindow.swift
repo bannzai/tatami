@@ -93,14 +93,29 @@ final class PaneWindow {
     /// target="_blank" / window.open の要求を新しいペインとして開く。別の macOS ウィンドウは増やさない (documents/PROJECT.md 機能要件 1)。
     /// 分割の向きは、要求元のペインの実際の形が横長なら左右、縦長なら上下にして新しいペインが極端に細くならないようにする
     private func splitForPopup(sourcePaneID: PaneID, configuration: WKWebViewConfiguration) -> WKWebView {
-        let containerBounds = CGRect(origin: .zero, size: containerSize)
-        let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
         paneTree.focus(paneID: sourcePaneID)
-        let newPaneID = paneTree.split(axis: sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical)
+        let newPaneID = paneTree.split(axis: splitAxisForNewPane(sourcePaneID: sourcePaneID))
         let pane = makePane(id: newPaneID, url: homeURL, configuration: configuration)
         panes[newPaneID] = pane
         notifyFocusedURL()
         return pane.webView
+    }
+
+    /// 他アプリから渡された URL を、フォーカス中のペインを分割した新しいペインで開く (documents/PROJECT.md 機能要件 4)
+    func openInNewPane(url: URL) {
+        let newPaneID = paneTree.split(axis: splitAxisForNewPane(sourcePaneID: paneTree.focusedPaneID))
+        let pane = makePane(id: newPaneID, url: url)
+        panes[newPaneID] = pane
+        pane.loadInitialURL()
+        notifyFocusedURL()
+        onContentChange?()
+    }
+
+    /// 新しいペインが極端に細くならないよう、元のペインの実際の形が横長なら左右、縦長なら上下に分ける
+    private func splitAxisForNewPane(sourcePaneID: PaneID) -> SplitAxis {
+        let containerBounds = CGRect(origin: .zero, size: containerSize)
+        let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
+        return sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical
     }
 
     /// フォーカス中のペインを閉じる。最後の 1 枚は閉じずに false を返す (ウィンドウごと閉じる判断は BrowserWindowModel が行う)

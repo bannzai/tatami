@@ -318,10 +318,26 @@ final class BrowserWindowModel {
         }
     }
 
-    /// 他アプリから渡された URL をフォーカス中のペインで開く
+    /// 他アプリから渡された URL を、現在のウィンドウの新しいペインで開く
     func open(url: URL) {
+        currentWindow.openInNewPane(url: url)
         addressText = url.absoluteString
-        currentWindow.focusedPane.load(url: url)
+        focusedPaneStateVersion += 1
+        scheduleSave()
+    }
+
+    /// Tatami を既定のブラウザにする (`:set-default-browser`)。macOS の確認ダイアログを経て登録され、https を指定すると http も切り替わる。
+    /// 結果は status line に出す
+    func setAsDefaultBrowser() {
+        NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "https") { [weak self] error in
+            guard let self else {
+                return
+            }
+            let message = error.map { "既定のブラウザに設定できなかった: \($0.localizedDescription)" } ?? "Tatami を既定のブラウザにした"
+            Task { @MainActor in
+                self.statusMessage = message
+            }
+        }
     }
 
     /// アドレスバーへフォーカスを移す (prefix + /)
@@ -731,6 +747,8 @@ final class BrowserWindowModel {
             beginCommandPrompt()
         case .findPrompt:
             beginFindPrompt()
+        case .setDefaultBrowser:
+            setAsDefaultBrowser()
         case .sourceFile(let path):
             reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL, requireFile: path != nil)
         }
