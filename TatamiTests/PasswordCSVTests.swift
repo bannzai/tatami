@@ -272,4 +272,15 @@ struct PasswordCSVTests {
         #expect(result.rows.map(\.username) == ["alice"])
         #expect(result.excluded == 1)
     }
+
+    @Test func mergeMatchesUnicodeAndPunycodeHosts() {
+        let existing = [makeCredential(url: "https://例え.jp/", username: "alice", password: "dummy-alice", date: past)]
+        let result = PasswordImporter.merge(
+            rows: [PasswordCSV.Row(name: "", url: "https://xn--r8jz45g.jp/", username: "alice", password: "dummy-alice", note: "")],
+            existing: existing,
+            now: now
+        )
+        #expect(result.unchanged == 1)
+        #expect(result.credentials.count == 1)
+    }
 }

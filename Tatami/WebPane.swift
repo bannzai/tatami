@@ -344,6 +344,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
         if navigation === restoringNavigation {
             restoringNavigation = nil
+            isSuppressingRestoredVisits = false
         }
     }
 
@@ -380,6 +381,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
         if navigation === restoringNavigation {
             restoringNavigation = nil
+            isSuppressingRestoredVisits = false
         }
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain, WebPane.certificateErrorCodes.contains(nsError.code),
