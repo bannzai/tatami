@@ -16,8 +16,6 @@ final class PaneWindow {
     var onFocusedURLChange: ((URL) -> Void)?
     /// フォーカスの有無を問わず、どのペインの URL が変わった時も、WebKit 起点でペインが閉じた時も呼ぶ通知先 (セッションの保存に使う)
     var onContentChange: (() -> Void)?
-    /// どのペインのダウンロードでも進捗などを status line に出すための通知先
-    var onDownloadMessage: ((String) -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -212,9 +210,6 @@ final class PaneWindow {
         }
         pane.onClose = { [weak self] in
             self?.close(paneID: id)
-        }
-        pane.onDownloadMessage = { [weak self] message in
-            self?.onDownloadMessage?(message)
         }
         return pane
     }

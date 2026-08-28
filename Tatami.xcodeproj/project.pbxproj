@@ -27,6 +27,7 @@
 		C1A7E40B92D14F6A8B3D5E70 /* TatamiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B8F51CA3E2406B9C4E6F81 /* TatamiConfig.swift */; };
 		E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */; };
 		A2A1C2E769384D439B9FCC47 /* TatamiConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36C24AF9ED148488297390E /* TatamiConfigStore.swift */; };
+		8620771B769049D7AA26F29F /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623175DED39C4C3F8906160A /* DownloadManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +64,7 @@
 		D2B8F51CA3E2406B9C4E6F81 /* TatamiConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiConfig.swift; sourceTree = "<group>"; };
 		F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiConfigTests.swift; sourceTree = "<group>"; };
 		B36C24AF9ED148488297390E /* TatamiConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiConfigStore.swift; sourceTree = "<group>"; };
+		623175DED39C4C3F8906160A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -105,6 +107,7 @@
 				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
 				CD8C5B56487F4F1F9006165F /* PaneTree.swift */,
 				85CED8AA8672425F88EAD428 /* WebPane.swift */,
+				623175DED39C4C3F8906160A /* DownloadManager.swift */,
 				E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */,
 				44AC810FA5594E2A885F80DC /* PaneContainerView.swift */,
 				E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */,
@@ -205,6 +208,7 @@
 				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
 				9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */,
 				8EDF296C81CA4F0CAA58573D /* WebPane.swift in Sources */,
+				8620771B769049D7AA26F29F /* DownloadManager.swift in Sources */,
 				99294680D5664B718A00A3D0 /* BrowserWindowModel.swift in Sources */,
 				5F05464E6EBA4E7F9A344068 /* PaneContainerView.swift in Sources */,
 				AC1D138D50924296BA4838BD /* PaneCommands.swift in Sources */,

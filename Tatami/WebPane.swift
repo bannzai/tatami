@@ -4,7 +4,7 @@ import WebKit
 /// 1 ペイン分の Web コンテンツ。WKWebView と、その URL / タイトル / 進捗の変化と新規ウィンドウ要求を受ける delegate をまとめて持つ。
 /// ペインツリー (PaneTree) には識別子だけが載り、実体はこのクラスが PaneWindow に保持される
 @MainActor
-final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate {
+final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// ペインツリー上の識別子
     let id: PaneID
     /// 表示に使う WebKit のビュー
@@ -19,18 +19,6 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
     /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
     var onClose: (() -> Void)?
-    /// ダウンロードの進捗・完了・失敗を status line に出すための通知先
-    var onDownloadMessage: ((String) -> Void)?
-    /// 進行中のダウンロード。WKDownload は delegate を弱参照するため、完了までここで保持する
-    private var downloads: [WKDownload: DownloadProgress] = [:]
-    /// 1 つのダウンロードの保存先と進捗の監視
-    private final class DownloadProgress {
-        let destinationURL: URL
-        var observation: NSKeyValueObservation?
-        init(destinationURL: URL) {
-            self.destinationURL = destinationURL
-        }
-    }
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -143,6 +131,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
         let alert = NSAlert()
         alert.messageText = frame.request.url?.host() ?? ""
         alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        WebPane.identify(alert: alert, prefix: "jsAlert")
         _ = await run(alert: alert)
     }
 
@@ -152,6 +142,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
+        WebPane.identify(alert: alert, prefix: "jsConfirm")
         return await run(alert: alert) == .alertFirstButtonReturn
     }
 
@@ -164,8 +155,17 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
         let field = NSTextField(string: defaultText ?? "")
         // 入力欄の幅。NSAlert の本文幅に合わせた値で、これより狭いと URL などの長い入力が読めない
         field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+        field.setAccessibilityIdentifier("jsPromptField")
         alert.accessoryView = field
+        WebPane.identify(alert: alert, prefix: "jsPrompt")
         return await run(alert: alert) == .alertFirstButtonReturn ? field.stringValue : nil
+    }
+
+    /// WebDriverAgentMac からダイアログのボタンを特定できるよう、`<prefix>Button-<番号>` の識別子を付ける (0 が既定のボタン)
+    private static func identify(alert: NSAlert, prefix: String) {
+        for (index, button) in alert.buttons.enumerated() {
+            button.setAccessibilityIdentifier("\(prefix)Button-\(index)")
+        }
     }
 
     /// カメラ・マイクの権限要求 (WKUIDelegate)。ユーザーがダイアログで許可した時だけ通す。
@@ -180,6 +180,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
         alert.messageText = "\(origin.host) が\(WebPane.mediaCaptureName(type: type))の使用を求めています"
         alert.addButton(withTitle: "許可")
         alert.addButton(withTitle: "拒否")
+        WebPane.identify(alert: alert, prefix: "mediaPermission")
         return await run(alert: alert) == .alertFirstButtonReturn ? .grant : .deny
     }
 
@@ -247,59 +248,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate, WKDownloadDel
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = self
+        DownloadManager.shared.adopt(download: download)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
-    }
-
-    // MARK: ダウンロード。保存先は ~/Downloads で、同名があれば連番を付ける
-
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        let directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        let destinationURL = WebPane.uniqueFileURL(directoryURL: directoryURL, fileName: suggestedFilename)
-        let progress = DownloadProgress(destinationURL: destinationURL)
-        progress.observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
-            guard let self, let download else {
-                return
-            }
-            let percent = Int(progress.fractionCompleted * 100)
-            Task { @MainActor in
-                // 完了・失敗の後に届く進捗 (100%) で完了のメッセージを上書きしない
-                guard self.downloads[download] != nil else {
-                    return
-                }
-                self.onDownloadMessage?("ダウンロード中 \(percent)%: \(destinationURL.lastPathComponent)")
-            }
-        }
-        downloads[download] = progress
-        onDownloadMessage?("ダウンロード開始: \(destinationURL.lastPathComponent)")
-        return destinationURL
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        if let progress = downloads.removeValue(forKey: download) {
-            onDownloadMessage?("ダウンロード完了: \(progress.destinationURL.path(percentEncoded: false))")
-        }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        let name = downloads.removeValue(forKey: download)?.destinationURL.lastPathComponent ?? ""
-        onDownloadMessage?("ダウンロード失敗: \(name) \(error.localizedDescription)")
-    }
-
-    /// 既存のファイルを上書きしないよう `name (2).ext` のように連番を付ける
-    private static func uniqueFileURL(directoryURL: URL, fileName: String) -> URL {
-        let base = (fileName as NSString).deletingPathExtension
-        let ext = (fileName as NSString).pathExtension
-        var candidate = directoryURL.appending(path: fileName)
-        var counter = 2
-        while FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) {
-            let numbered = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
-            candidate = directoryURL.appending(path: numbered)
-            counter += 1
-        }
-        return candidate
+        DownloadManager.shared.adopt(download: download)
     }
 }
