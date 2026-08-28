@@ -14,8 +14,10 @@ final class PaneContainerView: NSView {
     var onDividerDrag: ((_ dividerPath: [SplitSide], _ delta: Double) -> Void)?
     /// ペインがクリックされた時の通知先
     var onPaneClick: ((PaneID) -> Void)?
-    /// このウィンドウへのキー入力の通知先。true を返すと入力を消費し、WKWebView (Web ページ) へ渡さない
-    var onKeyDown: ((KeyStroke) -> Bool)?
+    /// このウィンドウへのキー入力の通知先 (1 つの入力の候補を先頭から照合する)。true を返すと入力を消費し、WKWebView (Web ページ) へ渡さない
+    var onKeyDown: (([KeyStroke]) -> Bool)?
+    /// ウィンドウがキーウィンドウでなくなった時の通知先 (prefix 待ちの取り消し)
+    var onResignKey: (() -> Void)?
 
     private var paneTree = PaneTree()
     private var webViews: [PaneID: WKWebView] = [:]
@@ -168,6 +170,7 @@ final class PaneContainerView: NSView {
             resignKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.consumedKeyCodes.removeAll()
+                    self?.onResignKey?()
                 }
             }
         }
@@ -194,10 +197,11 @@ final class PaneContainerView: NSView {
             }
             // 別アプリへ移った間に離されたキーは keyUp が届かず集合に残るため、リピートでない keyDown が来た時点で古い記録を消す
             consumedKeyCodes.remove(event.keyCode)
-            guard let keyStroke = KeyStroke(event: event) else {
+            let keyStrokes = KeyStroke.candidates(event: event)
+            guard !keyStrokes.isEmpty else {
                 return event
             }
-            let consumed = onKeyDown?(keyStroke) == true
+            let consumed = onKeyDown?(keyStrokes) == true
             if consumed {
                 consumedKeyCodes.insert(event.keyCode)
             }
@@ -208,7 +212,9 @@ final class PaneContainerView: NSView {
                 return event
             }
             // 一覧などのオーバーレイの上をクリックした時に背後のペインへフォーカスを移さないよう、座標ではなく実際のヒット先で判定する
-            guard let hitView = window.contentView?.hitTest(event.locationInWindow),
+            // hitTest は受け手のローカル座標を取るため、ウィンドウ座標から contentView の座標へ変換する (反転座標系の SwiftUI のホスティングビューでも正しく当たる)
+            guard let contentView = window.contentView,
+                  let hitView = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil)),
                   let clickedWebView = sequence(first: hitView, next: \.superview).first(where: { $0 is WKWebView }),
                   let clickedPaneID = webViews.first(where: { $0.value === clickedWebView && $0.value.superview === self })?.key else {
                 return event
@@ -241,8 +247,11 @@ struct PaneContainer: NSViewRepresentable {
         view.onPaneClick = { paneID in
             model.currentWindow.focus(paneID: paneID)
         }
-        view.onKeyDown = { keyStroke in
-            model.handle(keyStroke: keyStroke)
+        view.onKeyDown = { keyStrokes in
+            model.handle(keyStrokes: keyStrokes)
+        }
+        view.onResignKey = {
+            model.cancelPrefix()
         }
         return view
     }
