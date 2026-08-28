@@ -97,6 +97,24 @@ final class PaneContainerView: NSView {
         }
     }
 
+    /// 境界線を WebDriverAgentMac などから識別できるようにアクセシビリティ要素として公開する。
+    /// 識別子は `divider-<番号>` (dividers(bounds:) の並び順 = 木の深さ優先順) で、リサイズの検証で座標に依存せず特定できる
+    override func accessibilityChildren() -> [Any]? {
+        let dividerElements = paneTree.dividers(bounds: bounds).enumerated().map { index, divider in
+            let element = NSAccessibilityElement()
+            element.setAccessibilityRole(.splitter)
+            element.setAccessibilityIdentifier("divider-\(index)")
+            element.setAccessibilityParent(self)
+            let rect = dividerRect(divider: divider)
+            if let window {
+                element.setAccessibilityFrame(window.convertToScreen(convert(rect, to: nil)))
+            }
+            element.setAccessibilityOrientation(divider.axis == .horizontal ? .vertical : .horizontal)
+            return element
+        }
+        return (super.accessibilityChildren() ?? []) + dividerElements
+    }
+
     override func resetCursorRects() {
         for divider in paneTree.dividers(bounds: bounds) {
             addCursorRect(dividerRect(divider: divider), cursor: divider.axis == .horizontal ? .resizeLeftRight : .resizeUpDown)
