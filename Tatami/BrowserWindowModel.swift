@@ -335,6 +335,11 @@ final class BrowserWindowModel {
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
     func killCurrentWindow() {
         let closingIndex = currentWindowIndex
+        // 閉じるウィンドウが名前変更の対象なら入力先が無くなるためプロンプトを閉じ、一覧は添字がずれるため閉じる
+        if promptTargetWindow === currentWindow {
+            cancelPrompt()
+        }
+        chooser = nil
         windows.remove(at: closingIndex)
         if windows.isEmpty {
             windows = [makeWindow()]
@@ -370,13 +375,19 @@ final class BrowserWindowModel {
         case nil:
             break
         }
-        prompt = nil
+        closePrompt()
         scheduleSave()
     }
 
     func cancelPrompt() {
+        closePrompt()
+    }
+
+    /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
+    private func closePrompt() {
         prompt = nil
         promptTargetWindow = nil
+        webContentFocusRequestCount += 1
     }
 
     /// ウィンドウ一覧 (prefix + w) を開く

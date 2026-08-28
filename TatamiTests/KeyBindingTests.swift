@@ -68,4 +68,12 @@ struct KeyBindingTests {
         #expect(PrefixKeyState.idle.handling(keyStroke: KeyStroke(tmuxKeyName: "C-b")!, table: table).outcome == .passThrough)
         #expect(PrefixKeyState.idle.handling(keyStroke: KeyStroke(tmuxKeyName: "C-a")!, table: table).outcome == .consume)
     }
+
+    @Test func boundEscapeRunsCommandInsteadOfCancel() {
+        var table = KeyBindingTable.default
+        table.bindings[KeyStroke(tmuxKeyName: "Escape")!] = .resizePaneZoom
+        let result = PrefixKeyState.awaitingCommand.handling(keyStroke: KeyStroke(tmuxKeyName: "Escape")!, table: table)
+        #expect(result.state == .idle)
+        #expect(result.outcome == .perform(.resizePaneZoom))
+    }
 }

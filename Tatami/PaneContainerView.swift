@@ -27,8 +27,9 @@ final class PaneContainerView: NSView {
     private var clickMonitor: Any?
     /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
     private var keyMonitor: Any?
-    /// 消費したキーの keyCode。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために、keyUp まで覚える
-    private var consumedKeyCode: UInt16?
+    /// 消費したキーの keyCode の集合。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために keyUp まで覚える。
+    /// prefix を離す前に次のキーを押すロールオーバーでは複数のキーが同時に消費中になるため、1 つではなく集合で持つ
+    private var consumedKeyCodes: Set<UInt16> = []
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
     override var isFlipped: Bool { true }
@@ -115,6 +116,24 @@ final class PaneContainerView: NSView {
         }
     }
 
+    /// 境界線を WebDriverAgentMac などから識別できるようにアクセシビリティ要素として公開する。
+    /// 識別子は `divider-<番号>` (dividers(bounds:) の並び順 = 木の深さ優先順) で、リサイズの検証で座標に依存せず特定できる
+    override func accessibilityChildren() -> [Any]? {
+        let dividerElements = paneTree.dividers(bounds: bounds).enumerated().map { index, divider in
+            let element = NSAccessibilityElement()
+            element.setAccessibilityRole(.splitter)
+            element.setAccessibilityIdentifier("divider-\(index)")
+            element.setAccessibilityParent(self)
+            let rect = dividerRect(divider: divider)
+            if let window {
+                element.setAccessibilityFrame(window.convertToScreen(convert(rect, to: nil)))
+            }
+            element.setAccessibilityOrientation(divider.axis == .horizontal ? .vertical : .horizontal)
+            return element
+        }
+        return (super.accessibilityChildren() ?? []) + dividerElements
+    }
+
     override func resetCursorRects() {
         for divider in paneTree.dividers(bounds: bounds) {
             addCursorRect(dividerRect(divider: divider), cursor: divider.axis == .horizontal ? .resizeLeftRight : .resizeUpDown)
@@ -158,13 +177,9 @@ final class PaneContainerView: NSView {
                 return event
             }
             if event.type == .keyUp {
-                guard event.keyCode == consumedKeyCode else {
-                    return event
-                }
-                consumedKeyCode = nil
-                return nil
+                return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
             }
-            if event.isARepeat, event.keyCode == consumedKeyCode {
+            if event.isARepeat, consumedKeyCodes.contains(event.keyCode) {
                 return nil
             }
             guard let keyStroke = KeyStroke(event: event) else {
@@ -172,18 +187,21 @@ final class PaneContainerView: NSView {
             }
             let consumed = onKeyDown?(keyStroke) == true
             if consumed {
-                consumedKeyCode = event.keyCode
+                consumedKeyCodes.insert(event.keyCode)
             }
             return consumed ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            guard let self, event.window === window else {
+            guard let self, let window, event.window === window else {
                 return event
             }
-            let location = convert(event.locationInWindow, from: nil)
-            if let clickedPaneID = webViews.first(where: { $0.value.superview === self && $0.value.frame.contains(location) })?.key {
-                onPaneClick?(clickedPaneID)
+            // 一覧などのオーバーレイの上をクリックした時に背後のペインへフォーカスを移さないよう、座標ではなく実際のヒット先で判定する
+            guard let hitView = window.contentView?.hitTest(event.locationInWindow),
+                  let clickedWebView = sequence(first: hitView, next: \.superview).first(where: { $0 is WKWebView }),
+                  let clickedPaneID = webViews.first(where: { $0.value === clickedWebView && $0.value.superview === self })?.key else {
+                return event
             }
+            onPaneClick?(clickedPaneID)
             return event
         }
     }

@@ -91,11 +91,12 @@ final class PaneWindow {
     /// 指定したペインを閉じる (window.close() からも呼ばれる)。最後の 1 枚は閉じずに false を返す
     @discardableResult
     func close(paneID: PaneID) -> Bool {
+        let previousFocusedPaneID = paneTree.focusedPaneID
         guard paneTree.close(paneID: paneID) else {
             return false
         }
         panes[paneID] = nil
-        notifyFocusedURL()
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
         return true
     }
 
