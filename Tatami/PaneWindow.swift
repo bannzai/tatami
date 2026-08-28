@@ -117,7 +117,8 @@ final class PaneWindow {
     /// 新しいペインが極端に細くならないよう、元のペインの実際の形が横長なら左右、縦長なら上下に分ける
     private func splitAxisForNewPane(sourcePaneID: PaneID) -> SplitAxis {
         let containerBounds = CGRect(origin: .zero, size: containerSize)
-        let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
+        // zoom 中は frames がコンテナ全体を返すため、zoom を無視した木の上の矩形で元のペインの形を見る (split が zoom を解除するため)
+        let sourceFrame = paneTree.root.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
         return sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical
     }
 
