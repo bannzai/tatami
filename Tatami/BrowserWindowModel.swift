@@ -38,8 +38,12 @@ final class BrowserWindowModel {
     private(set) var previousWindowIndex: Int?
     /// アドレスバーに入力中のテキスト。フォーカス中のペインの URL に追随する
     var addressText = ""
-    /// prefix キーとコマンドの対応。tatami.conf (#7) の読み込みで差し替える
-    var keyBindings = KeyBindingTable.default
+    /// tatami.conf の内容。起動時と source-file の実行で読み直す
+    private(set) var config = TatamiConfig()
+    /// prefix キーとコマンドの対応
+    var keyBindings: KeyBindingTable {
+        config.keyBindings
+    }
     /// prefix キーの 2 ストローク検出の状態。status line に prefix 待ちを表示するために公開する
     private(set) var prefixKeyState = PrefixKeyState.idle
     /// 表示中のプロンプト。nil なら通常表示
@@ -70,9 +74,11 @@ final class BrowserWindowModel {
     /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
     private(set) var focusedPaneStateVersion = 0
 
-    /// 最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
+    /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
     init() {
         windows = []
+        let loadedConfig = TatamiConfigLoader.load()
+        config = loadedConfig.config
         let name = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
         do {
             if let snapshot = try SessionStore.load(name: name) {
@@ -87,6 +93,7 @@ final class BrowserWindowModel {
             windows = [makeWindow()]
         }
         addressText = currentWindow.focusedPane.url.absoluteString
+        statusMessage = TatamiConfigError.statusMessage(errors: loadedConfig.errors)
     }
 
     /// 画面に表示された時に呼ぶ。以後の変更を保存の対象にし、終了時は debounce を待たずに保存する
@@ -211,7 +218,7 @@ final class BrowserWindowModel {
 
     private func restore(snapshot: SessionSnapshot) {
         sessionName = snapshot.name
-        windows = snapshot.windows.map { PaneWindow(snapshot: $0) }
+        windows = snapshot.windows.map { PaneWindow(snapshot: $0, homeURL: config.homeURL, userAgent: config.userAgent) }
         if windows.isEmpty {
             windows = [makeWindow()]
         }
@@ -262,7 +269,7 @@ final class BrowserWindowModel {
 
     /// アドレスバーの入力をフォーカス中のペインで開き、キー入力の宛先を Web コンテンツへ戻す
     func navigate(text: String) {
-        currentWindow.focusedPane.load(url: AddressInput.resolve(text: text))
+        currentWindow.focusedPane.load(url: AddressInput.resolve(text: text, searchURL: config.searchURL))
         webContentFocusRequestCount += 1
     }
 
@@ -529,11 +536,23 @@ final class BrowserWindowModel {
             beginChooseSession()
         case .renameSession:
             beginRenameSession()
+        case .sourceFile(let path):
+            reload(configFileURL: path.map { TatamiConfigLoader.fileURL(path: $0) } ?? TatamiConfigLoader.defaultFileURL)
         }
     }
 
+    /// tatami.conf を読み直して設定を差し替える (source-file)。解釈できなかった行は飛ばし、読めた分だけを反映して status line に知らせる
+    private func reload(configFileURL: URL) {
+        let loadedConfig = TatamiConfigLoader.load(fileURL: configFileURL)
+        config = loadedConfig.config
+        for window in windows {
+            window.apply(homeURL: config.homeURL, userAgent: config.userAgent)
+        }
+        statusMessage = TatamiConfigError.statusMessage(errors: loadedConfig.errors)
+    }
+
     private func makeWindow() -> PaneWindow {
-        let window = PaneWindow()
+        let window = PaneWindow(homeURL: config.homeURL, userAgent: config.userAgent)
         attachCallbacks(window: window)
         return window
     }

@@ -165,6 +165,9 @@ enum BrowserCommand: Hashable, Sendable {
     case detachClient
     case chooseSession
     case renameSession
+    /// tatami.conf を読み直して設定を差し替える。パスを省略すると既定のファイル (`~/.config/tatami/tatami.conf`) を読む。
+    /// 設定を書き換えるコマンドをキーに割り当てる意味が薄いため既定のバインドには入れず、コマンドプロンプトから呼ぶ
+    case sourceFile(String?)
 
     /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
     var tmuxName: String {
@@ -225,6 +228,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "choose-session"
         case .renameSession:
             return "rename-session"
+        case .sourceFile(let path):
+            return path.map { "source-file \($0)" } ?? "source-file"
         }
     }
 
@@ -233,6 +238,14 @@ enum BrowserCommand: Hashable, Sendable {
         let normalized = tmuxName.split(separator: " ").joined(separator: " ")
         if let match = normalized.wholeMatch(of: /select-window -t (\d+)/), let index = Int(match.1) {
             self = .selectWindow(index)
+            return
+        }
+        if let match = normalized.wholeMatch(of: /source-file (.+)/) {
+            self = .sourceFile(String(match.1))
+            return
+        }
+        if normalized == "source-file" {
+            self = .sourceFile(nil)
             return
         }
         guard let command = BrowserCommand.fixedCommands.first(where: { $0.tmuxName == normalized }) else {

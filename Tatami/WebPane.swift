@@ -22,14 +22,16 @@ final class WebPane: NSObject, WKUIDelegate {
     private var observations: [NSKeyValueObservation] = []
 
     /// configuration は window.open の要求 (createWebViewWith) で WebKit から渡されたものをそのまま使う必要があるため引数で受ける。
-    /// 通常のペインは defaultConfiguration() (Cookie・ローカルストレージを永続化する WKWebsiteDataStore.default) を渡す
-    init(id: PaneID, url: URL, configuration: WKWebViewConfiguration) {
+    /// 通常のペインは defaultConfiguration() (Cookie・ローカルストレージを永続化する WKWebsiteDataStore.default) を渡す。
+    /// userAgent は tatami.conf の `set -g user-agent` の値で、nil なら WebKit の既定をそのまま使う
+    init(id: PaneID, url: URL, userAgent: String?, configuration: WKWebViewConfiguration) {
         self.id = id
         self.url = url
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         // Chromium の DevTools 相当として Safari の Web Inspector を使えるようにする (ADR 0001)
         webView.isInspectable = true
+        webView.customUserAgent = userAgent
         webView.uiDelegate = self
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する。
         // observation をこのインスタンスが所有するため、クロージャからは弱参照にして循環参照を避ける
