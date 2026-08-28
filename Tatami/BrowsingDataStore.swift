@@ -41,7 +41,20 @@ final class BrowsingDataStore {
         scheduleSave()
     }
 
+    /// 未保存の変更を最初に予約した時刻。連続する更新 (タイトルを更新し続けるページ等) で debounce が延び続けても maxSaveDelay で保存する
+    @ObservationIgnored private var firstScheduledAt: ContinuousClock.Instant?
+    /// セッションの保存と同じ根拠 (BrowserWindowModel.maxSaveDelay)
+    private static let maxSaveDelay: Duration = .seconds(5)
+
     private func scheduleSave() {
+        let now = ContinuousClock.now
+        if let firstScheduledAt, now - firstScheduledAt >= BrowsingDataStore.maxSaveDelay {
+            saveNow()
+            return
+        }
+        if firstScheduledAt == nil {
+            firstScheduledAt = now
+        }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: BrowsingDataStore.saveDelay)
@@ -55,6 +68,7 @@ final class BrowsingDataStore {
     /// debounce を待たずに保存する (ウィンドウを閉じる時・終了時)
     func saveNow() {
         saveTask?.cancel()
+        firstScheduledAt = nil
         do {
             try BrowsingStore.save(data: data)
             lastSaveError = nil
