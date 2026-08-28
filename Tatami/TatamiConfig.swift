@@ -141,8 +141,8 @@ enum TatamiConfigParser {
         case "user-agent":
             config.userAgent = values[1]
         case "password-length":
-            guard let length = Int(values[1]), length >= PasswordGenerator.minimumLength else {
-                throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上の整数: \(values[1])")
+            guard let length = Int(values[1]), (PasswordGenerator.minimumLength...PasswordGenerator.maximumLength).contains(length) else {
+                throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上 \(PasswordGenerator.maximumLength) 以下の整数: \(values[1])")
             }
             config.passwordGenerator.length = length
         case "password-symbols":

@@ -300,8 +300,8 @@ struct TatamiConfigTests {
 
     @Test func passwordGenerationSettings() {
         var config = TatamiConfig()
-        let errors = TatamiConfigParser.apply(text: "set -g password-length 32\nset -g password-symbols off\nset -g password-length 3\nset -g password-symbols maybe", config: &config)
+        let errors = TatamiConfigParser.apply(text: "set -g password-length 32\nset -g password-symbols off\nset -g password-length 3\nset -g password-symbols maybe\nset -g password-length 100000", config: &config)
         #expect(config.passwordGenerator == PasswordGenerator(length: 32, includesSymbols: false))
-        #expect(errors.map(\.line) == [3, 4])
+        #expect(errors.map(\.line) == [3, 4, 5])
     }
 }

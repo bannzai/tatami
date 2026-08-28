@@ -107,6 +107,8 @@ final class BrowserWindowModel {
     private(set) var proposal: Proposal?
     /// 提案の対象ペイン。生成したパスワードの充填先になる
     private var proposalPane: WebPane?
+    /// 提案を出した時のペインの URL。別のページへ移った後に承認しても、そのページへ充填・保存しない
+    private var proposalURL: URL?
     /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
     var browsingData: BrowsingData {
         BrowsingDataStore.shared.data
@@ -841,27 +843,48 @@ final class BrowserWindowModel {
     }
 
     /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
-    private func handleLoginSubmit(pane: WebPane, username: String, password: String, isNewPassword: Bool) {
-        guard WebPane.isWebPage(url: pane.url), let host = pane.url.host()?.lowercased(), !host.isEmpty else {
+    private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, isNewPassword: Bool) {
+        guard WebPane.isWebPage(url: frameURL), let host = frameURL.host()?.lowercased(), !host.isEmpty else {
             return
         }
         let existing: [Credential]
         do {
-            existing = try credentialStore.credentials(host: host)
+            // 更新対象は同じオリジン (scheme・host・ポート) の項目に限る (http 用や別ポート用の項目を上書きしない)
+            existing = try credentialStore.credentials(host: host).filter {
+                $0.url.scheme?.lowercased() == frameURL.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: frameURL)
+            }
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
             return
         }
         if let same = existing.first(where: { $0.username == username }) {
             guard same.password != password else {
+                // 保存済みの正しいパスワードで送り直した時は、その前の誤ったパスワードの提案を残さない
+                if proposalPane === pane {
+                    dismissProposal()
+                }
                 return
             }
             proposalPane = pane
+            proposalURL = pane.url
             proposal = .update(credential: same, password: password)
         } else {
             proposalPane = pane
-            proposal = .save(url: pane.url, username: username, password: password)
+            proposalURL = pane.url
+            proposal = .save(url: frameURL, username: username, password: password)
         }
+    }
+
+    /// フォーカスが移った時に、そのペインで検出済みのサインアップ用の欄について生成の提案を評価する
+    /// (バックグラウンドで読み込まれたページは検出時の通知が捨てられているため)
+    private func evaluateNewPasswordProposal() {
+        let pane = currentWindow.focusedPane
+        guard pane.hasNewPasswordForm, proposal == nil else {
+            return
+        }
+        proposalPane = pane
+        proposalURL = pane.url
+        proposal = .generatePassword
     }
 
     /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
@@ -870,6 +893,7 @@ final class BrowserWindowModel {
             return
         }
         proposalPane = pane
+        proposalURL = pane.url
         proposal = .generatePassword
     }
 
@@ -879,8 +903,15 @@ final class BrowserWindowModel {
             return
         }
         let pane = proposalPane
+        let url = proposalURL
         self.proposal = nil
         proposalPane = nil
+        proposalURL = nil
+        // 提案を出した後に別のページへ移っていたら、そのページへは充填・保存しない
+        if let pane, let url, pane.url != url {
+            statusMessage = "ページが変わったため提案を取り消した"
+            return
+        }
         switch proposal {
         case .save(let url, let username, let password):
             do {
@@ -918,11 +949,13 @@ final class BrowserWindowModel {
     func dismissProposal() {
         proposal = nil
         proposalPane = nil
+        proposalURL = nil
     }
 
     /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
     func generatePassword() {
         proposalPane = currentWindow.focusedPane
+        proposalURL = currentWindow.focusedPane.url
         proposal = .generatePassword
         acceptProposal()
     }
@@ -1126,8 +1159,8 @@ final class BrowserWindowModel {
         if prompt != nil {
             return false
         }
-        // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)
-        if proposal != nil, !isAddressBarEditing, keyStroke.modifiers.isEmpty {
+        // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)。アドレスバーや Web ページの入力中は横取りしない
+        if proposal != nil, !isAddressBarEditing, !currentWindow.focusedPane.isEditingText, keyStroke.modifiers.isEmpty {
             switch keyStroke.key {
             case "y":
                 acceptProposal()
@@ -1299,6 +1332,7 @@ final class BrowserWindowModel {
             addressText = navigatedURL.absoluteString
             focusedPaneStateVersion += 1
             scheduleSave()
+            evaluateNewPasswordProposal()
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
@@ -1309,8 +1343,8 @@ final class BrowserWindowModel {
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
         }
-        window.onLoginSubmit = { [weak self] pane, username, password, isNewPassword in
-            self?.handleLoginSubmit(pane: pane, username: username, password: password, isNewPassword: isNewPassword)
+        window.onLoginSubmit = { [weak self] pane, frameURL, username, password, isNewPassword in
+            self?.handleLoginSubmit(pane: pane, frameURL: frameURL, username: username, password: password, isNewPassword: isNewPassword)
         }
         window.onNewPasswordFormChange = { [weak self] pane, hasNewPasswordForm in
             self?.handleNewPasswordForm(pane: pane, hasNewPasswordForm: hasNewPasswordForm)

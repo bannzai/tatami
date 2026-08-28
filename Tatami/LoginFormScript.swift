@@ -44,8 +44,21 @@ enum LoginFormScript {
       };
       // ログインフォームの送信 (submit イベント、または XHR / fetch でログインするページのために送信ボタンのクリックと
       // パスワード欄での Enter) を検出し、その時点のユーザー名・パスワードをネイティブへ渡す
-      const capture = (passwordField) => {
-        if (!passwordField || !passwordField.value) { return; }
+      // 送信時に報告するパスワード欄。変更フォーム (現在・新規・確認) では新しいパスワード (autocomplete=new-password) を優先する
+      const passwordFieldToReport = (scope) => {
+        const fields = Array.from(scope.querySelectorAll('input[type="password"]'));
+        return fields.find((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields[0] || null;
+      };
+      const capture = (scope) => {
+        const passwordField = passwordFieldToReport(scope);
+        if (!passwordField || !passwordField.value) {
+          // ユーザー名だけのページ (複数段階ログインの 1 段目) はユーザー名を覚えておく
+          const usernameOnly = Array.from(scope.querySelectorAll('input')).find((input) => /username|email|user|login|account/i.test(`${input.autocomplete} ${input.name} ${input.id} ${input.type}`) && input.value);
+          if (usernameOnly) {
+            try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ usernameOnly: usernameOnly.value }); } catch (e) {}
+          }
+          return;
+        }
         const usernameField = findUsernameField(passwordField);
         const isNewPassword = (passwordField.autocomplete || '').toLowerCase() === 'new-password'
           || (passwordField.form ? passwordField.form.querySelectorAll('input[type="password"]').length : 0) >= 2;
@@ -55,21 +68,30 @@ enum LoginFormScript {
             username: usernameField ? usernameField.value : '',
             password: passwordField.value,
             isNewPassword,
+            frameURL: location.href,
           });
         } catch (e) {}
       };
       document.addEventListener('submit', (event) => {
         const form = event.target;
-        if (form && form.querySelector) { capture(form.querySelector('input[type="password"]')); }
+        if (form && form.querySelector) { capture(form); }
       }, true);
+      // 送信になりうるボタンだけを対象にする (type=button のパスワード表示切替などで入力途中の値を送らない)
       document.addEventListener('click', (event) => {
-        const button = event.target && event.target.closest ? event.target.closest('button, input[type="submit"], [role="button"]') : null;
+        const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]), input[type="submit"]') : null;
         if (!button) { return; }
-        const scope = button.form || button.closest('form') || document;
-        capture(scope.querySelector('input[type="password"]'));
+        capture(button.form || button.closest('form') || document);
       }, true);
+      // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
+      const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
+      const postEditing = () => {
+        try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ editing: isTextTarget(document.activeElement) }); } catch (e) {}
+      };
+      document.addEventListener('focusin', postEditing, true);
+      document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
+      postEditing();
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && event.target && event.target.type === 'password') { capture(event.target); }
+        if (event.key === 'Enter' && event.target && event.target.type === 'password') { capture(event.target.form || document); }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
       const postNewPassword = () => {
@@ -77,10 +99,14 @@ enum LoginFormScript {
         const hasNewPassword = fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
         try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasNewPassword }); } catch (e) {}
       };
-      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true });
+      // SPA が既存の input の type / autocomplete を後から変える場合も検出する
+      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });
       postNewPassword();
+      // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
-        const fields = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisible);
+        const visible = Array.from(document.querySelectorAll('input[type="password"]')).filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+        const marked = visible.filter((field) => (field.autocomplete || '').toLowerCase() === 'new-password');
+        const fields = marked.length > 0 ? marked : visible.filter((field) => (field.autocomplete || '').toLowerCase() !== 'current-password');
         if (fields.length === 0) { return false; }
         fields.forEach((field) => setValue(field, password));
         return true;
@@ -100,7 +126,7 @@ enum LoginFormScript {
         return true;
       };
       post();
-      new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true });
+      new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type'] });
     })();
     """
 

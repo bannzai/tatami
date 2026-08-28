@@ -38,8 +38,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     private(set) var hasLoginForm = false
     /// サインアップ / パスワード変更のフォーム (autocomplete=new-password かパスワード欄が 2 つ以上) があるか
     private(set) var hasNewPasswordForm = false
-    /// ログインフォームが送信された時の通知先 (ユーザー名・パスワード・新規パスワードのフォームか)。保存・更新の提案に使う
-    var onLoginSubmit: ((String, String, Bool) -> Void)?
+    /// ログインフォームが送信された時の通知先 (送信元フレームの URL・ユーザー名・パスワード・新規パスワードのフォームか)。保存・更新の提案に使う。
+    /// 別オリジンの iframe からの送信を埋め込み元の資格情報として扱わないよう、URL はトップレベルではなくフレームのもの
+    var onLoginSubmit: ((URL, String, String, Bool) -> Void)?
+    /// Web ページ内のテキスト入力 (input / textarea / contentEditable) にフォーカスがあるか。提案の y / n を横取りしないために使う
+    private(set) var isEditingText = false
+    /// 複数段階ログインの 1 段目で入力されたユーザー名。次の段でパスワードだけが送信された時に関連付ける
+    private(set) var pendingUsername: String?
     /// サインアップ用のパスワード欄が現れた / 消えた時の通知先
     var onNewPasswordFormChange: ((Bool) -> Void)?
 
@@ -225,8 +230,24 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             hasNewPasswordForm = hasNewPassword
             onNewPasswordFormChange?(hasNewPassword)
         }
+        if let editing = body["editing"] as? Bool {
+            isEditingText = editing
+        }
+        if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty {
+            pendingUsername = usernameOnly
+        }
         if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
-            onLoginSubmit?(body["username"] as? String ?? "", password, body["isNewPassword"] as? Bool ?? false)
+            // 送信元フレームの URL (スクリプトからの申告ではなく WebKit が持つフレーム情報) を使う
+            let frameURL = message.frameInfo.request.url ?? (body["frameURL"] as? String).flatMap(URL.init(string:)) ?? webView.url
+            guard let frameURL else {
+                return
+            }
+            var username = body["username"] as? String ?? ""
+            if username.isEmpty, let pendingUsername {
+                username = pendingUsername
+            }
+            pendingUsername = nil
+            onLoginSubmit?(frameURL, username, password, body["isNewPassword"] as? Bool ?? false)
         }
     }
 

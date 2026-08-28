@@ -14,13 +14,15 @@ struct PasswordGenerator: Equatable {
     static let symbols = Array("!#$%&*+-=?@^_")
     /// 最小の長さ。各文字種を最低 1 文字含める規則を満たせる最小値 (英小・英大・数字・記号)
     static let minimumLength = 8
+    /// 最大の長さ。多くのサイトの上限 (64〜128) を超える値は入力ミスとみなし、巨大な値でメインスレッドを止めない
+    static let maximumLength = 128
 
     /// 各文字種を最低 1 文字含み、残りは全文字種から一様に選ぶ。位置は最後にシャッフルする
     func generate<Generator: RandomNumberGenerator>(using generator: inout Generator) -> String {
         let classes = [PasswordGenerator.lowercase, PasswordGenerator.uppercase, PasswordGenerator.digits] + (includesSymbols ? [PasswordGenerator.symbols] : [])
         let all = classes.flatMap { $0 }
         var characters = classes.map { $0.randomElement(using: &generator)! }
-        while characters.count < max(length, PasswordGenerator.minimumLength) {
+        while characters.count < min(max(length, PasswordGenerator.minimumLength), PasswordGenerator.maximumLength) {
             characters.append(all.randomElement(using: &generator)!)
         }
         characters.shuffle(using: &generator)
