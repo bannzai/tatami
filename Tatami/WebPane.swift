@@ -16,6 +16,8 @@ final class WebPane: NSObject, WKUIDelegate {
     var onStateChange: (() -> Void)?
     /// target="_blank" / window.open の要求先。渡した configuration で作った WKWebView を返すと、WebKit がその要求を新しいビューに読み込む
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
+    /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
+    var onClose: (() -> Void)?
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -65,6 +67,23 @@ final class WebPane: NSObject, WKUIDelegate {
                     self.onStateChange?()
                 }
             },
+            // history.pushState で forward 履歴が消えるなど、URL・タイトル・読み込み状態が変わらずに可否だけ変わる場合があるため個別に監視する
+            webView.observe(\.canGoBack) { [weak self] _, _ in
+                guard let self else {
+                    return
+                }
+                Task { @MainActor in
+                    self.onStateChange?()
+                }
+            },
+            webView.observe(\.canGoForward) { [weak self] _, _ in
+                guard let self else {
+                    return
+                }
+                Task { @MainActor in
+                    self.onStateChange?()
+                }
+            },
         ]
     }
 
@@ -96,5 +115,9 @@ final class WebPane: NSObject, WKUIDelegate {
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         onCreateWebView?(configuration)
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        onClose?()
     }
 }

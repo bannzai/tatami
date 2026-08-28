@@ -17,6 +17,9 @@ final class PaneWindow {
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
+    /// 画面上でペインを並べている領域の大きさ。ポップアップの分割方向を実際の縦横比で決めるために描画側から受け取る。
+    /// 描画前は正方形とみなす
+    var containerSize = CGSize(width: 1, height: 1)
 
     init() {
         let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
@@ -44,9 +47,10 @@ final class PaneWindow {
     }
 
     /// target="_blank" / window.open の要求を新しいペインとして開く。別の macOS ウィンドウは増やさない (documents/PROJECT.md 機能要件 1)。
-    /// 分割の向きは、要求元のペインが横長なら左右、縦長なら上下にして新しいペインが極端に細くならないようにする
+    /// 分割の向きは、要求元のペインの実際の形が横長なら左右、縦長なら上下にして新しいペインが極端に細くならないようにする
     private func splitForPopup(sourcePaneID: PaneID, configuration: WKWebViewConfiguration) -> WKWebView {
-        let sourceFrame = paneTree.frames(bounds: CGRect(x: 0, y: 0, width: 1, height: 1))[sourcePaneID] ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+        let containerBounds = CGRect(origin: .zero, size: containerSize)
+        let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
         paneTree.focus(paneID: sourcePaneID)
         let newPaneID = paneTree.split(axis: sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical)
         let pane = makePane(id: newPaneID, url: AddressInput.homeURL, configuration: configuration)
@@ -58,11 +62,16 @@ final class PaneWindow {
     /// フォーカス中のペインを閉じる。最後の 1 枚は閉じずに false を返す (ウィンドウごと閉じる判断は BrowserWindowModel が行う)
     @discardableResult
     func closeFocusedPane() -> Bool {
-        let closingPaneID = paneTree.focusedPaneID
-        guard paneTree.closeFocusedPane() else {
+        close(paneID: paneTree.focusedPaneID)
+    }
+
+    /// 指定したペインを閉じる (window.close() からも呼ばれる)。最後の 1 枚は閉じずに false を返す
+    @discardableResult
+    func close(paneID: PaneID) -> Bool {
+        guard paneTree.close(paneID: paneID) else {
             return false
         }
-        panes[closingPaneID] = nil
+        panes[paneID] = nil
         notifyFocusedURL()
         return true
     }
@@ -130,6 +139,9 @@ final class PaneWindow {
         }
         pane.onCreateWebView = { [weak self] configuration in
             self?.splitForPopup(sourcePaneID: id, configuration: configuration)
+        }
+        pane.onClose = { [weak self] in
+            self?.close(paneID: id)
         }
         return pane
     }
