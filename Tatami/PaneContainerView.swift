@@ -27,8 +27,9 @@ final class PaneContainerView: NSView {
     private var clickMonitor: Any?
     /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
     private var keyMonitor: Any?
-    /// 消費したキーの keyCode。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために、keyUp まで覚える
-    private var consumedKeyCode: UInt16?
+    /// 消費したキーの keyCode の集合。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために keyUp まで覚える。
+    /// prefix を離す前に次のキーを押すロールオーバーでは複数のキーが同時に消費中になるため、1 つではなく集合で持つ
+    private var consumedKeyCodes: Set<UInt16> = []
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
     override var isFlipped: Bool { true }
@@ -164,13 +165,9 @@ final class PaneContainerView: NSView {
                 return event
             }
             if event.type == .keyUp {
-                guard event.keyCode == consumedKeyCode else {
-                    return event
-                }
-                consumedKeyCode = nil
-                return nil
+                return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
             }
-            if event.isARepeat, event.keyCode == consumedKeyCode {
+            if event.isARepeat, consumedKeyCodes.contains(event.keyCode) {
                 return nil
             }
             guard let keyStroke = KeyStroke(event: event) else {
@@ -178,7 +175,7 @@ final class PaneContainerView: NSView {
             }
             let consumed = onKeyDown?(keyStroke) == true
             if consumed {
-                consumedKeyCode = event.keyCode
+                consumedKeyCodes.insert(event.keyCode)
             }
             return consumed ? nil : event
         }
