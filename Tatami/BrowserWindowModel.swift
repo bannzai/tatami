@@ -79,7 +79,9 @@ final class BrowserWindowModel {
     /// 最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
     init() {
         windows = []
-        let name = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
+        // 旧版や壊れた defaults で無効な名前 (`../work` 等) が残っていると以後の保存が全て失敗するため、有効な名前へ戻す
+        let storedName = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
+        let name = SessionStore.isValidName(storedName) ? storedName : "0"
         do {
             if let snapshot = try SessionStore.load(name: name) {
                 restore(snapshot: snapshot, name: name)
@@ -255,7 +257,10 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         sessionName = newName
         BrowserWindowModel.openSessionNames.insert(sessionName)
-        saveNow()
+        // ファイルは改名済みのため、この保存に失敗しても次回起動が新しい名前を復元できるよう復元先の名前だけは更新する
+        if !saveNow() {
+            UserDefaults.standard.set(sessionName, forKey: BrowserWindowModel.lastSessionNameKey)
+        }
     }
 
     /// 要求した名前で復元する。改名直後の終了などでファイル内の name が古いままでも、ファイル名 (= 選んだ名前) を正とする
