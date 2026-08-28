@@ -7,8 +7,9 @@ DERIVED_DATA := tmp/DerivedData
 APP = $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/Tatami.app
 INSTALL_APP := /Applications/Tatami.app
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-# 署名の既定は project.pbxproj の Team での自動署名で、provisioning profile の自動生成と
-# この Mac のデバイス登録を CLI からも行えるようにする。その Team に所属しない利用者は
+# 署名は project.pbxproj の設定に従う。Debug は証明書を持たない環境 (simtunnel の GitHub Actions runner・
+# 作者の Team に所属しない利用者) でもビルドできるよう ad-hoc 署名、Release (make macos) は Team での自動署名で、
+# provisioning profile の自動生成とこの Mac のデバイス登録を CLI からも行えるようにする。その Team に所属しない利用者は
 #   make macos DEVELOPMENT_TEAM=<自分の Team ID>   (自分の Team で自動署名)
 #   make macos SIGNING=adhoc                       (証明書不要の ad-hoc 署名)
 # で上書きする。CI (署名なし) では CODE_SIGNING_ALLOWED=NO を渡す
