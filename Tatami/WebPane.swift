@@ -186,18 +186,18 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// controller ごとの中継。同じ controller に 2 回 add すると WebKit が例外を投げるため、ここで 1 度だけ登録する
-    private static var relays: [ObjectIdentifier: ScriptMessageRelay] = [:]
+    /// controller ごとの中継。同じ controller に 2 回 add すると WebKit が例外を投げるため、ここで 1 度だけ登録する。
+    /// キーは controller の弱参照 (解放後にアドレスが再利用されても古い中継を共有済みと誤認しない)
+    private static let relays = NSMapTable<WKUserContentController, ScriptMessageRelay>.weakToStrongObjects()
 
     private static func register(pane: WebPane, in controller: WKUserContentController) {
-        let key = ObjectIdentifier(controller)
-        if let relay = relays[key] {
+        if let relay = relays.object(forKey: controller) {
             relay.panes.add(pane)
             return
         }
         let relay = ScriptMessageRelay()
         relay.panes.add(pane)
-        relays[key] = relay
+        relays.setObject(relay, forKey: controller)
         controller.addUserScript(LoginFormScript.makeUserScript())
         controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
     }
@@ -215,7 +215,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         hasLoginForm = body["hasPassword"] as? Bool ?? false
     }
 
-    /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false
+    /// パスワード欄を検出したフレームの URL (無ければトップレベル)。充填先のオリジンの照合に使う
+    var loginFormURL: URL? {
+        loginFormFrame?.request.url ?? webView.url
+    }
+
+    /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
+    /// 呼び出し側は直前に `loginFormURL` と資格情報を照合する (別オリジンの iframe が欄を持つ場合に渡さないため)
     func fill(credential: Credential) async throws -> Bool {
         let result = try await webView.callAsyncJavaScript(
             "return window.__tatamiFill(username, password);",
