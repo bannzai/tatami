@@ -141,6 +141,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func load(url: URL) {
+        // アドレスバーやブックマークからの読み込みは利用者の操作なので、復元に伴う訪問の抑止を終える
+        isSuppressingRestoredVisits = false
         webView.load(URLRequest(url: url))
     }
 
@@ -325,10 +327,6 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard navigation !== certificateWarningNavigation else {
             return
         }
-        // 復元のナビゲーション以外 (ユーザー起点) が始まったら、復元に付随する遷移の抑止を終える
-        if navigation !== restoringNavigation {
-            isSuppressingRestoredVisits = false
-        }
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
@@ -345,6 +343,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
         restoringNavigation = nil
         notifyVisitIfWebPage()
+        // 読み込み中は title を nil にしているため、その間の document.title の変化は通知されない。完了時点の確定タイトルをここで通知する
+        if let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, let title {
+            onTitleChange?(url, title)
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
@@ -375,7 +377,17 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
-        (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
+        // 復元したページの自動遷移 (location 変更・meta refresh・認証リダイレクト) は復元の一部として履歴に記録しない。
+        // 利用者の操作 (リンク・フォーム送信・戻る/進む・再読み込み) が起きた時点で抑止を終える
+        switch navigationAction.navigationType {
+        case .linkActivated, .formSubmitted, .formResubmitted, .backForward, .reload:
+            isSuppressingRestoredVisits = false
+        case .other:
+            break
+        @unknown default:
+            break
+        }
+        return (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {

@@ -78,6 +78,8 @@ final class BrowserWindowModel {
     private(set) var lastFindText = ""
     /// ページ内検索の結果を n / N で辿っている状態。Escape で抜ける
     private(set) var isFindModeActive = false
+    /// Web コンテンツへフォーカスが移るのを待っている検索語 (find プロンプトの確定で設定し、webContentDidFocus で実行する)
+    private var pendingFindText: String?
     /// 履歴の上限。tmux の history-limit に合わせる意図はなく、上下キーで辿れる現実的な量として選んだ
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
@@ -650,7 +652,9 @@ final class BrowserWindowModel {
             )
             // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let changed = result.credentials.filter { existingByID[$0.id] != $0 }
+            // 保存対象も id ごとに先頭の 1 件に限る (同じ id の後続要素で更新済みの項目を戻さない)
+            var seenIDs = Set<UUID>()
+            let changed = result.credentials.filter { seenIDs.insert($0.id).inserted && existingByID[$0.id] != $0 }
             var saved = 0
             for credential in changed {
                 do {
@@ -744,11 +748,9 @@ final class BrowserWindowModel {
         case .find:
             lastFindText = promptText
             isFindModeActive = !promptText.isEmpty
-            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて Web コンテンツへフォーカスが戻った後に検索する
-            let text = promptText
-            Task { @MainActor [weak self] in
-                self?.find(text: text)
-            }
+            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて
+            // Web コンテンツへフォーカスが実際に移った後 (webContentDidFocus) に検索する
+            pendingFindText = promptText
         case nil:
             break
         }
@@ -761,6 +763,18 @@ final class BrowserWindowModel {
             return
         }
         closePrompt()
+    }
+
+    /// PaneContainer が Web コンテンツを first responder にした直後に呼ばれる。フォーカス待ちの検索をここで実行する
+    func webContentDidFocus() {
+        guard let text = pendingFindText else {
+            return
+        }
+        pendingFindText = nil
+        // SwiftUI の更新中に状態を変えないよう、次のターンで検索する (フォーカス自体は既に移っている)
+        Task { @MainActor [weak self] in
+            self?.find(text: text)
+        }
     }
 
     /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
@@ -923,7 +937,8 @@ final class BrowserWindowModel {
             BrowsingDataStore.shared.removeBookmark(url: pane.url)
             statusMessage = "ブックマークを解除した: \(pane.url.absoluteString)"
         } else {
-            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString)
+            // 読み込み中はタイトルが未確定のためホスト名を仮に入れ、確定したら置き換える
+            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString, isTitleProvisional: pane.title == nil)
             statusMessage = "ブックマークした: \(pane.url.absoluteString)"
         }
     }
