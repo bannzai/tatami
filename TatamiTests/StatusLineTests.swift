@@ -13,6 +13,8 @@ struct StatusLineTests {
             #expect(BrowserCommand(tmuxName: command.tmuxName) == command)
         }
         #expect(BrowserCommand(tmuxName: "select-window  -t 7") == .selectWindow(7))
+        #expect(BrowserCommand(tmuxName: "source-file /tmp/a  b.conf") == .sourceFile("/tmp/a  b.conf"))
+        #expect(BrowserCommand(tmuxName: "source-file") == .sourceFile(nil))
         #expect(BrowserCommand(tmuxName: "omnibox") == .omnibox)
         #expect(BrowserCommand(tmuxName: "detach") == nil)
     }
