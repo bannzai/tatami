@@ -107,6 +107,12 @@ final class BrowserWindowModel {
             syncAddressTextToFocusedPane()
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
+        if hasPendingRestoredLoad {
+            hasPendingRestoredLoad = false
+            for window in windows {
+                window.loadRestoredPanes()
+            }
+        }
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
@@ -196,6 +202,10 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         restore(snapshot: loaded, name: name)
         BrowserWindowModel.openSessionNames.insert(sessionName)
+        hasPendingRestoredLoad = false
+        for window in windows {
+            window.loadRestoredPanes()
+        }
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
         saveNow()
@@ -230,6 +240,7 @@ final class BrowserWindowModel {
     private func restore(snapshot: SessionSnapshot, name: String) {
         sessionName = name
         windows = snapshot.windows.map { PaneWindow(snapshot: $0) }
+        hasPendingRestoredLoad = !windows.isEmpty
         if windows.isEmpty {
             windows = [makeWindow()]
         }
