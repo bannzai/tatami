@@ -41,6 +41,8 @@
 		4D6E9CFDFF5E4D35BBDD4A1C /* CredentialMatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */; };
 		ADAAD7027C0D438F96D5D34B /* PasswordGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */; };
 		1D40C047A0F246938A4B3A1F /* PasswordGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */; };
+		B496C68DC60B460CA7559113 /* PublicSuffixList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */; };
+		9EB915D13A4C437FAD9E1CD5 /* PublicSuffixList.dat in Resources */ = {isa = PBXBuildFile; fileRef = 2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,6 +95,8 @@
 		58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialMatcherTests.swift; sourceTree = "<group>"; };
 		42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGenerator.swift; sourceTree = "<group>"; };
 		44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGeneratorTests.swift; sourceTree = "<group>"; };
+		1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicSuffixList.swift; sourceTree = "<group>"; };
+		2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSuffixList.dat; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -154,6 +158,8 @@
 				FFF0D281C1174421A9059B0C /* LoginFormScript.swift */,
 				D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */,
 				42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */,
+				2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */,
+				1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */,
 				C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
 				08C8B351A1564048AD9E3F69 /* PaneWindow.swift */,
@@ -191,6 +197,7 @@
 			buildConfigurationList = 50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */;
 			buildPhases = (
 				800E9E7A78EBD0D58413C11C /* Sources */,
+				C709477A304C49E79307FDA8 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -242,6 +249,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		C709477A304C49E79307FDA8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9EB915D13A4C437FAD9E1CD5 /* PublicSuffixList.dat in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		800E9E7A78EBD0D58413C11C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -263,6 +281,7 @@
 				5ABD3AFD7CD24C9D83559422 /* LoginFormScript.swift in Sources */,
 				F79DAC4853AB4B6C910D2060 /* CredentialMatcher.swift in Sources */,
 				ADAAD7027C0D438F96D5D34B /* PasswordGenerator.swift in Sources */,
+				B496C68DC60B460CA7559113 /* PublicSuffixList.swift in Sources */,
 				A1C7E3F204B94D6E8F0A2B71 /* PasswordCSV.swift in Sources */,
 				001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */,
 				78976A46B34E4CA8A932A795 /* PaneWindow.swift in Sources */,

@@ -1,54 +1,57 @@
 import Foundation
 
-/// 表示中のページのホストに対して、どの資格情報を候補にするかの規則 (純粋ロジック)。
-/// 完全一致を優先し、同じ登録可能ドメイン (eTLD+1) のサブドメイン違いも候補に含める (`accounts.example.com` で保存したものを `example.com` でも出す)
+/// 表示中のページに対して、どの資格情報を候補にするかの規則 (純粋ロジック)。
+/// 同じオリジン (scheme + host + port) を優先し、Public Suffix List で求めた同じ登録可能ドメイン (eTLD+1) のサブドメイン違いも候補に含める
+/// (`accounts.example.com` で保存したものを `example.com` でも出す)。HTTPS の資格情報を HTTP のページには出さない (平文の通信へ渡さない)
 enum CredentialMatcher {
-    /// 2 段の公開サフィックス。ホストの末尾がこれに当たる時は末尾 3 ラベルを登録可能ドメインとする。
-    /// 公開サフィックスリスト全体は持たず、作者が使う地域 (日本) と主要な国別ドメインだけを列挙する
-    static let twoLevelPublicSuffixes: Set<String> = [
-        "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp", "ad.jp", "lg.jp", "gr.jp",
-        "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.nz",
-        "com.br", "com.cn", "com.tw", "co.kr", "com.sg", "co.in", "com.mx", "com.ar",
-    ]
-
-    /// 登録可能ドメイン (eTLD+1)。IP アドレスや 1 ラベルのホスト (localhost) はそのまま返す
-    static func registrableDomain(host: String) -> String {
+    /// 登録可能ドメイン (eTLD+1)。IP アドレス・1 ラベルのホスト・リストに無い TLD は nil (完全一致だけにする)
+    static func registrableDomain(host: String, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> String? {
         let lowered = host.lowercased()
-        let labels = lowered.split(separator: ".").map(String.init)
-        guard labels.count >= 2, !isIPAddress(host: lowered) else {
-            return lowered
+        guard lowered.contains("."), !isIPAddress(host: lowered) else {
+            return nil
         }
-        let lastTwo = labels.suffix(2).joined(separator: ".")
-        if twoLevelPublicSuffixes.contains(lastTwo), labels.count >= 3 {
-            return labels.suffix(3).joined(separator: ".")
-        }
-        return lastTwo
+        return rules.registrableDomain(host: lowered)
     }
 
-    /// 資格情報のホストがページのホストに対して候補になるか
-    static func matches(credentialHost: String, pageHost: String) -> Bool {
-        let credential = credentialHost.lowercased()
-        let page = pageHost.lowercased()
-        guard !credential.isEmpty, !page.isEmpty else {
+    /// 資格情報の URL がページの URL に対して候補になるか
+    static func matches(credentialURL: URL, pageURL: URL, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> Bool {
+        guard let credentialHost = credentialURL.host()?.lowercased(), let pageHost = pageURL.host()?.lowercased(),
+              !credentialHost.isEmpty, !pageHost.isEmpty else {
             return false
         }
-        if credential == page {
+        let credentialScheme = credentialURL.scheme?.lowercased() ?? ""
+        let pageScheme = pageURL.scheme?.lowercased() ?? ""
+        // https で保存したものを http (やその他のスキーム) のページへ降格して出さない。http で保存したものを https で使うのは許す
+        guard pageScheme == credentialScheme || (credentialScheme == "http" && pageScheme == "https") else {
+            return false
+        }
+        guard port(url: credentialURL) == port(url: pageURL) else {
+            return false
+        }
+        if credentialHost == pageHost {
             return true
         }
-        // IP アドレスと 1 ラベルのホストは完全一致だけ
-        guard !isIPAddress(host: page), page.contains("."), credential.contains(".") else {
+        guard let credentialDomain = registrableDomain(host: credentialHost, rules: rules),
+              let pageDomain = registrableDomain(host: pageHost, rules: rules) else {
             return false
         }
-        return registrableDomain(host: credential) == registrableDomain(host: page)
+        return credentialDomain == pageDomain
     }
 
-    /// ページのホストに対する候補。完全一致 → 同じ登録可能ドメインの順で、それぞれ更新日時の新しい順
-    static func candidates(credentials: [Credential], pageHost: String) -> [Credential] {
-        let matching = credentials.filter { matches(credentialHost: $0.host, pageHost: pageHost) }
-        let page = pageHost.lowercased()
-        let exact = matching.filter { $0.host == page }.sorted { $0.updatedAt > $1.updatedAt }
-        let related = matching.filter { $0.host != page }.sorted { $0.updatedAt > $1.updatedAt }
+    /// ページに対する候補。同じオリジン (ホストの完全一致) → 同じ登録可能ドメインの順で、それぞれ更新日時の新しい順
+    static func candidates(credentials: [Credential], pageURL: URL, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> [Credential] {
+        let matching = credentials.filter { matches(credentialURL: $0.url, pageURL: pageURL, rules: rules) }
+        let pageHost = pageURL.host()?.lowercased() ?? ""
+        let exact = matching.filter { $0.host == pageHost }.sorted { $0.updatedAt > $1.updatedAt }
+        let related = matching.filter { $0.host != pageHost }.sorted { $0.updatedAt > $1.updatedAt }
         return exact + related
+    }
+
+    /// 既定ポートの明示 (https の 443 等) は省略と同一視する
+    private static func port(url: URL) -> Int? {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        return url.port.flatMap { $0 == defaultPort ? nil : $0 }
     }
 
     private static func isIPAddress(host: String) -> Bool {
