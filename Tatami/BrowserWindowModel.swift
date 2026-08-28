@@ -870,8 +870,11 @@ final class BrowserWindowModel {
         Task { @MainActor [weak self] in
             // 非同期に入るまでにリダイレクトや History API の遷移が起きていることがあるため、JavaScript を呼ぶ直前に
             // トップレベルと充填先フレーム (別オリジンの iframe に欄がある場合) の URL を改めて照合する
-            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
-                  let frameURL = pane.loginFormURL, CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
+            // 充填先が iframe の場合はトップレベルの候補検索 (同じ eTLD+1 を許す) より厳しく、資格情報と同じオリジンだけに渡す
+            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url), let frameURL = pane.loginFormURL,
+                  pane.isLoginFormInSubframe
+                    ? CredentialMatcher.sameOrigin(credentialURL: credential.url, pageURL: frameURL)
+                    : CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
                 self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
                 return
             }

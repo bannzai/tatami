@@ -208,22 +208,42 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
     }
 
-    /// パスワード欄を検出したフレーム。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する
-    private var loginFormFrame: WKFrameInfo?
+    /// パスワード欄を検出したフレーム (フレームの URL ごと)。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する。
+    /// フレームごとに持つのは、欄が消えた iframe の false 通知で他のフレームの欄を見失わないため
+    private var loginFormFrames: [String: WKFrameInfo] = [:]
+
+    /// 充填先のフレーム。トップレベルに欄があればそれを優先し、無ければ検出済みの iframe
+    private var loginFormFrame: WKFrameInfo? {
+        loginFormFrames.values.first(where: \.isMainFrame) ?? loginFormFrames.values.first
+    }
+
+    /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため URL で対応付ける)
+    private static func frameKey(frame: WKFrameInfo) -> String {
+        frame.request.url?.absoluteString ?? (frame.isMainFrame ? "main" : "frame")
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
         }
-        if body["hasPassword"] as? Bool == true {
-            loginFormFrame = message.frameInfo
+        if let hasPassword = body["hasPassword"] as? Bool {
+            if hasPassword {
+                loginFormFrames[WebPane.frameKey(frame: message.frameInfo)] = message.frameInfo
+            } else {
+                loginFormFrames.removeValue(forKey: WebPane.frameKey(frame: message.frameInfo))
+            }
+            hasLoginForm = !loginFormFrames.isEmpty
         }
-        hasLoginForm = body["hasPassword"] as? Bool ?? false
     }
 
     /// パスワード欄を検出したフレームの URL (無ければトップレベル)。充填先のオリジンの照合に使う
     var loginFormURL: URL? {
         loginFormFrame?.request.url ?? webView.url
+    }
+
+    /// 充填先が iframe (トップレベルでない) か。iframe へは資格情報と同じオリジンの時だけ充填する
+    var isLoginFormInSubframe: Bool {
+        loginFormFrame.map { !$0.isMainFrame } ?? false
     }
 
     /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
