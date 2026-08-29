@@ -121,44 +121,44 @@ enum LoginFormScript {
       };
       // 同じ送信をクリック / Enter と submit の両方で通知しない (2 回目の通知で保留ユーザー名を失い、空ユーザー名の提案で上書きしないため)
       let lastCapture = { key: null, at: 0 };
-      const capture = (scope) => {
+      // scope から送信内容を組み立てる (送信はしない)。ユーザー名だけの段階は { usernameOnly } を返す
+      const collectSubmission = (scope) => {
         const passwordField = passwordFieldToReport(scope);
-        if (passwordField && passwordField.value) {
-          const key = `${passwordField.value.length}:${passwordField.value}`;
+        if (!passwordField || !passwordField.value) {
+          const usernameOnly = usernameCandidate(scope);
+          return usernameOnly ? { usernameOnly: usernameOnly.value } : null;
+        }
+        const usernameField = findUsernameField(passwordField, scope);
+        const isNewPassword = hasAutocomplete(passwordField, 'new-password')
+          || renderedPasswordFields(passwordField.form || scope).length >= 2;
+        return {
+          submitted: true,
+          username: usernameField ? usernameField.value : '',
+          password: passwordField.value,
+          currentPassword: isNewPassword ? currentPasswordValue(scope, passwordField) : '',
+          isNewPassword,
+          frameURL: location.href,
+        };
+      };
+      const notify = (payload) => {
+        if (!payload) { return; }
+        if (payload.submitted) {
+          const key = `${payload.password.length}:${payload.password}`;
           const now = Date.now();
           if (lastCapture.key === key && now - lastCapture.at < 1000) { return; }
           lastCapture = { key, at: now };
         }
-        if (!passwordField || !passwordField.value) {
-          // ユーザー名だけのページ (複数段階ログインの 1 段目) はユーザー名を覚えておく
-          const usernameOnly = usernameCandidate(scope);
-          if (usernameOnly) {
-            send({ usernameOnly: usernameOnly.value });
-          }
-          return;
-        }
-        const usernameField = findUsernameField(passwordField, scope);
-        // form 属性で関連付けた欄も数えるため、フォームでは elements から列挙する (画面外でも数える)
-        // form の無い SPA (capture(document)) では渡された scope の欄数で判定する
-        const isNewPassword = hasAutocomplete(passwordField, 'new-password')
-          || renderedPasswordFields(passwordField.form || scope).length >= 2;
-        try {
-          send({
-            submitted: true,
-            username: usernameField ? usernameField.value : '',
-            password: passwordField.value,
-            currentPassword: isNewPassword ? currentPasswordValue(scope, passwordField) : '',
-            isNewPassword,
-            frameURL: location.href,
-          });
-        } catch (e) {}
+        try { send(payload); } catch (e) {}
       };
-      // ページ側が submit をキャンセルして独自検証する場合があるため、伝播後に defaultPrevented を確認してから通知する
+      const capture = (scope) => notify(collectSubmission(scope));
+      // submit は、送信時点の値を同期的にスナップショットし (ページが直後に欄を消しても回収できる)、
+      // 伝播後に defaultPrevented を確認してキャンセルされた送信は通知しない
       document.addEventListener('submit', (event) => {
         const form = event.target;
+        if (!form || !form.querySelector) { return; }
+        const payload = collectSubmission(form);
         setTimeout(() => {
-          if (event.defaultPrevented || !form || !form.querySelector) { return; }
-          capture(form);
+          if (!event.defaultPrevented) { notify(payload); }
         }, 0);
       }, true);
       // 制約検証 (required / pattern 等) で送信されないクリック・Enter は通知しない (通常のフォームは submit イベント側で捕捉する)
@@ -169,17 +169,13 @@ enum LoginFormScript {
       document.addEventListener('click', (event) => {
         const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"], [role="button"]') : null;
         if (!button) { return; }
-        const form = button.form || button.closest('form');
-        if (!passesValidation(form, button)) { return; }
-        if (!form) {
-          // form の無いボタン (role=button の AJAX ログインを含む) は HTML 上は送信しない。SPA のログイン UI を補助する目的で、
-          // パスワード欄かユーザー名候補を持つ区画 (dialog / section / main 等) のボタンだけを送信とみなす (無関係なボタンは無視)
-          const container = loginScope(button);
-          if (!container || !(usablePasswordFields(container).length || usernameCandidate(container))) { return; }
-          capture(container);
-          return;
-        }
-        capture(form);
+        // フォーム所属の submitter (button / input[type=submit]) は native の submit イベントで捕捉するため、ここでは扱わない
+        // (form 内の role=button の非送信ボタンを送信と誤認しない・submit との二重通知を避ける)
+        if (button.form) { return; }
+        // form の無いボタン (role=button の AJAX ログインを含む) は、パスワード欄かユーザー名候補を持つログイン区画のものだけ捕捉する
+        const container = loginScope(button);
+        if (!container || !(usablePasswordFields(container).length || usernameCandidate(container))) { return; }
+        capture(container);
       }, true);
       // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
       const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
@@ -192,9 +188,9 @@ enum LoginFormScript {
       document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
       postEditing();
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && event.target && event.target.type === 'password' && passesValidation(event.target.form, null)) {
-          // form の無い UI では、押した欄の属する区画に限定する (別区画のメール欄やパスワード欄を拾わない)
-          capture(event.target.form || loginScope(event.target) || document);
+        // form 内の Enter は native の submit を発生させ submit イベントで捕捉するため、ここでは form の無い欄だけを扱う
+        if (event.key === 'Enter' && event.target && isPasswordField(event.target) && !event.target.form) {
+          capture(loginScope(event.target) || document);
         }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
@@ -209,7 +205,7 @@ enum LoginFormScript {
       // 登録フォームと誤判定しない)。区画が無い欄は文書全体で 1 組
       const formlessScopes = () => {
         const groups = new Map();
-        for (const field of Array.from(document.querySelectorAll('input[type="password"]')).filter((field) => !field.form)) {
+        for (const field of inputsIn(document).filter((field) => isPasswordField(field) && !field.form)) {
           const container = loginScope(field) || document;
           if (!groups.has(container)) { groups.set(container, []); }
           groups.get(container).push(field);
