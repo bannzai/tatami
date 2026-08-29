@@ -12,8 +12,11 @@
 		9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8C5B56487F4F1F9006165F /* PaneTree.swift */; };
 		BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AFEAE9B940E262E5784834 /* TatamiApp.swift */; };
 		CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */; };
-		DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3506726C2C6A10CB80A88648 /* WebPaneView.swift */; };
 		FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */; };
+		8EDF296C81CA4F0CAA58573D /* WebPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85CED8AA8672425F88EAD428 /* WebPane.swift */; };
+		99294680D5664B718A00A3D0 /* BrowserWindowModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */; };
+		5F05464E6EBA4E7F9A344068 /* PaneContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44AC810FA5594E2A885F80DC /* PaneContainerView.swift */; };
+		AC1D138D50924296BA4838BD /* PaneCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,7 +32,6 @@
 /* Begin PBXFileReference section */
 		10214FFA89244825ACDF4111 /* PaneTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTreeTests.swift; sourceTree = "<group>"; };
 		1F1DC872C75B96AAEBF30600 /* Tatami.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tatami.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		3506726C2C6A10CB80A88648 /* WebPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPaneView.swift; sourceTree = "<group>"; };
 		53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
 		7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressInput.swift; sourceTree = "<group>"; };
 		A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressInputTests.swift; sourceTree = "<group>"; };
@@ -37,6 +39,10 @@
 		B11310D9049C8AB6CB4A5A76 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TatamiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD8C5B56487F4F1F9006165F /* PaneTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTree.swift; sourceTree = "<group>"; };
+		85CED8AA8672425F88EAD428 /* WebPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPane.swift; sourceTree = "<group>"; };
+		E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowModel.swift; sourceTree = "<group>"; };
+		44AC810FA5594E2A885F80DC /* PaneContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneContainerView.swift; sourceTree = "<group>"; };
+		E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCommands.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -74,8 +80,11 @@
 				53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */,
 				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
 				CD8C5B56487F4F1F9006165F /* PaneTree.swift */,
+				85CED8AA8672425F88EAD428 /* WebPane.swift */,
+				E75839F1DCD5412283FB8AA9 /* BrowserWindowModel.swift */,
+				44AC810FA5594E2A885F80DC /* PaneContainerView.swift */,
+				E3473A26D5644DDEA02F2CBF /* PaneCommands.swift */,
 				A8AFEAE9B940E262E5784834 /* TatamiApp.swift */,
-				3506726C2C6A10CB80A88648 /* WebPaneView.swift */,
 			);
 			path = Tatami;
 			sourceTree = "<group>";
@@ -165,8 +174,11 @@
 				98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */,
 				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
 				9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */,
+				8EDF296C81CA4F0CAA58573D /* WebPane.swift in Sources */,
+				99294680D5664B718A00A3D0 /* BrowserWindowModel.swift in Sources */,
+				5F05464E6EBA4E7F9A344068 /* PaneContainerView.swift in Sources */,
+				AC1D138D50924296BA4838BD /* PaneCommands.swift in Sources */,
 				BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */,
-				DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,7 +235,8 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;

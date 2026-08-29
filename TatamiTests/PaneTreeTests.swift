@@ -330,6 +330,54 @@ struct PaneTreeTests {
         return tree
     }
 
+    @Test func dividersDescribeEachSplitWithPath() {
+        var tree = PaneTree()
+        let leftTopPaneID = tree.focusedPaneID
+        tree.split(axis: .horizontal)
+        tree.focus(paneID: leftTopPaneID)
+        tree.split(axis: .vertical)
+        let dividers = tree.dividers(bounds: Self.bounds)
+        #expect(dividers.count == 2)
+        #expect(dividers[0] == PaneDivider(axis: .horizontal, path: [], line: CGRect(x: 50, y: 0, width: 0, height: 100), extent: 100))
+        #expect(dividers[1] == PaneDivider(axis: .vertical, path: [.first], line: CGRect(x: 0, y: 50, width: 50, height: 0), extent: 100))
+    }
+
+    @Test func zoomHidesDividers() {
+        var tree = PaneTree()
+        tree.split(axis: .horizontal)
+        tree.toggleZoom()
+        #expect(tree.dividers(bounds: Self.bounds).isEmpty)
+    }
+
+    @Test func resizeByDividerPathMovesThatSplitOnly() {
+        var tree = PaneTree()
+        let leftTopPaneID = tree.focusedPaneID
+        let rightPaneID = tree.split(axis: .horizontal)
+        tree.focus(paneID: leftTopPaneID)
+        let leftBottomPaneID = tree.split(axis: .vertical)
+        tree.resize(dividerPath: [.first], delta: 0.2)
+        let frames = tree.frames(bounds: Self.bounds)
+        #expect(abs(frames[leftTopPaneID]!.height - 70) < Self.tolerance)
+        #expect(abs(frames[leftBottomPaneID]!.height - 30) < Self.tolerance)
+        #expect(abs(frames[rightPaneID]!.width - 50) < Self.tolerance)
+        tree.resize(dividerPath: [], delta: -0.9)
+        #expect(abs(tree.frames(bounds: Self.bounds)[rightPaneID]!.width - 95) < Self.tolerance)
+    }
+
+    @Test func applyNextLayoutCyclesFromLastAppliedLayout() {
+        var tree = PaneTree()
+        tree.split(axis: .horizontal)
+        #expect(tree.appliedLayout == nil)
+        tree.applyNextLayout()
+        #expect(tree.appliedLayout == .evenHorizontal)
+        tree.applyNextLayout()
+        #expect(tree.appliedLayout == .evenVertical)
+        tree.applyNextLayout()
+        #expect(tree.appliedLayout == .tiled)
+        tree.applyNextLayout()
+        #expect(tree.appliedLayout == .evenHorizontal)
+    }
+
     @Test func directionalFocusDoesNotSkipThinNeighbor() {
         var tree = PaneTree()
         let leftPaneID = tree.focusedPaneID
