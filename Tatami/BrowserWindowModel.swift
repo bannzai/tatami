@@ -112,8 +112,15 @@ final class BrowserWindowModel {
     /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
     private(set) var focusedPaneStateVersion = 0
 
-    /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション
-    init() {
+    /// 資格情報の保存先。既定は Keychain で、ユニットテストからはメモリ実装に差し替える。
+    /// Debug と Release で Keychain の領域が分かれる扱いは KeychainCredentialStore.sharedAccessGroup が持つ
+    @ObservationIgnored private let credentialStore: any CredentialStore
+
+    /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション。
+    /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
+    /// @MainActor の KeychainCredentialStore を呼べないため
+    init(credentialStore: (any CredentialStore)? = nil) {
+        self.credentialStore = credentialStore ?? KeychainCredentialStore()
         windows = []
         // 旧版や壊れた defaults で無効な名前 (`../work` 等) が残っていると以後の保存が全て失敗するため、有効な名前へ戻す
         let storedName = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
@@ -562,7 +569,8 @@ final class BrowserWindowModel {
     }
 
     /// コマンドプロンプトの 1 行を実行する。キーバインドと同じコマンド表 (BrowserCommand) と、tatami.conf と同じ設定行 (set / bind / unbind / source-file) を使い、
-    /// それ以外に `open <url>` と `find <text>` を持つ。未知のコマンドや解釈できない行は status line に表示する
+    /// それ以外に `open <url>`・`find <text>`・`import-passwords <path>`・`export-passwords <path>` を持つ。
+    /// 未知のコマンドや解釈できない行は status line に表示する
     func execute(commandLine: String) {
         let line = commandLine.trimmingCharacters(in: .whitespaces)
         guard !line.isEmpty else {
@@ -597,6 +605,18 @@ final class BrowserWindowModel {
             isFindModeActive = !lastFindText.isEmpty
             // find プロンプトと同じく、コマンドプロンプトを閉じて Web コンテンツへフォーカスが移った後に検索する
             pendingFindText = lastFindText
+        case "import-passwords":
+            guard !arguments.isEmpty else {
+                statusMessage = "import-passwords は CSV のパスを取る"
+                return
+            }
+            importPasswords(path: arguments.joined(separator: " "))
+        case "export-passwords":
+            guard !arguments.isEmpty else {
+                statusMessage = "export-passwords は CSV のパスを取る"
+                return
+            }
+            exportPasswords(path: arguments.joined(separator: " "))
         case "source-file":
             // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
             perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
@@ -615,6 +635,77 @@ final class BrowserWindowModel {
                 return
             }
             perform(command: command)
+        }
+    }
+
+    /// コマンドの引数のパスを解決する。`~` を展開し、相対パスは GUI アプリのカレントディレクトリ (利用者から見えず不安定) ではなく
+    /// ホームディレクトリを基準にする
+    static func commandFileURL(path: String) -> URL {
+        URL(filePath: TatamiConfigParser.expandedPath(path: path), directoryHint: .notDirectory, relativeTo: FileManager.default.homeDirectoryForCurrentUser).absoluteURL
+    }
+
+    /// Chrome 互換 CSV を読み、既存の資格情報に取り込む。同じファイルを何度取り込んでも重複しない (PasswordImporter.merge が冪等)
+    private func importPasswords(path: String) {
+        let fileURL = BrowserWindowModel.commandFileURL(path: path)
+        do {
+            let existing = try credentialStore.all()
+            let result = PasswordImporter.merge(
+                rows: try PasswordCSV.parse(text: String(contentsOf: fileURL, encoding: .utf8)),
+                existing: existing,
+                now: Date()
+            )
+            // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
+            let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            // 保存対象も id ごとに先頭の 1 件に限る (同じ id の後続要素で更新済みの項目を戻さない)
+            var seenIDs = Set<UUID>()
+            let changed = result.credentials.filter { seenIDs.insert($0.id).inserted && existingByID[$0.id] != $0 }
+            var saved = 0
+            for credential in changed {
+                do {
+                    try credentialStore.save(credential: credential)
+                    saved += 1
+                } catch {
+                    // Keychain への保存は 1 件ずつ確定するためロールバックできない。途中まで反映したことを件数で明示する
+                    statusMessage = "インポートを途中で中断: \(saved)/\(changed.count) 件を保存した後に失敗: \(error)"
+                    return
+                }
+            }
+            statusMessage = "インポート: 追加 \(result.added)・更新 \(result.updated)・変更なし \(result.unchanged)・読み飛ばし \(result.skipped)"
+        } catch {
+            statusMessage = "インポートに失敗: \(error)"
+        }
+    }
+
+    /// 資格情報を Chrome 互換 CSV に書き出す。書き出したファイルは平文のため、既存のファイルには追記も上書きもせずエラーにする
+    private func exportPasswords(path: String) {
+        let fileURL = BrowserWindowModel.commandFileURL(path: path)
+        let filePath = fileURL.path(percentEncoded: false)
+        guard !FileManager.default.fileExists(atPath: filePath) else {
+            statusMessage = "エクスポート: すでにファイルがある: \(filePath)"
+            return
+        }
+        do {
+            let exportable = PasswordImporter.exportable(credentials: try credentialStore.all())
+            let credentials = exportable.rows
+            let text = PasswordCSV.serialize(rows: PasswordImporter.rows(credentials: credentials))
+            // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう排他的に新規作成し、
+            // 作成時点から本人だけが読める権限 (0600) にする (後から権限を落とすと、その間に開かれたディスクリプタから読めてしまう)
+            let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            do {
+                try handle.write(contentsOf: Data(text.utf8))
+                try handle.close()
+            } catch {
+                try? FileManager.default.removeItem(at: fileURL)
+                throw error
+            }
+            let excludedNote = exportable.excluded > 0 ? "・ホストの無い URL の \(exportable.excluded) 件は対象外" : ""
+            statusMessage = "エクスポート: \(filePath) に \(credentials.count) 件\(excludedNote)。このファイルは削除するまで平文で残る"
+        } catch {
+            statusMessage = "エクスポートに失敗: \(error)"
         }
     }
 
