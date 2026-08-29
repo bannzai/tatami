@@ -70,6 +70,10 @@ struct BrowserWindowView: View {
         .onChange(of: model.addressBarFocusRequestCount) {
             isAddressFieldFocused = true
         }
+        // アドレスバーの編集中は find モードの n / N / Escape (と提案の y / n) を消費しないよう、フォーカス状態をモデルへ反映する
+        .onChange(of: isAddressFieldFocused, initial: true) { _, focused in
+            model.isAddressBarEditing = focused
+        }
         // detach はセッションを保存した上でこの macOS ウィンドウを閉じる。再起動や File > New Window で復元される
         .onChange(of: model.detachRequestCount) {
             NSApplication.shared.keyWindow?.close()
@@ -161,6 +165,8 @@ struct BrowserWindowView: View {
             return "(rename-session)"
         case .command:
             return ":"
+        case .find:
+            return "/"
         }
     }
 

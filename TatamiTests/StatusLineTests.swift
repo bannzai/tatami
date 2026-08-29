@@ -35,5 +35,14 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: "$")!] == .renameSession)
         #expect(table.bindings[KeyStroke(tmuxKeyName: ":")!] == .commandPrompt)
         #expect(BrowserCommand(tmuxName: "command-prompt") == .commandPrompt)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "[")!] == .findPrompt)
+    }
+
+    @Test func downloadFileNameIsConstrainedToOneComponent() {
+        #expect(DownloadManager.sanitizedFileName("report.pdf") == "report.pdf")
+        #expect(DownloadManager.sanitizedFileName("../outside-downloads") == "outside-downloads")
+        #expect(DownloadManager.sanitizedFileName("a/b/c.txt") == "c.txt")
+        #expect(DownloadManager.sanitizedFileName("..") == "download")
+        #expect(DownloadManager.sanitizedFileName("") == "download")
     }
 }

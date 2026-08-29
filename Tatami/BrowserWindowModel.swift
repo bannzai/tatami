@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import WebKit
 
 /// macOS のウィンドウ 1 つ分 (tmux の session に相当) の状態。複数の PaneWindow (tmux の window) と現在のウィンドウ、
 /// アドレスバー・キーバインド・status line のプロンプトを持ち、メニューとキーバインドの宛先になる
@@ -13,6 +14,8 @@ final class BrowserWindowModel {
         case renameSession
         /// `:` から始まるコマンドの入力 (prefix + :)
         case command
+        /// ページ内検索の語の入力 (prefix + [)
+        case find
     }
 
     /// 一覧から選ぶ操作 (choose-window / choose-session)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
@@ -67,6 +70,12 @@ final class BrowserWindowModel {
     private var commandHistoryIndex = 0
     /// 履歴を辿り始める前に入力していたテキスト。末尾まで戻った時に復元する
     private var commandDraft = ""
+    /// 直近のページ内検索の語。find モードで n / N がこれを使う
+    private(set) var lastFindText = ""
+    /// ページ内検索の結果を n / N で辿っている状態。Escape で抜ける
+    private(set) var isFindModeActive = false
+    /// Web コンテンツへフォーカスが移るのを待っている検索語 (find プロンプトの確定で設定し、webContentDidFocus で実行する)
+    private var pendingFindText: String?
     /// 履歴の上限。tmux の history-limit に合わせる意図はなく、上下キーで辿れる現実的な量として選んだ
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
@@ -135,6 +144,8 @@ final class BrowserWindowModel {
         }
         BrowserWindowModel.openSessionNames.insert(sessionName)
         BrowserWindowModel.activeModels.add(self)
+        // ダウンロードはアプリ全体で 1 つの DownloadManager が持ち、表示中の全ウィンドウの status line に出す
+        DownloadManager.shared.subscribe(model: self)
         if hasPendingRestoredLoad {
             hasPendingRestoredLoad = false
             for window in windows {
@@ -156,6 +167,7 @@ final class BrowserWindowModel {
         saveNow()
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
+        DownloadManager.shared.unsubscribe(model: self)
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -190,6 +202,11 @@ final class BrowserWindowModel {
             }
             saveNow()
         }
+    }
+
+    /// ダウンロードの進捗などを status line に出す (DownloadManager から)
+    func showDownloadMessage(_ message: String) {
+        statusMessage = message
     }
 
     /// すぐに保存する (detach やウィンドウを閉じる時)。失敗は status line に出し、false を返す
@@ -374,7 +391,7 @@ final class BrowserWindowModel {
     }
 
     func reload() {
-        currentWindow.focusedPane.webView.reload()
+        currentWindow.focusedPane.reload()
     }
 
     /// 新しいウィンドウを末尾に作って表示する (prefix + c)
@@ -451,6 +468,41 @@ final class BrowserWindowModel {
         prompt = .renameSession
     }
 
+    /// ページ内検索のプロンプトを開く (prefix + [)。前回の語を初期値にする
+    func beginFindPrompt() {
+        cancelPrefix()
+        chooser = nil
+        promptText = lastFindText
+        prompt = .find
+    }
+
+    /// アドレスバーを編集中かどうか。View がフォーカス状態から設定する。編集中は find モードの n / N / Escape を消費しない
+    var isAddressBarEditing = false
+
+    /// 検索結果を次へ (n) / 前へ (N)
+    func findNext(backwards: Bool) {
+        guard !lastFindText.isEmpty else {
+            return
+        }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        // 末尾の一致から n (先頭から N) でページの反対側へ折り返す (ブラウザと vi の反復検索と同じ)
+        configuration.wraps = true
+        // 前回の「見つからない」を残さない (今回の結果で置き換える)
+        statusMessage = nil
+        findGeneration += 1
+        let generation = findGeneration
+        let text = lastFindText
+        let webView = currentWindow.focusedPane.webView
+        webView.find(text, configuration: configuration) { [weak self, weak webView] result in
+            // 完了までに find モードを抜けた・別の語で検索した・ペインが移った場合は古い結果を捨てる
+            guard let self, generation == findGeneration, let webView, currentWindow.focusedPane.webView === webView, !result.matchFound else {
+                return
+            }
+            statusMessage = "見つからない: \(text)"
+        }
+    }
+
     /// コマンドプロンプトを開く (prefix + :)
     func beginCommandPrompt() {
         // prefix 待ちや一覧が残っていると最初の文字がそちらに消費されるため、コマンドプロンプトを排他的な入力状態にする
@@ -513,7 +565,10 @@ final class BrowserWindowModel {
             addressText = text
             navigate(text: text)
         case "find":
-            find(text: arguments.joined(separator: " "))
+            lastFindText = arguments.joined(separator: " ")
+            isFindModeActive = !lastFindText.isEmpty
+            // find プロンプトと同じく、コマンドプロンプトを閉じて Web コンテンツへフォーカスが移った後に検索する
+            pendingFindText = lastFindText
         case "source-file":
             // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
             perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
@@ -542,6 +597,8 @@ final class BrowserWindowModel {
     func find(text: String) {
         let webView = currentWindow.focusedPane.webView
         // 空文字は検索の解除。保留中の検索の完了で古い結果を表示しないよう世代も進める
+        // 前回の「見つからない」を残さない (今回の結果で置き換える)
+        statusMessage = nil
         findGeneration += 1
         guard !text.isEmpty else {
             webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
@@ -575,6 +632,12 @@ final class BrowserWindowModel {
             }
             scheduleSave()
             return
+        case .find:
+            lastFindText = promptText
+            isFindModeActive = !promptText.isEmpty
+            // 入力欄が first responder のままだと検索結果の選択が WKWebView に反映されないため、プロンプトを閉じて
+            // Web コンテンツへフォーカスが実際に移った後 (webContentDidFocus) に検索する
+            pendingFindText = promptText
         case nil:
             break
         }
@@ -587,6 +650,18 @@ final class BrowserWindowModel {
             return
         }
         closePrompt()
+    }
+
+    /// PaneContainer が Web コンテンツを first responder にした直後に呼ばれる。フォーカス待ちの検索をここで実行する
+    func webContentDidFocus() {
+        guard let text = pendingFindText else {
+            return
+        }
+        pendingFindText = nil
+        // SwiftUI の更新中に状態を変えないよう、次のターンで検索する (フォーカス自体は既に移っている)
+        Task { @MainActor [weak self] in
+            self?.find(text: text)
+        }
     }
 
     /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
@@ -704,6 +779,26 @@ final class BrowserWindowModel {
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
+        // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う。
+        // prefix を n / N に変えた設定では prefix の開始を優先する
+        if isFindModeActive, prompt == nil, !isAddressBarEditing, prefixKeyState == .idle, keyStroke.modifiers.isEmpty,
+           !keyStrokes.contains(keyBindings.prefix) {
+            switch keyStroke.key {
+            case "n":
+                findNext(backwards: false)
+                return true
+            case "N":
+                findNext(backwards: true)
+                return true
+            case "Escape":
+                isFindModeActive = false
+                findGeneration += 1
+                find(text: "")
+                return true
+            default:
+                break
+            }
+        }
         let handled = prefixKeyState.handling(keyStrokes: keyStrokes, table: keyBindings)
         prefixKeyState = handled.state
         switch handled.outcome {
@@ -784,6 +879,8 @@ final class BrowserWindowModel {
             beginRenameSession()
         case .commandPrompt:
             beginCommandPrompt()
+        case .findPrompt:
+            beginFindPrompt()
         case .sourceFile(let path):
             // 相対パスは設定ファイルのディレクトリを基準にする (GUI から起動したアプリのカレントディレクトリは当てにならない)
             reload(

@@ -198,6 +198,10 @@ final class PaneContainerView: NSView {
             guard let self, event.window === window else {
                 return event
             }
+            // JavaScript の prompt / alert などのシートが出ている間は、その入力欄へのキー (find モードの n / N / Escape を含む) を横取りしない
+            if window?.attachedSheet != nil {
+                return event
+            }
             if event.type == .keyUp {
                 return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
             }
@@ -277,6 +281,8 @@ struct PaneContainer: NSViewRepresentable {
         if context.coordinator.handledWebContentFocusRequestCount != model.webContentFocusRequestCount {
             context.coordinator.handledWebContentFocusRequestCount = model.webContentFocusRequestCount
             view.focusWebContent()
+            // Web コンテンツが first responder になった後で実行する処理 (find の選択反映など) を、フォーカスの完了を待って動かす
+            model.webContentDidFocus()
         }
     }
 
