@@ -179,7 +179,14 @@ enum LoginFormScript {
         capture(container);
       }, true);
       // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
-      const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
+      // 実際に文字を編集できる要素だけを入力中とみなす (送信ボタン等の INPUT を入力中扱いしない)
+      const nonEditableInputTypes = ['button', 'submit', 'reset', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'hidden'];
+      const isTextTarget = (element) => {
+        if (!element) { return false; }
+        if (element.isContentEditable || element.tagName === 'TEXTAREA') { return true; }
+        if (element.tagName !== 'INPUT') { return false; }
+        return !nonEditableInputTypes.includes((element.getAttribute('type') || 'text').toLowerCase());
+      };
       const postEditing = () => {
         send({ editing: isTextTarget(document.activeElement) });
       };
@@ -232,7 +239,7 @@ enum LoginFormScript {
         if (newPasswordTimer !== null) { return; }
         newPasswordTimer = setTimeout(() => { newPasswordTimer = null; postNewPassword(); }, 100);
       };
-      new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden', 'disabled', 'readonly'] });
+      new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden', 'disabled', 'readonly', 'open'] });
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
@@ -247,11 +254,14 @@ enum LoginFormScript {
         if (targets().length === 0) { return false; }
         // input / change でフォームを再生成するページでは、先に入れた欄のイベントで残りの欄が DOM から外れることがあるため、
         // 1 欄ごとに接続状態を確かめ、外れていれば入れ直す対象を再探索する (現在の欄は毎回除外する)
+        // 対象欄の maxlength に合わせて切り詰める (上限より長い生成値は検証で弾かれるため。新規・確認で同じ値になるよう共通の長さにする)
+        const limits = targets().map((field) => field.maxLength).filter((n) => n > 0);
+        const value = limits.length ? password.slice(0, Math.min(...limits)) : password;
         const filled = new Set();
         for (let i = 0; i < 8; i++) {
-          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
+          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== value);
           if (remaining.length === 0) { break; }
-          setValue(remaining[0], password);
+          setValue(remaining[0], value);
           filled.add(remaining[0]);
         }
         return filled.size > 0;
