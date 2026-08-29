@@ -175,6 +175,11 @@ enum BrowserCommand: Hashable, Sendable {
     case renameWindow
     case killWindow
     case chooseWindow
+    /// アドレスバーへフォーカスを移す (prefix + /。tmux には無い Tatami 固有のコマンド)
+    case omnibox
+    case goBack
+    case goForward
+    case reload
 
     /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
     var tmuxName: String {
@@ -221,6 +226,14 @@ enum BrowserCommand: Hashable, Sendable {
             return "kill-window"
         case .chooseWindow:
             return "choose-window"
+        case .omnibox:
+            return "omnibox"
+        case .goBack:
+            return "back"
+        case .goForward:
+            return "forward"
+        case .reload:
+            return "reload"
         }
     }
 
@@ -242,7 +255,7 @@ enum BrowserCommand: Hashable, Sendable {
         .splitWindowHorizontal, .splitWindowVertical, .killPane, .selectPaneNext, .selectPaneLast,
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
-        .renameWindow, .killWindow, .chooseWindow,
+        .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
     ]
 }
 
@@ -280,6 +293,7 @@ struct KeyBindingTable: Equatable, Sendable {
             (",", .renameWindow),
             ("&", .killWindow),
             ("w", .chooseWindow),
+            ("/", .omnibox),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }

@@ -35,8 +35,12 @@ final class BrowserWindowModel {
     private(set) var isChoosingWindow = false
     /// choose-window の一覧で選択中の添字
     private(set) var chooserSelectionIndex = 0
-    /// フォーカス中のペインの Web コンテンツを first responder にする要求。プロンプトを閉じた後などに使う
+    /// アドレスバーへのフォーカス要求。回数を増やすことで同じ要求を続けて出せる (View 側が onChange で拾う)
+    private(set) var addressBarFocusRequestCount = 0
+    /// フォーカス中のペインの Web コンテンツを first responder にする要求。アドレスバーからの送信後に使う
     private(set) var webContentFocusRequestCount = 0
+    /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
+    private(set) var focusedPaneStateVersion = 0
 
     init() {
         windows = []
@@ -49,6 +53,29 @@ final class BrowserWindowModel {
         windows[currentWindowIndex]
     }
 
+    /// ウィンドウのタイトルバーに出す、フォーカス中のページのタイトル
+    var focusedPageTitle: String {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.title ?? "Tatami"
+    }
+
+    /// フォーカス中のペインの読み込み進捗 (0...1)。読み込み中でなければ nil
+    var focusedPaneProgress: Double? {
+        _ = focusedPaneStateVersion
+        let webView = currentWindow.focusedPane.webView
+        return webView.isLoading ? webView.estimatedProgress : nil
+    }
+
+    var canGoBack: Bool {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.webView.canGoBack
+    }
+
+    var canGoForward: Bool {
+        _ = focusedPaneStateVersion
+        return currentWindow.focusedPane.webView.canGoForward
+    }
+
     /// どのウィンドウかを問わず、フォーカス中ペインの URL が変わった回数。automatic-rename の名前は WebPane.url (Observation の対象外) から
     /// 決まるため、これを読む View がバックグラウンドのウィンドウの名前の変化でも再描画されるようにする
     private(set) var windowNamesVersion = 0
@@ -59,15 +86,43 @@ final class BrowserWindowModel {
         return StatusLine.text(sessionName: sessionName, windowNames: windows.map(\.name), currentWindowIndex: currentWindowIndex)
     }
 
-    /// アドレスバーの入力をフォーカス中のペインで開く
+    /// アドレスバーの入力をフォーカス中のペインで開き、キー入力の宛先を Web コンテンツへ戻す
     func navigate(text: String) {
         currentWindow.focusedPane.load(url: AddressInput.resolve(text: text))
+        webContentFocusRequestCount += 1
+    }
+
+    /// 描画側から受け取ったペイン領域の大きさを全ウィンドウへ伝える (ポップアップの分割方向の判定に使う)
+    func update(containerSize: CGSize) {
+        for window in windows {
+            window.containerSize = containerSize
+        }
     }
 
     /// 他アプリから渡された URL をフォーカス中のペインで開く
     func open(url: URL) {
         addressText = url.absoluteString
         currentWindow.focusedPane.load(url: url)
+    }
+
+    /// アドレスバーへフォーカスを移す (prefix + /)。一覧やプロンプトが開いていると通常のキーがそちらへ吸われるため先に閉じる
+    func focusAddressBar() {
+        isChoosingWindow = false
+        cancelPrompt()
+        cancelPrefix()
+        addressBarFocusRequestCount += 1
+    }
+
+    func goBack() {
+        currentWindow.focusedPane.webView.goBack()
+    }
+
+    func goForward() {
+        currentWindow.focusedPane.webView.goForward()
+    }
+
+    func reload() {
+        currentWindow.focusedPane.webView.reload()
     }
 
     /// 新しいウィンドウを末尾に作って表示する (prefix + c)
@@ -102,6 +157,7 @@ final class BrowserWindowModel {
         previousWindowIndex = currentWindowIndex
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
+        focusedPaneStateVersion += 1
     }
 
     /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
@@ -276,6 +332,14 @@ final class BrowserWindowModel {
             killCurrentWindow()
         case .chooseWindow:
             beginChooseWindow()
+        case .omnibox:
+            focusAddressBar()
+        case .goBack:
+            goBack()
+        case .goForward:
+            goForward()
+        case .reload:
+            reload()
         }
     }
 
@@ -290,6 +354,13 @@ final class BrowserWindowModel {
                 return
             }
             addressText = navigatedURL.absoluteString
+            focusedPaneStateVersion += 1
+        }
+        window.onFocusedPaneStateChange = { [weak self, weak window] in
+            guard let self, let window, currentWindow === window else {
+                return
+            }
+            focusedPaneStateVersion += 1
         }
         return window
     }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WebKit
 
 /// tmux の window (ブラウザのタブ相当)。ペインの配置 (PaneTree) と各ペインの実体 (WebPane) を持つ
 @MainActor
@@ -14,9 +15,16 @@ final class PaneWindow {
     /// フォーカス中のペインの URL が変わった時の通知先 (アドレスバーと status line の追随に使う)
     var onFocusedURLChange: ((URL) -> Void)?
 
+    /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
+    var onFocusedPaneStateChange: (() -> Void)?
+    /// 画面上でペインを並べている領域の大きさ。ポップアップの分割方向を実際の縦横比で決めるために描画側から受け取る。
+    /// 描画前は正方形とみなす
+    var containerSize = CGSize(width: 1, height: 1)
+
     init() {
         let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
         panes[pane.id] = pane
+        pane.loadInitialURL()
     }
 
     /// フォーカス中のペインの実体
@@ -32,19 +40,40 @@ final class PaneWindow {
     /// フォーカス中のペインを分割し、新しいペインに空ページを開く
     func split(axis: SplitAxis) {
         let newPaneID = paneTree.split(axis: axis)
-        panes[newPaneID] = makePane(id: newPaneID, url: AddressInput.homeURL)
+        let pane = makePane(id: newPaneID, url: AddressInput.homeURL)
+        panes[newPaneID] = pane
+        pane.loadInitialURL()
         notifyFocusedURL()
+    }
+
+    /// target="_blank" / window.open の要求を新しいペインとして開く。別の macOS ウィンドウは増やさない (documents/PROJECT.md 機能要件 1)。
+    /// 分割の向きは、要求元のペインの実際の形が横長なら左右、縦長なら上下にして新しいペインが極端に細くならないようにする
+    private func splitForPopup(sourcePaneID: PaneID, configuration: WKWebViewConfiguration) -> WKWebView {
+        let containerBounds = CGRect(origin: .zero, size: containerSize)
+        let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
+        paneTree.focus(paneID: sourcePaneID)
+        let newPaneID = paneTree.split(axis: sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical)
+        let pane = makePane(id: newPaneID, url: AddressInput.homeURL, configuration: configuration)
+        panes[newPaneID] = pane
+        notifyFocusedURL()
+        return pane.webView
     }
 
     /// フォーカス中のペインを閉じる。最後の 1 枚は閉じずに false を返す (ウィンドウごと閉じる判断は BrowserWindowModel が行う)
     @discardableResult
     func closeFocusedPane() -> Bool {
-        let closingPaneID = paneTree.focusedPaneID
-        guard paneTree.closeFocusedPane() else {
+        close(paneID: paneTree.focusedPaneID)
+    }
+
+    /// 指定したペインを閉じる (window.close() からも呼ばれる)。最後の 1 枚は閉じずに false を返す
+    @discardableResult
+    func close(paneID: PaneID) -> Bool {
+        let previousFocusedPaneID = paneTree.focusedPaneID
+        guard paneTree.close(paneID: paneID) else {
             return false
         }
-        panes[closingPaneID] = nil
-        notifyFocusedURL()
+        panes[paneID] = nil
+        notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
         return true
     }
 
@@ -100,13 +129,25 @@ final class PaneWindow {
         paneTree.resize(dividerPath: dividerPath, delta: delta)
     }
 
-    private func makePane(id: PaneID, url: URL) -> WebPane {
-        let pane = WebPane(id: id, url: url)
+    private func makePane(id: PaneID, url: URL, configuration: WKWebViewConfiguration? = nil) -> WebPane {
+        let pane = WebPane(id: id, url: url, configuration: configuration ?? WebPane.defaultConfiguration())
         pane.onNavigate = { [weak self] navigatedURL in
             guard let self, paneTree.focusedPaneID == id else {
                 return
             }
             onFocusedURLChange?(navigatedURL)
+        }
+        pane.onStateChange = { [weak self] in
+            guard let self, paneTree.focusedPaneID == id else {
+                return
+            }
+            onFocusedPaneStateChange?()
+        }
+        pane.onCreateWebView = { [weak self] configuration in
+            self?.splitForPopup(sourcePaneID: id, configuration: configuration)
+        }
+        pane.onClose = { [weak self] in
+            self?.close(paneID: id)
         }
         return pane
     }
