@@ -165,10 +165,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// 候補の選択。一覧を開いたまま自動ロックの期限を過ぎていることがあるため、返す直前にも本人確認する (アンロック中なら即時)
     private func select(credential: Credential) {
         let generation = requestGeneration
-        // 一覧のための本人確認から既定の自動ロック時間 (アプリ側の既定と同じ 5 分) 以内なら、その確認を再利用する
-        let recentlyAuthenticated = listAuthenticatedAt.map { ContinuousClock.now - $0 < .seconds(CredentialLockPolicy.defaultLockTimeout) } ?? false
         Task {
             do {
+                // 再認証の省略可否は充填の直前に判定する (クリックからここまでの間に一覧が時間失効して listAuthenticatedAt が消えることがあるため)
+                let recentlyAuthenticated = listAuthenticatedAt.map { ContinuousClock.now - $0 < .seconds(CredentialLockPolicy.defaultLockTimeout) } ?? false
                 if !recentlyAuthenticated {
                     try await CredentialLock.shared.ensureUnlocked(reason: "\(credential.username) を自動入力する")
                 }
