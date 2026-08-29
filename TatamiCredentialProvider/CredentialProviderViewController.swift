@@ -13,6 +13,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// 一覧を出すために本人確認した時刻。同じ要求の中で候補を選ぶ時は、一覧を長く開いたままでなければ再確認しない
     /// (拡張は要求ごとに確認する設定のため、そのままだと 1 回の自動入力で 2 回確認になる)
     private var listAuthenticatedAt: ContinuousClock.Instant?
+    /// 一覧の失効タスク (一定時間で候補表示を消す)
+    private var listExpiryTask: Task<Void, Never>?
     /// 要求の世代。同じ view controller で次の要求が始まった時に、前の要求の非同期処理が古い候補を出さないようにする
     private var requestGeneration = 0
 
@@ -23,7 +25,23 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.credentials = []
         model.message = nil
         listAuthenticatedAt = nil
+        listExpiryTask?.cancel()
+        listExpiryTask = nil
         return requestGeneration
+    }
+
+    /// 一覧を表示してから自動ロック時間が過ぎたら、表示中のユーザー名・ホストを消して再度本人確認を求める (他人が覗けないように)
+    private func scheduleListExpiry(generation: Int) {
+        listExpiryTask?.cancel()
+        listExpiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(CredentialLockPolicy.defaultLockTimeout))
+            guard let self, !Task.isCancelled, generation == self.requestGeneration else {
+                return
+            }
+            self.model.credentials = []
+            self.model.message = "時間が経過したため再度本人確認が必要です"
+            self.listAuthenticatedAt = nil
+        }
     }
 
     override func loadView() {
@@ -51,6 +69,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     return
                 }
                 listAuthenticatedAt = .now
+                scheduleListExpiry(generation: generation)
                 let all = try store.all()
                 let pageURLs = CredentialProviderModel.pageURLs(serviceIdentifiers: serviceIdentifiers)
                 var seen = Set<UUID>()
@@ -191,10 +210,12 @@ final class CredentialProviderModel {
     nonisolated static func pageURL(serviceIdentifier: ASCredentialServiceIdentifier) -> URL? {
         switch serviceIdentifier.type {
         case .domain:
-            // ドメイン型は scheme を持たないため https として扱う。IPv6 のホストは角括弧で囲む
+            // ドメイン型は scheme を持たないため https として扱う。Unicode の U-label (例え.jp) も Foundation が A-label へ変換する host に設定し、
+            // IPv6 のホストは角括弧で囲む
             var components = URLComponents()
             components.scheme = "https"
-            components.encodedHost = serviceIdentifier.identifier.contains(":") && !serviceIdentifier.identifier.hasPrefix("[") ? "[\(serviceIdentifier.identifier)]" : serviceIdentifier.identifier
+            let raw = serviceIdentifier.identifier
+            components.host = raw.contains(":") && !raw.hasPrefix("[") ? "[\(raw)]" : raw
             components.path = "/"
             return components.url
         case .URL:
@@ -238,6 +259,7 @@ struct CredentialProviderView: View {
             case .list:
                 Text("Tatami の資格情報")
                     .font(.headline)
+                    .accessibilityIdentifier("credentialListHeader")
                 if let message = model.message {
                     Text(message)
                         .foregroundStyle(.secondary)
@@ -249,14 +271,17 @@ struct CredentialProviderView: View {
                     } label: {
                         VStack(alignment: .leading) {
                             Text(credential.username)
+                                .accessibilityIdentifier("credentialUsername-\(credential.id.uuidString)")
                             Text(credential.host)
                                 .foregroundStyle(.secondary)
                                 .font(.caption)
+                                .accessibilityIdentifier("credentialHost-\(credential.id.uuidString)")
                         }
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("credentialRow-\(credential.id.uuidString)")
                 }
+                .accessibilityIdentifier("credentialList")
                 HStack {
                     Spacer()
                     Button("キャンセル", action: onCancel)

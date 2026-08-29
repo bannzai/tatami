@@ -60,14 +60,18 @@ struct CredentialLockTests {
     }
 
     @Test func lockDuringAuthenticationInvalidatesPendingRequest() async {
+        // 本人確認が実際に始まったことを待ってから lock() する (固定待機による競合を避ける)
+        let started = AsyncStream<Void>.makeStream()
         let lock = CredentialLock { _ in
-            try await Task.sleep(for: .milliseconds(50))
+            started.continuation.yield(())
+            try await Task.sleep(for: .seconds(1))
         }
         lock.apply(lockTimeout: 60)
         let pending = Task {
             try await lock.ensureUnlocked(reason: "test")
         }
-        try? await Task.sleep(for: .milliseconds(10))
+        var iterator = started.stream.makeAsyncIterator()
+        _ = await iterator.next()
         lock.lock()
         let outcome = await pending.result
         #expect(throws: CredentialLockError.self) {
