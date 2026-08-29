@@ -33,6 +33,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     private var isSuppressingRestoredVisits = false
     /// 復元の読み込み完了後に抑止を続ける時間。SPA の初期化 (replaceState 等) は読み込み直後に集中するため、その後のユーザー操作を取りこぼさない短さにした
     private static let restoredVisitSuppressionGrace: Duration = .seconds(2)
+
+    /// 表示中のページ (いずれかのフレーム) にパスワード欄があるか。注入スクリプトからの通知で更新する
+    private(set) var hasLoginForm = false
+
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -49,6 +53,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         webView.customUserAgent = userAgent
         webView.uiDelegate = self
         webView.navigationDelegate = self
+        // ログインフォームの検出と充填のスクリプトを専用の content world に注入する (documentStart・全フレーム)
+        // window.open で渡される configuration は元のビューの userContentController を引き継ぐ。同名 handler の重複登録は例外になるため、
+        // controller ごとに 1 度だけ登録し、中継先は最後に登録したペインではなく controller を共有する各ペインへ配る
+        WebPane.register(pane: self, in: configuration.userContentController)
         // History API (pushState / replaceState) は navigation delegate を通らないため、url プロパティの変化を監視する。
         // observation をこのインスタンスが所有するため、クロージャからは弱参照にして循環参照を避ける
         observations = [
@@ -171,6 +179,111 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         onClose?()
     }
 
+    /// WKUserContentController が handler を強参照して WebPane と循環するのを避けるための弱参照の中継。
+    /// 1 つの controller を複数の WKWebView (window.open で開いたペイン) が共有するため、メッセージは送信元の WebView を持つペインへ届ける
+    private final class ScriptMessageRelay: NSObject, WKScriptMessageHandler {
+        let panes = NSHashTable<WebPane>.weakObjects()
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let webView = message.webView, let pane = panes.allObjects.first(where: { $0.webView === webView }) else {
+                return
+            }
+            pane.userContentController(userContentController, didReceive: message)
+        }
+    }
+
+    /// controller ごとの中継。同じ controller に 2 回 add すると WebKit が例外を投げるため、ここで 1 度だけ登録する。
+    /// キーは controller の弱参照 (解放後にアドレスが再利用されても古い中継を共有済みと誤認しない)
+    private static let relays = NSMapTable<WKUserContentController, ScriptMessageRelay>.weakToStrongObjects()
+
+    private static func register(pane: WebPane, in controller: WKUserContentController) {
+        if let relay = relays.object(forKey: controller) {
+            relay.panes.add(pane)
+            return
+        }
+        let relay = ScriptMessageRelay()
+        relay.panes.add(pane)
+        relays.setObject(relay, forKey: controller)
+        controller.addUserScript(LoginFormScript.makeUserScript())
+        controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
+    }
+
+    /// パスワード欄を検出したフレーム (フレームの URL ごと)。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する。
+    /// フレームごとに持つのは、欄が消えた iframe の false 通知で他のフレームの欄を見失わないため
+    private var loginFormFrames: [String: WKFrameInfo] = [:]
+
+    /// 充填先のフレーム。トップレベルに欄があればそれを優先し、無ければ検出済みの iframe
+    private var loginFormFrame: WKFrameInfo? {
+        loginFormFrames.values.first(where: \.isMainFrame) ?? loginFormFrames.values.first
+    }
+
+    /// フレームのオリジンを表す URL。`about:blank` / `srcdoc` / `blob:` の iframe は request URL に host が無く親のオリジンを継承するため、
+    /// WebKit が持つ security origin から組み立てる (sandbox で opaque なオリジンは host が空になり、照合に通らない)
+    static func originURL(frame: WKFrameInfo) -> URL? {
+        // request URL にホストがあっても sandbox で opaque になったフレームは security origin の host が空になる。
+        // その場合は request URL へフォールバックせず拒否する (別オリジン扱いのフレームへ資格情報を渡さない)
+        let origin = frame.securityOrigin
+        guard !origin.host.isEmpty else {
+            return nil
+        }
+        // IPv6 のホストは角括弧で囲まないと URL にならない
+        let host = origin.host.contains(":") ? "[\(origin.host)]" : origin.host
+        return URL(string: "\(origin.protocol)://\(host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
+    }
+
+    /// 資格情報の充填先フレーム。トップレベルに欄があればそれ、無ければ資格情報と同じオリジンの iframe (別オリジンの iframe には渡さない)。
+    /// 該当が無ければ nil
+    func loginFormFrame(credentialURL: URL) -> WKFrameInfo? {
+        if let main = loginFormFrames.values.first(where: \.isMainFrame) {
+            return main
+        }
+        return loginFormFrames.values.first { frame in
+            WebPane.originURL(frame: frame).map { CredentialMatcher.sameOrigin(credentialURL: credentialURL, pageURL: $0) } ?? false
+        }
+    }
+
+    /// 資格情報の充填先フレームのオリジン URL (トップレベルなら webView.url)。呼び出し側が資格情報と照合する
+    func loginFormURL(credentialURL: URL) -> URL? {
+        guard let frame = loginFormFrame(credentialURL: credentialURL) else {
+            return nil
+        }
+        return frame.isMainFrame ? webView.url : WebPane.originURL(frame: frame)
+    }
+
+    /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため URL で対応付ける)
+    private static func frameKey(frame: WKFrameInfo) -> String {
+        frame.request.url?.absoluteString ?? (frame.isMainFrame ? "main" : "frame")
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
+            return
+        }
+        if let hasPassword = body["hasPassword"] as? Bool {
+            if hasPassword {
+                loginFormFrames[WebPane.frameKey(frame: message.frameInfo)] = message.frameInfo
+            } else {
+                loginFormFrames.removeValue(forKey: WebPane.frameKey(frame: message.frameInfo))
+            }
+            hasLoginForm = !loginFormFrames.isEmpty
+        }
+    }
+
+    /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
+    /// 呼び出し側は直前に `loginFormURL` と資格情報を照合する (別オリジンの iframe が欄を持つ場合に渡さないため)
+    func fill(credential: Credential) async throws -> Bool {
+        guard let frame = loginFormFrame(credentialURL: credential.url) else {
+            return false
+        }
+        let result = try await webView.callAsyncJavaScript(
+            "return window.__tatamiFill(username, password);",
+            arguments: ["username": credential.username, "password": credential.password],
+            in: frame,
+            contentWorld: LoginFormScript.contentWorld
+        )
+        return result as? Bool ?? false
+    }
+
     // MARK: JavaScript のダイアログ (alert / confirm / prompt) をネイティブのシートで出す
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {
@@ -265,6 +378,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // 旧文書が破棄される時点 (commit) で、そのフレーム情報 (false 通知は届かない) を捨てる。
+        // provisional で失敗したナビゲーション (DNS エラー等) では旧文書が残るため、開始時点では捨てない
+        loginFormFrames.removeAll()
+        hasLoginForm = false
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

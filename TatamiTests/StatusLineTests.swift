@@ -38,6 +38,7 @@ struct StatusLineTests {
         #expect(BrowserCommand(tmuxName: "set-default-browser") == .setDefaultBrowser)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "[")!] == .findPrompt)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "b")!] == .chooseBookmark)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "a")!] == .fillCredential)
     }
 
     @Test func downloadFileNameIsConstrainedToOneComponent() {

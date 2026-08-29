@@ -25,6 +25,8 @@ final class BrowserWindowModel {
         case session([String])
         /// ブックマークの一覧。x で選択中の項目を削除する
         case bookmark
+        /// 表示中のページに合う資格情報の一覧。選ぶと候補を作ったペインへ充填する (充填時にそのペインの URL と再照合する)
+        case credential([Credential], pane: WebPane)
     }
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
@@ -120,7 +122,14 @@ final class BrowserWindowModel {
     /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
     /// @MainActor の KeychainCredentialStore を呼べないため
     init(credentialStore: (any CredentialStore)? = nil) {
+        #if DEBUG
+        // 開発中の動作確認で本物の Keychain (iCloud 同期) にダミーの資格情報を書かないための切り替え。
+        // `defaults write com.bannzai.Tatami TatamiUseInMemoryCredentialStore -bool YES` で有効になる (Debug ビルドのみ)
+        let debugStore: (any CredentialStore)? = UserDefaults.standard.bool(forKey: "TatamiUseInMemoryCredentialStore") ? InMemoryCredentialStore() : nil
+        self.credentialStore = credentialStore ?? debugStore ?? KeychainCredentialStore()
+        #else
         self.credentialStore = credentialStore ?? KeychainCredentialStore()
+        #endif
         windows = []
         // 旧版や壊れた defaults で無効な名前 (`../work` 等) が残っていると以後の保存が全て失敗するため、有効な名前へ戻す
         let storedName = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
@@ -826,8 +835,75 @@ final class BrowserWindowModel {
             return names
         case .bookmark:
             return browsingData.bookmarks.map { "\($0.title)  \($0.url.absoluteString)" }
+        case .credential(let credentials, _):
+            return credentials.map { "\($0.username)  \($0.host)" }
         case nil:
             return []
+        }
+    }
+
+    /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ
+    func fillCredential() {
+        cancelPrompt()
+        cancelPrefix()
+        // 前の候補一覧が残っていると、別ペインの充填後に古い一覧から更に充填できてしまうため閉じる
+        chooser = nil
+        let pane = currentWindow.focusedPane
+        let host = pane.url.host()?.lowercased() ?? ""
+        guard !host.isEmpty else {
+            statusMessage = "このページには充填できない: \(pane.url.absoluteString)"
+            return
+        }
+        let candidates: [Credential]
+        do {
+            candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
+        } catch {
+            statusMessage = "資格情報を読めない: \(error)"
+            return
+        }
+        switch candidates.count {
+        case 0:
+            statusMessage = "\(host) の資格情報は無い"
+        case 1:
+            fill(credential: candidates[0], pane: pane)
+        default:
+            chooserSelectionIndex = 0
+            chooser = .credential(candidates, pane: pane)
+        }
+    }
+
+    /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
+    /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
+    private func fill(credential: Credential, pane: WebPane) {
+        // 候補元のペインが閉じられていたら (別のペインが表示されていて誤認しやすい) 充填しない
+        guard windows.contains(where: { $0.panes[pane.id] === pane }) else {
+            statusMessage = "ペインが閉じられたため充填しない"
+            return
+        }
+        guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url) else {
+            statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+            return
+        }
+        Task { @MainActor [weak self] in
+            // 非同期に入るまでにリダイレクトや History API の遷移・ペインの破棄 (window.close 等) が起きていることがあるため、
+            // JavaScript を呼ぶ直前にペインの所属とトップレベルの URL を改めて照合する。
+            // 充填先の iframe は資格情報と同じオリジンのものを WebPane が選ぶ (別オリジンの iframe には渡さない)
+            guard let self else {
+                return
+            }
+            guard windows.contains(where: { $0.panes[pane.id] === pane }),
+                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
+                  let frameURL = pane.loginFormURL(credentialURL: credential.url),
+                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
+                statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+                return
+            }
+            do {
+                let filled = try await pane.fill(credential: credential)
+                statusMessage = filled ? "充填した: \(credential.username)" : "ログインフォームが見つからない"
+            } catch {
+                statusMessage = "充填に失敗: \(error)"
+            }
         }
     }
 
@@ -954,6 +1030,11 @@ final class BrowserWindowModel {
             addressText = url.absoluteString
             currentWindow.focusedPane.load(url: url)
             webContentFocusRequestCount += 1
+        case .credential(let credentials, let pane):
+            guard credentials.indices.contains(index) else {
+                return
+            }
+            fill(credential: credentials[index], pane: pane)
         case nil:
             break
         }
@@ -1099,6 +1180,8 @@ final class BrowserWindowModel {
             setAsDefaultBrowser()
         case .chooseBookmark:
             beginChooseBookmark()
+        case .fillCredential:
+            fillCredential()
         case .sourceFile(let path):
             // 相対パスは設定ファイルのディレクトリを基準にする (GUI から起動したアプリのカレントディレクトリは当てにならない)
             reload(
