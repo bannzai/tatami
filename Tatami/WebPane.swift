@@ -244,6 +244,38 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         loginFormFrames.values.first(where: \.isMainFrame) ?? loginFormFrames.values.first
     }
 
+    /// フレームのオリジンを表す URL。`about:blank` / `srcdoc` / `blob:` の iframe は request URL に host が無く親のオリジンを継承するため、
+    /// WebKit が持つ security origin から組み立てる (sandbox で opaque なオリジンは host が空になり、照合に通らない)
+    static func originURL(frame: WKFrameInfo) -> URL? {
+        if let url = frame.request.url, let host = url.host(), !host.isEmpty {
+            return url
+        }
+        let origin = frame.securityOrigin
+        guard !origin.host.isEmpty else {
+            return nil
+        }
+        return URL(string: "\(origin.protocol)://\(origin.host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
+    }
+
+    /// 資格情報の充填先フレーム。トップレベルに欄があればそれ、無ければ資格情報と同じオリジンの iframe (別オリジンの iframe には渡さない)。
+    /// 該当が無ければ nil
+    func loginFormFrame(credentialURL: URL) -> WKFrameInfo? {
+        if let main = loginFormFrames.values.first(where: \.isMainFrame) {
+            return main
+        }
+        return loginFormFrames.values.first { frame in
+            WebPane.originURL(frame: frame).map { CredentialMatcher.sameOrigin(credentialURL: credentialURL, pageURL: $0) } ?? false
+        }
+    }
+
+    /// 資格情報の充填先フレームのオリジン URL (トップレベルなら webView.url)。呼び出し側が資格情報と照合する
+    func loginFormURL(credentialURL: URL) -> URL? {
+        guard let frame = loginFormFrame(credentialURL: credentialURL) else {
+            return nil
+        }
+        return frame.isMainFrame ? webView.url : WebPane.originURL(frame: frame)
+    }
+
     /// フレームを識別するキー (WKFrameInfo は通知ごとに別インスタンスで届くため、スクリプトが注入コンテキストごとに付ける ID で対応付ける。
     /// 同じ URL の iframe が複数あっても区別できる。ID が無い通知は URL で代用する)
     private static func frameKey(message: WKScriptMessage) -> String {
@@ -320,23 +352,16 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         return result as? Bool ?? false
     }
 
-    /// パスワード欄を検出したフレームの URL (無ければトップレベル)。充填先のオリジンの照合に使う
-    var loginFormURL: URL? {
-        loginFormFrame?.request.url ?? webView.url
-    }
-
-    /// 充填先が iframe (トップレベルでない) か。iframe へは資格情報と同じオリジンの時だけ充填する
-    var isLoginFormInSubframe: Bool {
-        loginFormFrame.map { !$0.isMainFrame } ?? false
-    }
-
     /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
     /// 呼び出し側は直前に `loginFormURL` と資格情報を照合する (別オリジンの iframe が欄を持つ場合に渡さないため)
     func fill(credential: Credential) async throws -> Bool {
+        guard let frame = loginFormFrame(credentialURL: credential.url) else {
+            return false
+        }
         let result = try await webView.callAsyncJavaScript(
             "return window.__tatamiFill(username, password);",
             arguments: ["username": credential.username, "password": credential.password],
-            in: loginFormFrame,
+            in: frame,
             contentWorld: LoginFormScript.contentWorld
         )
         return result as? Bool ?? false
@@ -431,12 +456,6 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard navigation !== certificateWarningNavigation else {
             return
         }
-        // 別のページへ移る時は、破棄される旧文書のフレーム情報 (false 通知は届かない) を捨てる
-        loginFormFrames.removeAll()
-        hasLoginForm = false
-        // 別のページへ移る時は、前のページで集めた新規パスワード欄・編集中の状態を捨てる (ユーザー名はオリジンで照合するため残す)
-        newPasswordFrames.removeAll()
-        editingFrames.removeAll()
         isShowingCertificateWarning = false
         certificateFailedURL = nil
         certificateWarningNavigation = nil
@@ -444,6 +463,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         documentGeneration += 1
+        // 旧文書が破棄される時点 (commit) で、そのフレーム情報 (false 通知は届かない) と新規パスワード欄・編集中の状態を捨てる。
+        // provisional で失敗したナビゲーション (DNS エラー等) では旧文書が残るため、開始時点では捨てない (ユーザー名はオリジンで照合するため残す)
+        loginFormFrames.removeAll()
+        hasLoginForm = false
+        newPasswordFrames.removeAll()
+        editingFrames.removeAll()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
