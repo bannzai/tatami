@@ -63,8 +63,11 @@ enum CredentialMatcher {
     /// 照合に使うホスト。IDN は Unicode 表記 (`URL.host()` は percent-encoded で返す) と punycode (`xn--`) で表現が分かれるため、
     /// 常に IDNA の ASCII 形 (`encodedHost`) に揃える
     static func host(url: URL) -> String? {
-        // IP アドレスは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]` 等) を標準形に揃える (PasswordImporter.matchKey と同じ)
-        ((URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host())?.lowercased()).map { PasswordImporter.normalizedHost(host: $0) }
+        // IP アドレスは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]` 等) を標準形に揃える (PasswordImporter.matchKey と同じ)。
+        // 完全修飾名の末尾ドット (`example.com.`) は同じ DNS ホストなので取り除いてから比べる
+        ((URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host())?.lowercased()).map { raw in
+            PasswordImporter.normalizedHost(host: raw.count > 1 && raw.hasSuffix(".") ? String(raw.dropLast()) : raw)
+        }
     }
 
     /// 既定ポートの明示 (https の 443 等) は省略と同一視する
