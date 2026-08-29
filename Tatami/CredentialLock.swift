@@ -58,6 +58,8 @@ final class CredentialLock {
     @ObservationIgnored private let authenticate: (_ reason: String) async throws -> Void
     /// 自動ロックの時刻に isLocked の表示を更新するためのタスク
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    /// 進行中の本人確認。複数の要求で共有する
+    @ObservationIgnored private var pendingAuthentication: Task<Void, any Error>?
     /// 明示的なロック (`:lock`) の回数。本人確認の待機中にロックされた要求を、確認が通っても無効にするために持つ
     @ObservationIgnored private var lockGeneration = 0
 
@@ -90,7 +92,17 @@ final class CredentialLock {
     func ensureUnlocked(reason: String) async throws {
         let generation = lockGeneration
         if policy.isLocked(now: .now) {
-            try await authenticate(reason)
+            // 同時に複数の要求 (prefix + a の連打・別ウィンドウのエクスポート) が来ても本人確認は 1 回にまとめ、全員が同じ結果を待つ
+            let task = pendingAuthentication ?? Task { [authenticate] in
+                try await authenticate(reason)
+            }
+            pendingAuthentication = task
+            defer {
+                if pendingAuthentication == task {
+                    pendingAuthentication = nil
+                }
+            }
+            try await task.value
         }
         guard generation == lockGeneration else {
             throw CredentialLockError(description: "本人確認の間にロックされたため中断")

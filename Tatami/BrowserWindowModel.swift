@@ -237,6 +237,10 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
         DownloadManager.shared.unsubscribe(model: self)
+        if let lockObservation {
+            NotificationCenter.default.removeObserver(lockObservation)
+            self.lockObservation = nil
+        }
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -1110,8 +1114,15 @@ final class BrowserWindowModel {
     /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
     /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
     private func fill(credential: Credential, pane: WebPane) {
-        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)
+        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)。
+        // 本人確認の間に同じ URL の別文書や別ページへ移っていたら、確認した時とは別のフォームへ充填しない
+        let url = pane.url
+        let generation = pane.documentGeneration
         withUnlockedCredentials(reason: "\(credential.username) を充填する") { [weak self] in
+            guard pane.url == url, pane.documentGeneration == generation else {
+                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+                return
+            }
             self?.fillUnlocked(credential: credential, pane: pane)
         }
     }
