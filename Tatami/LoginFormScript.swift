@@ -79,18 +79,31 @@ enum LoginFormScript {
       // 検出用 (画面外でも数える)
       const renderedPasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
         .filter((field) => isRendered(field) && !field.matches(':disabled') && !field.readOnly);
-      // autocomplete の無い「現在・新規・確認」の 3 欄の変更フォームでは、末尾 2 欄の値が一致すればその前の欄を現在、2 番目を新規とみなす
-      const isUnmarkedChangeForm = (fields) => fields.length >= 3 && !fields.some((field) => hasAutocomplete(field, 'new-password') || hasAutocomplete(field, 'current-password'))
-        && fields[fields.length - 2].value === fields[fields.length - 1].value;
+      // autocomplete も無い変更フォームで、欄の名前から現在のパスワード欄を見分ける (current / old / 現在 / 旧)
+      const looksLikeCurrentPassword = (field) => /current|old|existing|現在|旧/i.test(`${field.name} ${field.id} ${field.placeholder} ${field.getAttribute('aria-label') || ''}`);
+      // autocomplete の無い変更フォームで新規パスワード欄と現在のパスワード欄を返す (判定できなければ new のみ)。
+      // 3 欄以上で末尾 2 欄の値が一致する (現在・新規・確認) か、2 欄で先頭が「現在」と読める (現在・新規) 場合を変更フォームとみなす
+      const unmarkedChangeFields = (fields) => {
+        if (fields.some((field) => hasAutocomplete(field, 'new-password') || hasAutocomplete(field, 'current-password'))) { return null; }
+        if (fields.length >= 3 && fields[fields.length - 2].value === fields[fields.length - 1].value) {
+          return { new: fields[fields.length - 2], current: fields[fields.length - 3] };
+        }
+        if (fields.length === 2 && looksLikeCurrentPassword(fields[0]) && !looksLikeCurrentPassword(fields[1])) {
+          return { new: fields[1], current: fields[0] };
+        }
+        return null;
+      };
       const passwordFieldToReport = (scope) => {
         const fields = usablePasswordFields(scope);
-        if (isUnmarkedChangeForm(fields)) { return fields[fields.length - 2]; }
+        const change = unmarkedChangeFields(fields);
+        if (change) { return change.new; }
         return fields.find((field) => hasAutocomplete(field, 'new-password')) || fields[0] || null;
       };
-      // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、新規の欄より前の欄)
+      // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、名前で見分けた現在の欄、または新規の欄より前の欄)
       const currentPasswordValue = (scope, reported) => {
         const fields = usablePasswordFields(scope);
-        if (isUnmarkedChangeForm(fields)) { return fields[fields.length - 3].value; }
+        const change = unmarkedChangeFields(fields);
+        if (change) { return change.current.value; }
         const current = fields.find((field) => hasAutocomplete(field, 'current-password'))
           || fields.find((field) => field !== reported && !hasAutocomplete(field, 'new-password'));
         return current && current !== reported ? current.value : '';
@@ -218,8 +231,8 @@ enum LoginFormScript {
           const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm));
           return scopes.flatMap((scope) => {
             const usable = usablePasswordFields(scope);
-            // autocomplete の無い「現在・新規・確認」のフォームでは現在の欄 (末尾から 3 つ目) を保持する
-            const current = isUnmarkedChangeForm(usable) ? usable[usable.length - 3] : null;
+            // autocomplete の無い変更フォームでは現在のパスワード欄を保持する (生成値は新規・確認だけに入れる)
+            const current = unmarkedChangeFields(usable)?.current || null;
             return usable.filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
           });
         };
