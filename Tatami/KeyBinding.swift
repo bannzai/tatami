@@ -151,21 +151,99 @@ struct KeyStroke: Hashable, Sendable {
     }
 }
 
-/// キーバインドから呼び出せる操作。tatami.conf の bind-key はこの名前 (tmux のコマンド名に倣う) を右辺に書く
-enum BrowserCommand: String, CaseIterable, Sendable {
-    case splitWindowHorizontal = "split-window -h"
-    case splitWindowVertical = "split-window -v"
-    case killPane = "kill-pane"
-    case selectPaneNext = "select-pane -t :.+"
-    case selectPaneLast = "last-pane"
-    case selectPaneLeft = "select-pane -L"
-    case selectPaneDown = "select-pane -D"
-    case selectPaneUp = "select-pane -U"
-    case selectPaneRight = "select-pane -R"
-    case resizePaneZoom = "resize-pane -Z"
-    case swapPaneUp = "swap-pane -U"
-    case swapPaneDown = "swap-pane -D"
-    case nextLayout = "next-layout"
+/// キーバインドから呼び出せる操作。tatami.conf の bind-key はこの tmux コマンド名を右辺に書く
+enum BrowserCommand: Hashable, Sendable {
+    case splitWindowHorizontal
+    case splitWindowVertical
+    case killPane
+    case selectPaneNext
+    case selectPaneLast
+    case selectPaneLeft
+    case selectPaneDown
+    case selectPaneUp
+    case selectPaneRight
+    case resizePaneZoom
+    case swapPaneUp
+    case swapPaneDown
+    case nextLayout
+    case newWindow
+    case nextWindow
+    case previousWindow
+    case lastWindow
+    /// 番号でウィンドウを選ぶ
+    case selectWindow(Int)
+    case renameWindow
+    case killWindow
+    case chooseWindow
+
+    /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
+    var tmuxName: String {
+        switch self {
+        case .splitWindowHorizontal:
+            return "split-window -h"
+        case .splitWindowVertical:
+            return "split-window -v"
+        case .killPane:
+            return "kill-pane"
+        case .selectPaneNext:
+            return "select-pane -t :.+"
+        case .selectPaneLast:
+            return "last-pane"
+        case .selectPaneLeft:
+            return "select-pane -L"
+        case .selectPaneDown:
+            return "select-pane -D"
+        case .selectPaneUp:
+            return "select-pane -U"
+        case .selectPaneRight:
+            return "select-pane -R"
+        case .resizePaneZoom:
+            return "resize-pane -Z"
+        case .swapPaneUp:
+            return "swap-pane -U"
+        case .swapPaneDown:
+            return "swap-pane -D"
+        case .nextLayout:
+            return "next-layout"
+        case .newWindow:
+            return "new-window"
+        case .nextWindow:
+            return "next-window"
+        case .previousWindow:
+            return "previous-window"
+        case .lastWindow:
+            return "last-window"
+        case .selectWindow(let index):
+            return "select-window -t \(index)"
+        case .renameWindow:
+            return "rename-window"
+        case .killWindow:
+            return "kill-window"
+        case .chooseWindow:
+            return "choose-window"
+        }
+    }
+
+    /// tmux のコマンド名からの変換。空白の連続は 1 つに正規化する。知らないコマンドは nil
+    init?(tmuxName: String) {
+        let normalized = tmuxName.split(separator: " ").joined(separator: " ")
+        if let match = normalized.wholeMatch(of: /select-window -t (\d+)/), let index = Int(match.1) {
+            self = .selectWindow(index)
+            return
+        }
+        guard let command = BrowserCommand.fixedCommands.first(where: { $0.tmuxName == normalized }) else {
+            return nil
+        }
+        self = command
+    }
+
+    /// 引数を持たないコマンドの一覧 (tmuxName からの逆引き用)
+    private static let fixedCommands: [BrowserCommand] = [
+        .splitWindowHorizontal, .splitWindowVertical, .killPane, .selectPaneNext, .selectPaneLast,
+        .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
+        .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
+        .renameWindow, .killWindow, .chooseWindow,
+    ]
 }
 
 /// prefix キーと、prefix の後に押すキーからコマンドへの対応表。tatami.conf の set -g prefix / bind / unbind がこれを書き換える
@@ -196,7 +274,13 @@ struct KeyBindingTable: Equatable, Sendable {
             ("{", .swapPaneUp),
             ("}", .swapPaneDown),
             ("Space", .nextLayout),
-        ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) })
+            ("c", .newWindow),
+            ("n", .nextWindow),
+            ("p", .previousWindow),
+            (",", .renameWindow),
+            ("&", .killWindow),
+            ("w", .chooseWindow),
+        ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }
 

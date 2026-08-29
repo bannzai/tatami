@@ -1,111 +1,198 @@
 import Foundation
 import Observation
 
-/// 1 ウィンドウ分の状態。ペインの配置 (PaneTree) と各ペインの実体 (WebPane)、アドレスバーの入力を持ち、
-/// ペイン操作 (メニュー・後続のキーバインド) の宛先になる
+/// macOS のウィンドウ 1 つ分 (tmux の session に相当) の状態。複数の PaneWindow (tmux の window) と現在のウィンドウ、
+/// アドレスバー・キーバインド・status line のプロンプトを持ち、メニューとキーバインドの宛先になる
 @MainActor
 @Observable
 final class BrowserWindowModel {
-    /// ペインの配置とフォーカス
-    private(set) var paneTree = PaneTree()
-    /// ペインの実体。paneTree の葉と 1 対 1 で、閉じたペインの WKWebView はここから外れて破棄される
-    private(set) var panes: [PaneID: WebPane] = [:]
+    /// status line のプロンプト (tmux の command-prompt 相当)。rename-window の入力に使う
+    enum Prompt: Equatable {
+        case renameWindow
+    }
+
+    /// tmux の既定のセッション名と同じ 0 から始める。セッション管理 (#6) で名前を付けられるようにする
+    private(set) var sessionName = "0"
+    /// tmux の window の一覧。添字がウィンドウ番号 (0 始まり)
+    private(set) var windows: [PaneWindow]
+    /// 表示中のウィンドウの添字
+    private(set) var currentWindowIndex = 0
+    /// last-window で戻る先。閉じられていたら nil
+    private(set) var previousWindowIndex: Int?
     /// アドレスバーに入力中のテキスト。フォーカス中のペインの URL に追随する
     var addressText = ""
     /// prefix キーとコマンドの対応。tatami.conf (#7) の読み込みで差し替える
     var keyBindings = KeyBindingTable.default
     /// prefix キーの 2 ストローク検出の状態。status line に prefix 待ちを表示するために公開する
     private(set) var prefixKeyState = PrefixKeyState.idle
+    /// 表示中のプロンプト。nil なら通常表示
+    private(set) var prompt: Prompt?
+    /// rename-window のプロンプトを開いた時点のウィンドウ。プロンプト中にウィンドウを切り替えても、名前はこのウィンドウに付ける
+    private var promptTargetWindow: PaneWindow?
+    /// プロンプトの入力欄のテキスト
+    var promptText = ""
+    /// choose-window の一覧を表示中かどうか。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
+    private(set) var isChoosingWindow = false
+    /// choose-window の一覧で選択中の添字
+    private(set) var chooserSelectionIndex = 0
+    /// フォーカス中のペインの Web コンテンツを first responder にする要求。プロンプトを閉じた後などに使う
+    private(set) var webContentFocusRequestCount = 0
 
     init() {
-        let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
-        panes[pane.id] = pane
-        addressText = pane.url.absoluteString
+        windows = []
+        windows = [makeWindow()]
+        addressText = currentWindow.focusedPane.url.absoluteString
     }
 
-    /// フォーカス中のペインの実体
-    var focusedPane: WebPane {
-        panes[paneTree.focusedPaneID]!
+    /// 表示中のウィンドウ
+    var currentWindow: PaneWindow {
+        windows[currentWindowIndex]
+    }
+
+    /// どのウィンドウかを問わず、フォーカス中ペインの URL が変わった回数。automatic-rename の名前は WebPane.url (Observation の対象外) から
+    /// 決まるため、これを読む View がバックグラウンドのウィンドウの名前の変化でも再描画されるようにする
+    private(set) var windowNamesVersion = 0
+
+    /// status line の左側の表示
+    var statusLineText: String {
+        _ = windowNamesVersion
+        return StatusLine.text(sessionName: sessionName, windowNames: windows.map(\.name), currentWindowIndex: currentWindowIndex)
     }
 
     /// アドレスバーの入力をフォーカス中のペインで開く
     func navigate(text: String) {
-        focusedPane.load(url: AddressInput.resolve(text: text))
+        currentWindow.focusedPane.load(url: AddressInput.resolve(text: text))
     }
 
     /// 他アプリから渡された URL をフォーカス中のペインで開く
     func open(url: URL) {
         addressText = url.absoluteString
-        focusedPane.load(url: url)
+        currentWindow.focusedPane.load(url: url)
     }
 
-    /// フォーカス中のペインを分割し、新しいペインに空ページを開く
-    func split(axis: SplitAxis) {
-        let newPaneID = paneTree.split(axis: axis)
-        panes[newPaneID] = makePane(id: newPaneID, url: AddressInput.homeURL)
-        syncAddressTextToFocusedPane()
+    /// 新しいウィンドウを末尾に作って表示する (prefix + c)
+    func newWindow() {
+        windows.append(makeWindow())
+        select(windowIndex: windows.count - 1)
     }
 
-    /// フォーカス中のペインを閉じる。最後の 1 枚は閉じない (ウィンドウを閉じる判断は #4 のウィンドウ管理で扱う)
-    func closeFocusedPane() {
-        let closingPaneID = paneTree.focusedPaneID
-        guard paneTree.closeFocusedPane() else {
+    /// 次のウィンドウへ (prefix + n)。末尾の次は先頭
+    func nextWindow() {
+        select(windowIndex: (currentWindowIndex + 1) % windows.count)
+    }
+
+    /// 前のウィンドウへ (prefix + p)。先頭の前は末尾
+    func previousWindow() {
+        select(windowIndex: (currentWindowIndex - 1 + windows.count) % windows.count)
+    }
+
+    /// 直前に表示していたウィンドウへ (prefix + l 相当。tmux の last-window)
+    func lastWindow() {
+        guard let previousWindowIndex else {
             return
         }
-        panes[closingPaneID] = nil
+        select(windowIndex: previousWindowIndex)
+    }
+
+    /// 番号でウィンドウを選ぶ (prefix + 0-9)。無い番号なら何もしない
+    func select(windowIndex: Int) {
+        guard windows.indices.contains(windowIndex), windowIndex != currentWindowIndex else {
+            return
+        }
+        previousWindowIndex = currentWindowIndex
+        currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
     }
 
-    func toggleZoom() {
-        paneTree.toggleZoom()
+    /// 表示中のウィンドウを閉じる (prefix + &)。最後の 1 つを閉じた時は空のウィンドウに置き換え、セッションは残す
+    func killCurrentWindow() {
+        let closingIndex = currentWindowIndex
+        // 閉じるウィンドウが名前変更の対象なら入力先が無くなるためプロンプトを閉じ、一覧は添字がずれるため閉じる
+        if promptTargetWindow === currentWindow {
+            cancelPrompt()
+        }
+        isChoosingWindow = false
+        windows.remove(at: closingIndex)
+        if windows.isEmpty {
+            windows = [makeWindow()]
+        }
+        // 直前のウィンドウが生きていれば last-window の戻り先として残し、閉じた位置より後ろなら添字を詰める
+        if let previous = previousWindowIndex {
+            previousWindowIndex = previous == closingIndex ? nil : (previous > closingIndex ? previous - 1 : previous)
+        }
+        currentWindowIndex = min(closingIndex, windows.count - 1)
+        syncAddressTextToFocusedPane()
     }
 
-    func applyNextLayout() {
-        paneTree.applyNextLayout()
+    /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
+    func beginRenameWindow() {
+        // メニューから開いた時に prefix 待ちや一覧が残っていると、名前の最初の文字がコマンドや一覧の操作として消費されるため取り消す
+        cancelPrefix()
+        isChoosingWindow = false
+        promptTargetWindow = currentWindow
+        promptText = currentWindow.name
+        prompt = .renameWindow
     }
 
-    func focusNext() {
-        let previousFocusedPaneID = paneTree.focusedPaneID
-        paneTree.focusNext()
-        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+    /// プロンプトの入力を確定する。rename-window は空文字なら automatic-rename に戻す
+    func commitPrompt() {
+        switch prompt {
+        case .renameWindow:
+            (promptTargetWindow ?? currentWindow).renamedName = promptText.isEmpty ? nil : promptText
+        case nil:
+            break
+        }
+        closePrompt()
     }
 
-    func focusPrevious() {
-        let previousFocusedPaneID = paneTree.focusedPaneID
-        paneTree.focusPrevious()
-        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+    func cancelPrompt() {
+        guard prompt != nil else {
+            return
+        }
+        closePrompt()
     }
 
-    func focusLastPane() {
-        let previousFocusedPaneID = paneTree.focusedPaneID
-        paneTree.focusLastPane()
-        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+    /// プロンプトを閉じ、対象への参照を解放し、キー入力の宛先を Web コンテンツへ戻す (消えた入力欄からは自動で戻らない)
+    private func closePrompt() {
+        prompt = nil
+        promptTargetWindow = nil
+        webContentFocusRequestCount += 1
     }
 
-    func focus(direction: FocusDirection) {
-        let previousFocusedPaneID = paneTree.focusedPaneID
-        paneTree.focus(direction: direction)
-        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+    /// ウィンドウ一覧 (prefix + w) を開く
+    func beginChooseWindow() {
+        // 一覧と名前変更のプロンプトは排他にする (両方が開くと入力の宛先が曖昧になる)
+        cancelPrompt()
+        cancelPrefix()
+        chooserSelectionIndex = currentWindowIndex
+        isChoosingWindow = true
     }
 
-    /// ペインのクリックでそのペインへフォーカスを移す
-    func focus(paneID: PaneID) {
-        let previousFocusedPaneID = paneTree.focusedPaneID
-        paneTree.focus(paneID: paneID)
-        syncAddressTextIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+    /// ウィンドウ一覧のキー操作。一覧を閉じるまで他のキーは消費する
+    func handleChooserKey(keyStroke: KeyStroke) {
+        switch keyStroke.key {
+        case "j", "Down":
+            chooserSelectionIndex = (chooserSelectionIndex + 1) % windows.count
+        case "k", "Up":
+            chooserSelectionIndex = (chooserSelectionIndex - 1 + windows.count) % windows.count
+        case "Enter":
+            isChoosingWindow = false
+            select(windowIndex: chooserSelectionIndex)
+        case "Escape", "q":
+            isChoosingWindow = false
+        default:
+            if let number = Int(keyStroke.key), windows.indices.contains(number) {
+                isChoosingWindow = false
+                select(windowIndex: number)
+            }
+        }
     }
 
-    func swapWithPrevious() {
-        paneTree.swapWithPrevious()
-    }
-
-    func swapWithNext() {
-        paneTree.swapWithNext()
-    }
-
-    /// 境界線のドラッグ量を割合の変化として反映する
-    func resize(dividerPath: [SplitSide], delta: Double) {
-        paneTree.resize(dividerPath: dividerPath, delta: delta)
+    /// フォーカス中のペインを閉じる。ウィンドウの最後の 1 枚ならウィンドウごと閉じる (tmux の kill-pane と同じ)
+    func closeFocusedPane() {
+        if !currentWindow.closeFocusedPane() {
+            killCurrentWindow()
+        }
     }
 
     /// キー入力を prefix キーの検出に通し、アプリが消費したかどうかを返す。true なら Web ページへ渡さない
@@ -118,10 +205,18 @@ final class BrowserWindowModel {
         prefixKeyState = prefixKeyState.cancelled
     }
 
-    /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す
+    /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す。一覧やプロンプトのキー操作は主な解釈 (先頭の候補) で行う
     func handle(keyStrokes: [KeyStroke]) -> Bool {
-        guard !keyStrokes.isEmpty else {
+        guard let keyStroke = keyStrokes.first else {
             return false
+        }
+        if isChoosingWindow {
+            // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
+            if keyStroke.modifiers.contains(.command) {
+                return false
+            }
+            handleChooserKey(keyStroke: keyStroke)
+            return true
         }
         let handled = prefixKeyState.handling(keyStrokes: keyStrokes, table: keyBindings)
         prefixKeyState = handled.state
@@ -140,53 +235,66 @@ final class BrowserWindowModel {
     func perform(command: BrowserCommand) {
         switch command {
         case .splitWindowHorizontal:
-            split(axis: .horizontal)
+            currentWindow.split(axis: .horizontal)
         case .splitWindowVertical:
-            split(axis: .vertical)
+            currentWindow.split(axis: .vertical)
         case .killPane:
             closeFocusedPane()
         case .selectPaneNext:
-            focusNext()
+            currentWindow.focusNext()
         case .selectPaneLast:
-            focusLastPane()
+            currentWindow.focusLastPane()
         case .selectPaneLeft:
-            focus(direction: .left)
+            currentWindow.focus(direction: .left)
         case .selectPaneDown:
-            focus(direction: .down)
+            currentWindow.focus(direction: .down)
         case .selectPaneUp:
-            focus(direction: .up)
+            currentWindow.focus(direction: .up)
         case .selectPaneRight:
-            focus(direction: .right)
+            currentWindow.focus(direction: .right)
         case .resizePaneZoom:
-            toggleZoom()
+            currentWindow.toggleZoom()
         case .swapPaneUp:
-            swapWithPrevious()
+            currentWindow.swapWithPrevious()
         case .swapPaneDown:
-            swapWithNext()
+            currentWindow.swapWithNext()
         case .nextLayout:
-            applyNextLayout()
+            currentWindow.applyNextLayout()
+        case .newWindow:
+            newWindow()
+        case .nextWindow:
+            nextWindow()
+        case .previousWindow:
+            previousWindow()
+        case .lastWindow:
+            lastWindow()
+        case .selectWindow(let index):
+            select(windowIndex: index)
+        case .renameWindow:
+            beginRenameWindow()
+        case .killWindow:
+            killCurrentWindow()
+        case .chooseWindow:
+            beginChooseWindow()
         }
     }
 
-    private func makePane(id: PaneID, url: URL) -> WebPane {
-        let pane = WebPane(id: id, url: url)
-        pane.onNavigate = { [weak self] navigatedURL in
-            guard let self, paneTree.focusedPaneID == id else {
+    private func makeWindow() -> PaneWindow {
+        let window = PaneWindow()
+        window.onFocusedURLChange = { [weak self, weak window] navigatedURL in
+            guard let self, let window else {
+                return
+            }
+            windowNamesVersion += 1
+            guard currentWindow === window else {
                 return
             }
             addressText = navigatedURL.absoluteString
         }
-        return pane
+        return window
     }
 
     private func syncAddressTextToFocusedPane() {
-        addressText = focusedPane.url.absoluteString
-    }
-
-    /// フォーカスが実際に移った時だけアドレスバーを同期し、移らなかった時 (ペインが 1 枚・隣が無い等) は入力途中のテキストを残す
-    private func syncAddressTextIfFocusChanged(previousFocusedPaneID: PaneID) {
-        if paneTree.focusedPaneID != previousFocusedPaneID {
-            syncAddressTextToFocusedPane()
-        }
+        addressText = currentWindow.focusedPane.url.absoluteString
     }
 }

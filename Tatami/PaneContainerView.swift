@@ -38,6 +38,10 @@ final class PaneContainerView: NSView {
 
     /// モデルの状態を反映する。閉じたペインの WKWebView はここで外れ、モデル側の参照が消えれば破棄される
     func apply(paneTree: PaneTree, webViews: [PaneID: WKWebView]) {
+        // 別のウィンドウ (tmux window) へ切り替わった (ペインの集合が変わった) 時は、掴んでいた境界線が無くなるためドラッグを取り消す
+        if draggingDivider != nil, Set(self.paneTree.paneIDs) != Set(paneTree.paneIDs) {
+            draggingDivider = nil
+        }
         self.paneTree = paneTree
         self.webViews = webViews
         let visiblePaneIDs = Set(paneTree.frames(bounds: bounds).keys)
@@ -77,6 +81,14 @@ final class PaneContainerView: NSView {
             return
         }
         window.makeFirstResponder(focusedWebView)
+    }
+
+    /// フォーカス中のペインの WKWebView を first responder にする (プロンプトを閉じた後など)
+    func focusWebContent() {
+        guard let focusedWebView = webViews[paneTree.focusedPaneID], focusedWebView.superview === self else {
+            return
+        }
+        window?.makeFirstResponder(focusedWebView)
     }
 
     override func layout() {
@@ -203,13 +215,18 @@ final class PaneContainerView: NSView {
             return consumed ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            guard let self, event.window === window else {
+            guard let self, let window, event.window === window else {
                 return event
             }
-            let location = convert(event.locationInWindow, from: nil)
-            if let clickedPaneID = webViews.first(where: { $0.value.superview === self && $0.value.frame.contains(location) })?.key {
-                onPaneClick?(clickedPaneID)
+            // 一覧などのオーバーレイの上をクリックした時に背後のペインへフォーカスを移さないよう、座標ではなく実際のヒット先で判定する
+            // hitTest は受け手のローカル座標を取るため、ウィンドウ座標から contentView の座標へ変換する (反転座標系の SwiftUI のホスティングビューでも正しく当たる)
+            guard let contentView = window.contentView,
+                  let hitView = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil)),
+                  let clickedWebView = sequence(first: hitView, next: \.superview).first(where: { $0 is WKWebView }),
+                  let clickedPaneID = webViews.first(where: { $0.value === clickedWebView && $0.value.superview === self })?.key else {
+                return event
             }
+            onPaneClick?(clickedPaneID)
             return event
         }
     }
@@ -232,10 +249,10 @@ struct PaneContainer: NSViewRepresentable {
         let view = PaneContainerView()
         view.setAccessibilityIdentifier("paneContainer")
         view.onDividerDrag = { dividerPath, delta in
-            model.resize(dividerPath: dividerPath, delta: delta)
+            model.currentWindow.resize(dividerPath: dividerPath, delta: delta)
         }
         view.onPaneClick = { paneID in
-            model.focus(paneID: paneID)
+            model.currentWindow.focus(paneID: paneID)
         }
         view.onKeyDown = { keyStrokes in
             model.handle(keyStrokes: keyStrokes)
@@ -247,6 +264,19 @@ struct PaneContainer: NSViewRepresentable {
     }
 
     func updateNSView(_ view: PaneContainerView, context: Context) {
-        view.apply(paneTree: model.paneTree, webViews: model.panes.mapValues(\.webView))
+        view.apply(paneTree: model.currentWindow.paneTree, webViews: model.currentWindow.panes.mapValues(\.webView))
+        if context.coordinator.handledWebContentFocusRequestCount != model.webContentFocusRequestCount {
+            context.coordinator.handledWebContentFocusRequestCount = model.webContentFocusRequestCount
+            view.focusWebContent()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    /// 処理済みの要求回数を覚えて、同じ要求を再描画のたびに繰り返さないようにする
+    final class Coordinator {
+        var handledWebContentFocusRequestCount = 0
     }
 }
