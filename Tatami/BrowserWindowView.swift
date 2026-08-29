@@ -164,6 +164,10 @@ struct BrowserWindowView: View {
                 windowList
             }
             Spacer()
+            // 資格情報のロック状態。ロック中の充填・エクスポートは本人確認を求めることが分かるよう常に出す
+            Text(model.isCredentialLocked ? "🔒" : "🔓")
+                .accessibilityIdentifier("credentialLockIndicator")
+                .accessibilityLabel(model.isCredentialLocked ? "locked" : "unlocked")
             Text(model.prefixKeyState == .awaitingCommand ? model.keyBindings.prefix.tmuxKeyName : "")
                 .accessibilityIdentifier("prefixIndicator")
         }

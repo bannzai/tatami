@@ -12,6 +12,8 @@ struct TatamiConfig: Equatable {
     var userAgent: String?
     /// パスワード生成の規則 (`set -g password-length` / `set -g password-symbols on|off`)
     var passwordGenerator = PasswordGenerator()
+    /// 資格情報の自動ロックまでの秒数 (`set -g lock-timeout`)
+    var lockTimeout = CredentialLockPolicy.defaultLockTimeout
 }
 
 /// tatami.conf の 1 行を解釈できなかったこと。どこを直せばよいかが分からないと設定を書き直せないため、ファイル名と行番号を必ず持つ
@@ -145,6 +147,11 @@ enum TatamiConfigParser {
                 throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上 \(PasswordGenerator.maximumLength) 以下の整数: \(values[1])")
             }
             config.passwordGenerator.length = length
+        case "lock-timeout":
+            guard let seconds = Int(values[1]), (CredentialLockPolicy.minimumLockTimeout...CredentialLockPolicy.maximumLockTimeout).contains(seconds) else {
+                throw LineError(message: "lock-timeout は \(CredentialLockPolicy.minimumLockTimeout) 以上 \(CredentialLockPolicy.maximumLockTimeout) 以下の秒数: \(values[1])")
+            }
+            config.lockTimeout = TimeInterval(seconds)
         case "password-symbols":
             switch values[1] {
             case "on":
