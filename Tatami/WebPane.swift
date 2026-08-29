@@ -253,7 +253,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard !origin.host.isEmpty else {
             return nil
         }
-        return URL(string: "\(origin.protocol)://\(origin.host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
+        // IPv6 のホストは角括弧で囲まないと URL にならない
+        let host = origin.host.contains(":") ? "[\(origin.host)]" : origin.host
+        return URL(string: "\(origin.protocol)://\(host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
     }
 
     /// 通知元フレームのページ URL。トップレベルは webView.url、iframe は request URL (http(s) のホストがある時)、
