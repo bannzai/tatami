@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C17E0000000000000000003A /* CredentialIdentityRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */; };
 		C17E0000000000000000001E /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */; };
 		C17E0000000000000000001F /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */; };
 		C17E00000000000000000020 /* CredentialMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */; };
@@ -355,6 +356,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C17E0000000000000000000E /* CredentialProviderViewController.swift in Sources */,
+				C17E0000000000000000003A /* CredentialIdentityRegistrar.swift in Sources */,
 				C17E0000000000000000001E /* Credential.swift in Sources */,
 				C17E0000000000000000001F /* KeychainCredentialStore.swift in Sources */,
 				C17E00000000000000000020 /* CredentialMatcher.swift in Sources */,

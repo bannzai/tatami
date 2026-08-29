@@ -8,6 +8,17 @@ import SwiftUI
 final class CredentialProviderViewController: ASCredentialProviderViewController {
     private let store = KeychainCredentialStore()
     private let model = CredentialProviderModel()
+    /// 要求の世代。同じ view controller で次の要求が始まった時に、前の要求の非同期処理が古い候補を出さないようにする
+    private var requestGeneration = 0
+
+    /// 新しい要求の開始。前の要求の候補・メッセージを消し、以後の非同期処理はこの世代のものだけが表示を更新する
+    private func beginRequest(mode: CredentialProviderModel.Mode) -> Int {
+        requestGeneration += 1
+        model.mode = mode
+        model.credentials = []
+        model.message = nil
+        return requestGeneration
+    }
 
     override func loadView() {
         let hosting = NSHostingView(rootView: CredentialProviderView(model: model, onSelect: { [weak self] credential in
@@ -15,7 +26,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }, onCancel: { [weak self] in
             self?.cancel(code: .userCanceled)
         }, onFinishConfiguration: { [weak self] in
-            self?.extensionContext.completeExtensionConfigurationRequest()
+            self?.finishConfiguration()
         }))
         hosting.frame = NSRect(x: 0, y: 0, width: 480, height: 360)
         view = hosting
@@ -23,10 +34,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     /// 候補の一覧を求められた時。サービス識別子 (ドメインか URL) に合う資格情報だけを出す
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
-        model.mode = .list
+        let generation = beginRequest(mode: .list)
         Task {
             do {
                 try await CredentialLock.shared.ensureUnlocked(reason: "自動入力する資格情報を読む")
+                guard generation == requestGeneration else {
+                    return
+                }
                 let all = try store.all()
                 let pageURLs = serviceIdentifiers.compactMap(CredentialProviderModel.pageURL(serviceIdentifier:))
                 var seen = Set<UUID>()
@@ -35,7 +49,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     .filter { seen.insert($0.id).inserted }
                 model.message = model.credentials.isEmpty ? "このサイトの資格情報は無い" : nil
             } catch {
-                model.message = "\(error)"
+                if generation == requestGeneration {
+                    model.message = "\(error)"
+                }
             }
         }
     }
@@ -47,7 +63,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     /// 候補 (ASCredentialIdentityStore に登録した識別子) が選ばれた時。本人確認してからその 1 件を返す
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
-        model.mode = .list
+        let generation = beginRequest(mode: .list)
         guard let recordIdentifier = credentialRequest.credentialIdentity.recordIdentifier, let id = UUID(uuidString: recordIdentifier) else {
             cancel(code: .credentialIdentityNotFound)
             return
@@ -55,20 +71,43 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task {
             do {
                 try await CredentialLock.shared.ensureUnlocked(reason: "自動入力する資格情報を読む")
-                guard let credential = try store.all().first(where: { $0.id == id }) else {
+                guard generation == requestGeneration else {
+                    return
+                }
+                // OS が識別子で選んだ 1 件でも、要求元のサイトと資格情報の照合 (https → http の降格禁止・ポート) はアプリ内の充填と同じ規則で行う
+                guard let credential = try store.all().first(where: { $0.id == id }),
+                      let pageURL = CredentialProviderModel.pageURL(serviceIdentifier: credentialRequest.credentialIdentity.serviceIdentifier),
+                      CredentialMatcher.matches(credentialURL: credential.url, pageURL: pageURL) else {
                     cancel(code: .credentialIdentityNotFound)
                     return
                 }
                 complete(credential: credential)
             } catch {
-                model.message = "\(error)"
+                if generation == requestGeneration {
+                    model.message = "\(error)"
+                }
             }
         }
     }
 
     /// システム設定で Tatami を自動入力に選んだ時に出る説明
     override func prepareInterfaceForExtensionConfiguration() {
-        model.mode = .configuration
+        _ = beginRequest(mode: .configuration)
+    }
+
+    /// 設定画面の完了。有効化した直後から候補が出るよう、この時点でストアの全件を OS の候補に登録してから閉じる
+    /// (アプリ側の同期はプロバイダが有効な時にしか登録できないため)
+    private func finishConfiguration() {
+        Task {
+            do {
+                try await CredentialLock.shared.ensureUnlocked(reason: "自動入力の候補を登録する")
+                await CredentialIdentityRegistrar.sync(store: store)
+            } catch {
+                model.message = "\(error)"
+                return
+            }
+            extensionContext.completeExtensionConfigurationRequest()
+        }
     }
 
     private func complete(credential: Credential) {
