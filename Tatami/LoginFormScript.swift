@@ -110,7 +110,7 @@ enum LoginFormScript {
           }
           return;
         }
-        const usernameField = findUsernameField(passwordField);
+        const usernameField = findUsernameField(passwordField, scope);
         // form 属性で関連付けた欄も数えるため、フォームでは elements から列挙する (画面外でも数える)
         // form の無い SPA (capture(document)) では渡された scope の欄数で判定する
         const isNewPassword = hasAutocomplete(passwordField, 'new-password')
