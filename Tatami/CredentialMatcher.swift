@@ -66,9 +66,31 @@ enum CredentialMatcher {
         // IP アドレスは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]` 等) を標準形に揃える (PasswordImporter.matchKey と同じ)。
         // 完全修飾名の末尾ドット (`example.com.`) は同じ DNS ホストなので取り除いてから比べる
         ((URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host())?.lowercased()).map { raw in
-            PasswordImporter.normalizedHost(host: raw.count > 1 && raw.hasSuffix(".") ? String(raw.dropLast()) : raw)
+            normalizedHost(host: raw.count > 1 && raw.hasSuffix(".") ? String(raw.dropLast()) : raw)
         }
     }
+
+    /// IP アドレスのホストは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]`、`::ffff:127.0.0.1` 等) が揃わないため、アドレスとして解釈して標準形にする。
+    /// 名前のホストはそのまま返す
+    static func normalizedHost(host: String) -> String {
+        let bare = host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, bare, &v6) == 1 {
+            var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+            if inet_ntop(AF_INET6, &v6, &buffer, socklen_t(INET6_ADDRSTRLEN)) != nil {
+                return "[\(String(cString: buffer))]"
+            }
+        }
+        var v4 = in_addr()
+        if inet_pton(AF_INET, bare, &v4) == 1 {
+            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            if inet_ntop(AF_INET, &v4, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
+                return String(cString: buffer)
+            }
+        }
+        return host
+    }
+
 
     /// 既定ポートの明示 (https の 443 等) は省略と同一視する
     private static func port(url: URL) -> Int? {

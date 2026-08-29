@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C17E0000000000000000003A /* CredentialIdentityRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */; };
+		C17E0000000000000000001E /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */; };
+		C17E0000000000000000001F /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */; };
+		C17E00000000000000000020 /* CredentialMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8822C1CD1F746FC83196F37 /* CredentialMatcher.swift */; };
+		C17E00000000000000000021 /* PublicSuffixList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */; };
+		C17E00000000000000000022 /* CredentialLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1ED1A0C0016000000000002 /* CredentialLock.swift */; };
+		C17E0000000000000000000E /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17E0000000000000000000D /* CredentialProviderViewController.swift */; };
+		C17E00000000000000000014 /* CredentialIdentityRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */; };
+		C17E00000000000000000012 /* PublicSuffixList.dat in Resources */ = {isa = PBXBuildFile; fileRef = 2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */; };
+		C17E0000000000000000000A /* TatamiCredentialProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C17E00000000000000000002 /* TatamiCredentialProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		02E240FFA8AB4B9DB0282623 /* PaneTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10214FFA89244825ACDF4111 /* PaneTreeTests.swift */; };
 		98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */; };
 		9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8C5B56487F4F1F9006165F /* PaneTree.swift */; };
@@ -48,6 +58,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		C17E0000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6576996440293AD3D9A47631 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C17E00000000000000000001;
+			remoteInfo = TatamiCredentialProvider;
+		};
 		9AD0444BF3275872E8529FB9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 6576996440293AD3D9A47631 /* Project object */;
@@ -57,7 +74,27 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		C17E00000000000000000009 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C17E0000000000000000000A /* TatamiCredentialProvider.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		C17E00000000000000000002 /* TatamiCredentialProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TatamiCredentialProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C17E0000000000000000000D /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
+		C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialIdentityRegistrar.swift; sourceTree = "<group>"; };
+		C17E0000000000000000000F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C17E00000000000000000010 /* TatamiCredentialProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TatamiCredentialProvider.entitlements; sourceTree = "<group>"; };
+		C17E00000000000000000011 /* TatamiCredentialProvider.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TatamiCredentialProvider.Debug.entitlements; sourceTree = "<group>"; };
 		10214FFA89244825ACDF4111 /* PaneTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTreeTests.swift; sourceTree = "<group>"; };
 		1F1DC872C75B96AAEBF30600 /* Tatami.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tatami.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
@@ -104,11 +141,23 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		C17E00000000000000000003 /* TatamiCredentialProvider */ = {
+			isa = PBXGroup;
+			children = (
+				C17E0000000000000000000D /* CredentialProviderViewController.swift */,
+				C17E0000000000000000000F /* Info.plist */,
+				C17E00000000000000000010 /* TatamiCredentialProvider.entitlements */,
+				C17E00000000000000000011 /* TatamiCredentialProvider.Debug.entitlements */,
+			);
+			path = TatamiCredentialProvider;
+			sourceTree = "<group>";
+		};
 		406AF31CFC46E1944BB1400C /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				1F1DC872C75B96AAEBF30600 /* Tatami.app */,
 				CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */,
+				C17E00000000000000000002 /* TatamiCredentialProvider.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -137,6 +186,7 @@
 			children = (
 				D2C81896EF16B4D53E0B028F /* Tatami */,
 				91A575C0C75AE8A8B9B0B1BC /* TatamiTests */,
+				C17E00000000000000000003 /* TatamiCredentialProvider */,
 				406AF31CFC46E1944BB1400C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -165,6 +215,7 @@
 				42793A7EBBFD4C329E57C7EB /* PasswordGenerator.swift */,
 				C1ED1A0C0016000000000002 /* CredentialLock.swift */,
 				2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */,
+				C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */,
 				1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */,
 				C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
@@ -180,6 +231,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C17E00000000000000000001 /* TatamiCredentialProvider */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C17E00000000000000000006 /* Build configuration list for PBXNativeTarget "TatamiCredentialProvider" */;
+			buildPhases = (
+				C17E00000000000000000004 /* Sources */,
+				C17E00000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TatamiCredentialProvider;
+			packageProductDependencies = (
+			);
+			productName = TatamiCredentialProvider;
+			productReference = C17E00000000000000000002 /* TatamiCredentialProvider.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		2EC76EB2324F80FE7C9277DE /* TatamiTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 968A3C99110A4DE4D446F5E5 /* Build configuration list for PBXNativeTarget "TatamiTests" */;
@@ -204,10 +273,12 @@
 			buildPhases = (
 				800E9E7A78EBD0D58413C11C /* Sources */,
 				C709477A304C49E79307FDA8 /* Resources */,
+				C17E00000000000000000009 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C17E0000000000000000000C /* PBXTargetDependency */,
 			);
 			name = Tatami;
 			packageProductDependencies = (
@@ -233,6 +304,10 @@
 						DevelopmentTeam = TQPN82UBBY;
 						ProvisioningStyle = Automatic;
 					};
+					C17E00000000000000000001 = {
+						DevelopmentTeam = TQPN82UBBY;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = A8A224BD0F7457AB2DD60A42 /* Build configuration list for PBXProject "Tatami" */;
@@ -251,11 +326,20 @@
 			targets = (
 				E6DF933D1FBE98F7BD191271 /* Tatami */,
 				2EC76EB2324F80FE7C9277DE /* TatamiTests */,
+				C17E00000000000000000001 /* TatamiCredentialProvider */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C17E00000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C17E00000000000000000012 /* PublicSuffixList.dat in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C709477A304C49E79307FDA8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -267,10 +351,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C17E00000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C17E0000000000000000000E /* CredentialProviderViewController.swift in Sources */,
+				C17E0000000000000000003A /* CredentialIdentityRegistrar.swift in Sources */,
+				C17E0000000000000000001E /* Credential.swift in Sources */,
+				C17E0000000000000000001F /* KeychainCredentialStore.swift in Sources */,
+				C17E00000000000000000020 /* CredentialMatcher.swift in Sources */,
+				C17E00000000000000000021 /* PublicSuffixList.swift in Sources */,
+				C17E00000000000000000022 /* CredentialLock.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		800E9E7A78EBD0D58413C11C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C17E00000000000000000014 /* CredentialIdentityRegistrar.swift in Sources */,
 				98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */,
 				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
 				9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */,
@@ -321,6 +420,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C17E0000000000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C17E00000000000000000001 /* TatamiCredentialProvider */;
+			targetProxy = C17E0000000000000000000B /* PBXContainerItemProxy */;
+		};
 		ADE323DF649008875044FE71 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E6DF933D1FBE98F7BD191271 /* Tatami */;
@@ -329,6 +433,48 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		C17E00000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "TatamiCredentialProvider/TatamiCredentialProvider$(ENTITLEMENTS_VARIANT).entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TatamiCredentialProvider/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Tatami;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.Tatami.CredentialProvider;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		C17E00000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "TatamiCredentialProvider/TatamiCredentialProvider$(ENTITLEMENTS_VARIANT).entitlements";
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TatamiCredentialProvider/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Tatami;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bannzai.Tatami.CredentialProvider;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 		0865A8D999CAC753239B851E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -370,6 +516,7 @@
 				DEVELOPMENT_TEAM = TQPN82UBBY;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENTITLEMENTS_VARIANT = .Debug;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -419,7 +566,7 @@
 		49AADDA635D58EB550310F3F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "Tatami/Tatami$(ENTITLEMENTS_VARIANT).entitlements";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -494,6 +641,7 @@
 				DEVELOPMENT_TEAM = TQPN82UBBY;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENTITLEMENTS_VARIANT = "";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -519,7 +667,7 @@
 		EA839FADD8DA5380513C2EE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.Debug.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "Tatami/Tatami$(ENTITLEMENTS_VARIANT).entitlements";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -540,6 +688,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C17E00000000000000000006 /* Build configuration list for PBXNativeTarget "TatamiCredentialProvider" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C17E00000000000000000007 /* Debug */,
+				C17E00000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

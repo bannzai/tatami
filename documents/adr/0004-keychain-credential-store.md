@@ -26,7 +26,7 @@ Password Manager (documents/PROJECT.md 機能要件 3) の資格情報を端末�
 
 **良い点:**
 - 同一サイトの複数アカウントを自然に表現でき、追加・更新は `SecItemUpdate` → 無ければ `SecItemAdd` で冪等になる
-- iCloud 同期と拡張との共有が属性の設定だけで済む
+- iCloud 同期と拡張との共有が属性の設定だけで済む (Credential Provider Extension `TatamiCredentialProvider` は同じ service と access group で `KeychainCredentialStore` をそのまま使う。`ASCredentialIdentityStore` に登録するのは候補の識別子 (オリジン・ユーザー名・レコード ID) だけで、パスワードは含めない。実際の充填時に拡張が Keychain から読んだパスワードを `ASPasswordCredential` として OS へ渡す)
 - モデルの拡張 (TOTP 等) が JSON の項目追加で済む
 
 **悪い点 / 引き受けるリスク:**

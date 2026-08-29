@@ -148,7 +148,9 @@ final class BrowserWindowModel {
     @ObservationIgnored private let credentialStore: any CredentialStore
     /// 資格情報のロック状態。充填・一覧・エクスポートの前に本人確認を求める。既定はアプリ全体で共有する 1 つの状態
     @ObservationIgnored private let credentialLock: CredentialLock
-    /// ロック通知の購読 (deinit で解除される)
+    /// アプリのアクティブ化の購読 (自動入力候補の再同期用。deactivate で解除する)
+    @ObservationIgnored private var activationObserver: (any NSObjectProtocol)?
+    /// ロック通知の購読 (deactivate で解除する)
     @ObservationIgnored private var lockObservation: (any NSObjectProtocol)?
 
     /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション。
@@ -192,6 +194,14 @@ final class BrowserWindowModel {
             return
         }
         isActive = true
+        // 拡張が充填する候補は OS 側に保持されるため、起動時と、別の Mac からの iCloud 同期を受けた可能性があるアクティブ化のたびに
+        // ストアの内容と揃える
+        syncCredentialIdentities()
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.syncCredentialIdentities()
+            }
+        }
         // ロックされたら、本人確認後にだけ見せる候補一覧を閉じる (別ウィンドウの :lock や自動ロックでも)。
         // init では stored property の初期化が終わる前に self を捕捉できないため、ここで購読する
         lockObservation = NotificationCenter.default.addObserver(forName: CredentialLock.didLockNotification, object: nil, queue: .main) { [weak self] _ in
@@ -240,6 +250,10 @@ final class BrowserWindowModel {
         if let lockObservation {
             NotificationCenter.default.removeObserver(lockObservation)
             self.lockObservation = nil
+        }
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+            self.activationObserver = nil
         }
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
@@ -735,10 +749,15 @@ final class BrowserWindowModel {
                 } catch {
                     // Keychain への保存は 1 件ずつ確定するためロールバックできない。途中まで反映したことを件数で明示する
                     statusMessage = "インポートを途中で中断: \(saved)/\(changed.count) 件を保存した後に失敗: \(error)"
+                    // 確定済みの分は OS の候補にも反映する (1 件ごとではなく最後に 1 回)
+                    syncCredentialIdentities()
                     return
                 }
             }
             statusMessage = "インポート: 追加 \(result.added)・更新 \(result.updated)・変更なし \(result.unchanged)・読み飛ばし \(result.skipped)"
+            if saved > 0 {
+                syncCredentialIdentities()
+            }
         } catch {
             statusMessage = "インポートに失敗: \(error)"
         }
@@ -1026,6 +1045,7 @@ final class BrowserWindowModel {
                     return
                 }
                 try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
+                syncCredentialIdentities()
                 statusMessage = "保存した: \(username)"
             } catch {
                 statusMessage = "保存に失敗: \(error)"
@@ -1038,6 +1058,7 @@ final class BrowserWindowModel {
                 updated.password = password
                 updated.updatedAt = Date()
                 try credentialStore.save(credential: updated)
+                syncCredentialIdentities()
                 statusMessage = "更新した: \(updated.username)"
             } catch {
                 statusMessage = "更新に失敗: \(error)"
@@ -1127,6 +1148,14 @@ final class BrowserWindowModel {
             } catch {
                 statusMessage = "\(error)"
             }
+        }
+    }
+
+    /// ストアの内容を OS の自動入力候補 (Credential Provider Extension が充填する) に反映する。保存・更新・インポートの後と起動時に呼ぶ
+    private func syncCredentialIdentities() {
+        let store = credentialStore
+        Task {
+            await CredentialIdentityRegistrar.sync(store: store)
         }
     }
 
