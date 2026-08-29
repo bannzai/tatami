@@ -84,7 +84,7 @@ struct CredentialMatcherTests {
             makeCredential(url: "http://example.com/", username: "http-only", date: base.addingTimeInterval(30)),
         ]
         let page = URL(string: "https://example.com/")!
-        #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: page, rules: rules).map(\.username) == ["http-only", "exact-new", "exact-old", "sub-new", "sub-old"])
+        #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: page, rules: rules).map(\.username) == ["exact-new", "exact-old", "http-only", "sub-new", "sub-old"])
         #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "http://example.com/")!, rules: rules).map(\.username) == ["http-only"])
         #expect(CredentialMatcher.candidates(credentials: credentials, pageURL: URL(string: "https://unknown.test/")!, rules: rules).isEmpty)
     }
@@ -95,5 +95,13 @@ struct CredentialMatcherTests {
         #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "https://evil.example.com/")!))
         #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "http://accounts.example.com/")!))
         #expect(!CredentialMatcher.sameOrigin(credentialURL: credential, pageURL: URL(string: "https://accounts.example.com:8443/")!))
+    }
+
+    @Test func idnHostsMatchAcrossUnicodeAndPunycode() {
+        let unicode = URL(string: "https://日本語.example/login")!
+        let punycode = URL(string: "https://xn--wgv71a119e.example/")!
+        #expect(CredentialMatcher.host(url: unicode) == "xn--wgv71a119e.example")
+        #expect(CredentialMatcher.sameOrigin(credentialURL: unicode, pageURL: punycode))
+        #expect(CredentialMatcher.matches(credentialURL: unicode, pageURL: punycode))
     }
 }
