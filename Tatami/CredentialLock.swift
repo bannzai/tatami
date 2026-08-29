@@ -22,7 +22,7 @@ struct CredentialLockPolicy: Equatable {
         guard let lastUsedAt, lockTimeout > 0 else {
             return true
         }
-        return now - lastUsedAt > .seconds(lockTimeout)
+        return now - lastUsedAt >= .seconds(lockTimeout)
     }
 
     /// 本人確認が通った (または操作した) 時刻を記録し、そこから lockTimeout の間アンロックされた状態にする
@@ -84,6 +84,8 @@ final class CredentialLock {
         policy.lock()
         lockGeneration += 1
         expiryTask?.cancel()
+        // 待機中の本人確認はロック前の要求のものなので、以後の要求には使わない
+        pendingAuthentication = nil
         NotificationCenter.default.post(name: CredentialLock.didLockNotification, object: self)
     }
 
@@ -129,8 +131,7 @@ final class CredentialLock {
             return
         }
         expiryTask = Task { [weak self] in
-            // 期限ちょうどでは isLocked が false (境界は「超えたら」) のため 1 秒待ってから確認する
-            try? await Task.sleep(for: remaining + .seconds(1))
+            try? await Task.sleep(for: remaining)
             guard let self, !Task.isCancelled, self.policy.isLocked(now: .now) else {
                 return
             }

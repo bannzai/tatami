@@ -8,8 +8,8 @@ struct CredentialLockTests {
         let start = ContinuousClock.now
         #expect(policy.isLocked(now: start))
         policy.touch(now: start)
-        #expect(!policy.isLocked(now: start.advanced(by: .seconds(60))))
-        #expect(policy.isLocked(now: start.advanced(by: .seconds(61))))
+        #expect(!policy.isLocked(now: start.advanced(by: .seconds(59))))
+        #expect(policy.isLocked(now: start.advanced(by: .seconds(60))))
         policy.touch(now: start.advanced(by: .seconds(50)))
         #expect(!policy.isLocked(now: start.advanced(by: .seconds(100))))
         policy.lock()
