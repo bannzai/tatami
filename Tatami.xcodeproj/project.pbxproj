@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C19E00000000000000000001 /* CXF.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19E00000000000000000002 /* CXF.swift */; };
+		C19E00000000000000000003 /* CXFTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19E00000000000000000004 /* CXFTests.swift */; };
 		C18E00000000000000000001 /* WebAuthn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000002 /* WebAuthn.swift */; };
 		C18E00000000000000000003 /* WebAuthnScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000004 /* WebAuthnScript.swift */; };
 		C18E00000000000000000005 /* PasskeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000006 /* PasskeyManager.swift */; };
@@ -94,6 +96,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C19E00000000000000000002 /* CXF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CXF.swift; sourceTree = "<group>"; };
+		C19E00000000000000000004 /* CXFTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CXFTests.swift; sourceTree = "<group>"; };
 		C18E00000000000000000002 /* WebAuthn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthn.swift; sourceTree = "<group>"; };
 		C18E00000000000000000004 /* WebAuthnScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthnScript.swift; sourceTree = "<group>"; };
 		C18E00000000000000000006 /* PasskeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyManager.swift; sourceTree = "<group>"; };
@@ -186,6 +190,7 @@
 				44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */,
 				C1ED1A0C0016000000000004 /* CredentialLockTests.swift */,
 				C18E0000000000000000000A /* WebAuthnTests.swift */,
+				C19E00000000000000000004 /* CXFTests.swift */,
 				B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */,
 				F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */,
 			);
@@ -228,6 +233,7 @@
 				2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */,
 				C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */,
 				C18E00000000000000000002 /* WebAuthn.swift */,
+				C19E00000000000000000002 /* CXF.swift */,
 				C18E00000000000000000004 /* WebAuthnScript.swift */,
 				C18E00000000000000000006 /* PasskeyManager.swift */,
 				C18E00000000000000000008 /* KeychainPasskeyStore.swift */,
@@ -386,6 +392,7 @@
 			files = (
 				C17E00000000000000000014 /* CredentialIdentityRegistrar.swift in Sources */,
 				C18E00000000000000000001 /* WebAuthn.swift in Sources */,
+				C19E00000000000000000001 /* CXF.swift in Sources */,
 				C18E00000000000000000003 /* WebAuthnScript.swift in Sources */,
 				C18E00000000000000000005 /* PasskeyManager.swift in Sources */,
 				C18E00000000000000000007 /* KeychainPasskeyStore.swift in Sources */,
@@ -432,6 +439,7 @@
 				1D40C047A0F246938A4B3A1F /* PasswordGeneratorTests.swift in Sources */,
 				C1ED1A0C0016000000000003 /* CredentialLockTests.swift in Sources */,
 				C18E00000000000000000009 /* WebAuthnTests.swift in Sources */,
+				C19E00000000000000000003 /* CXFTests.swift in Sources */,
 				F2D5A96C31B84E07AC1F5D92 /* PasswordCSVTests.swift in Sources */,
 				E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */,
 			);

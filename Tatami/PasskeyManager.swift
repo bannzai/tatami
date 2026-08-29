@@ -4,15 +4,18 @@ import Foundation
 /// アプリ全体で 1 つの Passkey authenticator と、ページからの要求 (message handler の body) の解釈。
 /// 本人確認 (CredentialLock) を通してから鍵を使う
 enum PasskeyManager {
-    static let authenticator: PasskeyAuthenticator = {
+    /// Passkey の保存先 (prefix + a の一覧と CXF の入出力からも使う)
+    static let store: any PasskeyStore = {
         #if DEBUG
         // 開発中の動作確認で本物の Keychain に Passkey を書かないための切り替え (BrowserWindowModel の資格情報と同じ defaults キー)
         if UserDefaults.standard.bool(forKey: "TatamiUseInMemoryCredentialStore") {
-            return PasskeyAuthenticator(store: InMemoryPasskeyStore())
+            return InMemoryPasskeyStore()
         }
         #endif
-        return PasskeyAuthenticator(store: KeychainPasskeyStore())
+        return KeychainPasskeyStore()
     }()
+
+    static let authenticator = PasskeyAuthenticator(store: store)
 
     /// ページからの要求を処理し、注入スクリプトへ返す辞書 (成功なら各フィールドの base64url、失敗なら error / name) を作る
     static func handle(body: [String: Any], origin: URL?) async -> [String: Any] {
@@ -50,8 +53,7 @@ enum PasskeyManager {
                     allowCredentialIDs: (body["allowCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
                 )
                 let candidates = try authenticator.candidates(request: request, origin: origin)
-                // スパイクでは最新の 1 件を使う。同じ RP の複数 Passkey の選択 UI は #19 で扱う
-                guard let passkey = candidates.first else {
+                guard let passkey = try choose(candidates: candidates, origin: origin) else {
                     throw WebAuthnError(name: "NotAllowedError", description: "このサイトの Passkey は無い")
                 }
                 let userVerified = try await verifyUser(body: body, reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする")
@@ -89,6 +91,28 @@ enum PasskeyManager {
             throw WebAuthnError(name: "NotAllowedError", description: "\(error)")
         }
         return true
+    }
+
+    /// 同じ RP の Passkey が複数ある時は、アカウント (userName) をポップアップで選ばせる。1 件ならそのまま、0 件なら nil。
+    /// キャンセルは NotAllowedError
+    private static func choose(candidates: [Passkey], origin: URL) throws -> Passkey? {
+        guard candidates.count > 1 else {
+            return candidates.first
+        }
+        let alert = NSAlert()
+        alert.messageText = "Passkey を選ぶ"
+        alert.informativeText = "\(origin.host() ?? "") に複数の Passkey がある"
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26), pullsDown: false)
+        for passkey in candidates {
+            popup.addItem(withTitle: passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+        }
+        alert.accessoryView = popup
+        alert.addButton(withTitle: "選ぶ")
+        alert.addButton(withTitle: "キャンセル")
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            throw WebAuthnError(name: "NotAllowedError", description: "利用者がキャンセルした")
+        }
+        return candidates[popup.indexOfSelectedItem]
     }
 
     /// 存在確認 (UP) のための同意ダイアログ。モーダルで表示し、「許可」で true

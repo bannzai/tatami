@@ -25,8 +25,9 @@ final class BrowserWindowModel {
         case session([String])
         /// ブックマークの一覧。x で選択中の項目を削除する
         case bookmark
-        /// 表示中のページに合う資格情報の一覧。選ぶと候補を作ったペインへ充填する (充填時にそのペインの URL と再照合する)
-        case credential([Credential], pane: WebPane)
+        /// 表示中のページに合う資格情報の一覧 (パスワードの後に Passkey)。パスワードを選ぶと候補を作ったペインへ充填する
+        /// (充填時にそのペインの URL と再照合する)。Passkey はサイトのサインインボタンから使うため、選んでもその案内を出すだけ
+        case credential([Credential], passkeys: [Passkey], pane: WebPane)
     }
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
@@ -688,6 +689,21 @@ final class BrowserWindowModel {
             withUnlockedCredentials(reason: "資格情報を CSV に書き出す") { [weak self] in
                 self?.exportPasswords(path: path)
             }
+        case "export-cxf":
+            guard !arguments.isEmpty else {
+                statusMessage = "export-cxf は ZIP のパスを取る"
+                return
+            }
+            let path = arguments.joined(separator: " ")
+            withUnlockedCredentials(reason: "資格情報と Passkey を CXF に書き出す") { [weak self] in
+                self?.exportCXF(path: path)
+            }
+        case "import-cxf":
+            guard !arguments.isEmpty else {
+                statusMessage = "import-cxf は ZIP (または index.json) のパスを取る"
+                return
+            }
+            importCXF(path: arguments.joined(separator: " "))
         case "lock":
             credentialLock.lock()
             statusMessage = "資格情報をロックした"
@@ -716,6 +732,58 @@ final class BrowserWindowModel {
     /// ホームディレクトリを基準にする
     static func commandFileURL(path: String) -> URL {
         URL(filePath: TatamiConfigParser.expandedPath(path: path), directoryHint: .notDirectory, relativeTo: FileManager.default.homeDirectoryForCurrentUser).absoluteURL
+    }
+
+    /// FIDO Credential Exchange Format (ZIP) に資格情報とソフトウェア鍵の Passkey を書き出す。平文のため既存ファイルには書かない (CSV と同じ)
+    private func exportCXF(path: String) {
+        let fileURL = BrowserWindowModel.commandFileURL(path: path)
+        let filePath = fileURL.path(percentEncoded: false)
+        guard !FileManager.default.fileExists(atPath: filePath) else {
+            statusMessage = "エクスポート: すでにファイルがある: \(filePath)"
+            return
+        }
+        do {
+            let exported = try CXF.exportArchive(credentials: try credentialStore.all(), passkeys: try PasskeyManager.store.all(), exporter: "Tatami", now: Date())
+            let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            try handle.write(contentsOf: exported.data)
+            try handle.close()
+            let skipped = exported.result.skippedSecureEnclavePasskeys > 0 ? "・Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : ""
+            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(skipped): \(filePath)"
+        } catch {
+            statusMessage = "エクスポートに失敗: \(error)"
+        }
+    }
+
+    /// CXF を読み、資格情報 (CSV と同じ突き合わせ) と Passkey (同じ rpId・credentialId が無ければ追加) を取り込む
+    private func importCXF(path: String) {
+        do {
+            let imported = try CXF.importArchive(data: try Data(contentsOf: BrowserWindowModel.commandFileURL(path: path)), now: Date())
+            let existing = try credentialStore.all()
+            let merged = PasswordImporter.merge(rows: PasswordImporter.rows(credentials: imported.credentials), existing: existing, now: Date())
+            let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            var seenIDs = Set<UUID>()
+            var savedCredentials = 0
+            for credential in merged.credentials where seenIDs.insert(credential.id).inserted && existingByID[credential.id] != credential {
+                try credentialStore.save(credential: credential)
+                savedCredentials += 1
+            }
+            let existingPasskeys = try PasskeyManager.store.all()
+            var savedPasskeys = 0
+            for passkey in imported.passkeys where !existingPasskeys.contains(where: { $0.rpId == passkey.rpId && $0.credentialID == passkey.credentialID }) {
+                try PasskeyManager.store.save(passkey: passkey)
+                savedPasskeys += 1
+            }
+            if savedCredentials > 0 {
+                syncCredentialIdentities()
+            }
+            statusMessage = "CXF を取り込んだ: 資格情報 追加 \(merged.added)・更新 \(merged.updated)・変更なし \(merged.unchanged)・Passkey 追加 \(savedPasskeys)・読み飛ばし \(imported.skipped + merged.skipped)"
+        } catch {
+            statusMessage = "インポートに失敗: \(error)"
+        }
     }
 
     /// Chrome 互換 CSV を読み、既存の資格情報に取り込む。同じファイルを何度取り込んでも重複しない (PasswordImporter.merge が冪等)
@@ -903,8 +971,8 @@ final class BrowserWindowModel {
             return names
         case .bookmark:
             return browsingData.bookmarks.map { "\($0.title)  \($0.url.absoluteString)" }
-        case .credential(let credentials, _):
-            return credentials.map { "\($0.username)  \($0.host)" }
+        case .credential(let credentials, let passkeys, _):
+            return credentials.map { "\($0.username)  \($0.host)" } + passkeys.map { "\($0.userName)  \($0.rpId)  (Passkey)" }
         case nil:
             return []
         }
@@ -1151,21 +1219,24 @@ final class BrowserWindowModel {
     /// アンロック後に候補を探し、1 件なら充填・複数なら一覧を出す
     private func presentCredentialCandidates(pane: WebPane, host: String) {
         let candidates: [Credential]
+        let passkeys: [Passkey]
         do {
             candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
+            // 同じ RP (rpId がホストかその親) の Passkey も並べる
+            passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) }
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
             return
         }
-        switch candidates.count {
-        case 0:
+        switch (candidates.count, passkeys.count) {
+        case (0, 0):
             statusMessage = "\(host) の資格情報は無い"
-        case 1:
+        case (1, 0):
             // 候補の取得で本人確認したばかりなので、もう一度は求めない (lock-timeout 0 では fill の再確認が二重になるため)
             fillUnlocked(credential: candidates[0], pane: pane)
         default:
             chooserSelectionIndex = 0
-            chooser = .credential(candidates, pane: pane)
+            chooser = .credential(candidates, passkeys: passkeys, pane: pane)
         }
     }
 
@@ -1342,11 +1413,13 @@ final class BrowserWindowModel {
             addressText = url.absoluteString
             currentWindow.focusedPane.load(url: url)
             webContentFocusRequestCount += 1
-        case .credential(let credentials, let pane):
-            guard credentials.indices.contains(index) else {
-                return
+        case .credential(let credentials, let passkeys, let pane):
+            if credentials.indices.contains(index) {
+                fill(credential: credentials[index], pane: pane)
+            } else if passkeys.indices.contains(index - credentials.count) {
+                // Passkey はページの navigator.credentials.get からしか使えない (アプリ側から署名を押し込む経路は無い)
+                statusMessage = "Passkey (\(passkeys[index - credentials.count].userName)) はサイトのサインインボタンから使う"
             }
-            fill(credential: credentials[index], pane: pane)
         case nil:
             break
         }
