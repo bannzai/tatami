@@ -173,7 +173,13 @@ enum LoginFormScript {
         // フォーム所属の submitter (button / input[type=submit]) は native の submit イベントで捕捉するため、ここでは扱わない
         // (form 内の role=button の非送信ボタンを送信と誤認しない・submit との二重通知を避ける)
         if (button.form || (button.closest && button.closest('form'))) { return; }
-        // form の無いボタン (role=button の AJAX ログインを含む) は、パスワード欄かユーザー名候補を持つログイン区画のものだけ捕捉する
+        // role=button の div / span / a は、送信・ログインを表すラベルのものだけ捕捉する (パスワード表示切替などの非送信ボタンを除外)
+        const isRoleButton = button.tagName !== 'BUTTON' && button.tagName !== 'INPUT';
+        if (isRoleButton) {
+          const label = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''} ${button.value || ''} ${button.name || ''} ${button.id || ''}`;
+          if (!/log\\s?in|sign\\s?in|submit|continue|next|送信|ログイン|サインイン|ログオン|次へ|続ける|続行/i.test(label)) { return; }
+        }
+        // form の無いボタンは、パスワード欄かユーザー名候補を持つログイン区画のものだけ捕捉する
         const container = loginScope(button);
         if (!container || !(usablePasswordFields(container).length || usernameCandidate(container))) { return; }
         capture(container);

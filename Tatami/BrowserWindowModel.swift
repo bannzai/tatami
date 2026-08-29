@@ -1162,15 +1162,20 @@ final class BrowserWindowModel {
                 }
                 // 対象欄の maxLength に収めて生成する (切り詰めると必須文字種が落ちるため、最初からその長さで作る)
                 let password = generator.generate(maxLength: await pane.newPasswordMaxLength())
-                guard pane.documentGeneration == generation else {
-                    self?.statusMessage = "ページが変わったため提案を取り消した"
+                guard let self else {
+                    return
+                }
+                // maxLength の取得を待つ間に別ペイン・ウィンドウへ移っていたら、見えていない元ペインへ入れない
+                guard windows.contains(where: { $0.panes[pane.id] === pane }),
+                      pane === currentWindow.focusedPane, pane.documentGeneration == generation else {
+                    statusMessage = "ページが変わったため提案を取り消した"
                     return
                 }
                 do {
                     let filled = try await pane.fillNewPassword(password)
-                    self?.statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
+                    statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
                 } catch {
-                    self?.statusMessage = "充填に失敗: \(error)"
+                    statusMessage = "充填に失敗: \(error)"
                 }
             }
         }
