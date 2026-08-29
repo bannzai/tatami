@@ -24,6 +24,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.mode = mode
         model.credentials = []
         model.message = nil
+        model.expired = false
         listAuthenticatedAt = nil
         listExpiryTask?.cancel()
         listExpiryTask = nil
@@ -40,8 +41,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             }
             self.model.credentials = []
             self.model.message = "時間が経過したため再度本人確認が必要です"
+            self.model.expired = true
             self.listAuthenticatedAt = nil
         }
+    }
+
+    /// 失効した一覧で「再認証」を押した時。同じ要求のサービス識別子で本人確認と候補の取得をやり直す
+    private func reauthenticateList() {
+        prepareCredentialList(for: currentServiceIdentifiers)
     }
 
     override func loadView() {
@@ -51,6 +58,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             self?.select(credential: credential)
         }, onCancel: { [weak self] in
             self?.cancel(code: .userCanceled)
+        }, onReauthenticate: { [weak self] in
+            self?.reauthenticateList()
         }, onFinishConfiguration: { [weak self] in
             self?.finishConfiguration()
         }))
@@ -202,6 +211,8 @@ final class CredentialProviderModel {
     }
 
     var mode = Mode.list
+    /// 一覧が時間で失効し再認証が要る状態か (要求内で復帰する導線を出すため)
+    var expired = false
     var credentials: [Credential] = []
     /// 候補が無い・本人確認に失敗した等の表示
     var message: String?
@@ -239,6 +250,7 @@ struct CredentialProviderView: View {
     let model: CredentialProviderModel
     let onSelect: (Credential) -> Void
     let onCancel: () -> Void
+    let onReauthenticate: () -> Void
     let onFinishConfiguration: () -> Void
 
     var body: some View {
@@ -283,6 +295,10 @@ struct CredentialProviderView: View {
                 }
                 .accessibilityIdentifier("credentialList")
                 HStack {
+                    if model.expired {
+                        Button("再認証", action: onReauthenticate)
+                            .accessibilityIdentifier("reauthenticateButton")
+                    }
                     Spacer()
                     Button("キャンセル", action: onCancel)
                         .keyboardShortcut(.cancelAction)
