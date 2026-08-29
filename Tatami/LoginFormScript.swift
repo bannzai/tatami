@@ -258,7 +258,14 @@ enum LoginFormScript {
       };
       post();
       // 既存の input の type を後から password に変えるページも検出する
-      new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });
+      // 欄の有効化・表示の変化 (disabled / readonly / class / style / hidden) でも充填可否を再評価する。
+      // class / style はアニメーション等で頻発するため、連続する変更を 1 回にまとめる (レイアウト計算を毎回走らせない)
+      let postTimer = null;
+      const schedulePost = () => {
+        if (postTimer !== null) { return; }
+        postTimer = setTimeout(() => { postTimer = null; post(); }, 100);
+      };
+      new MutationObserver(schedulePost).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'disabled', 'readonly', 'hidden', 'class', 'style'] });
       // Back/Forward Cache から復元されたページは pagehide で状態を消した後、初期化が再実行されないため、現在の状態を送り直す
       window.addEventListener('pageshow', (event) => {
         if (!event.persisted) { return; }
