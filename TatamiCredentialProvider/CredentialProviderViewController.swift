@@ -8,6 +8,8 @@ import SwiftUI
 final class CredentialProviderViewController: ASCredentialProviderViewController {
     private let store = KeychainCredentialStore()
     private let model = CredentialProviderModel()
+    /// 現在の要求のサービス識別子。候補の選択時に、その時点のストアの内容と要求先を照合し直すために持つ
+    private var currentServiceIdentifiers: [ASCredentialServiceIdentifier] = []
     /// 要求の世代。同じ view controller で次の要求が始まった時に、前の要求の非同期処理が古い候補を出さないようにする
     private var requestGeneration = 0
 
@@ -21,6 +23,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func loadView() {
+        // 拡張は tatami.conf (App Sandbox の外) を読めず lock-timeout を共有できないため、要求ごとに本人確認する (timeout 0 と同じ)
+        CredentialLock.shared.apply(lockTimeout: 0)
         let hosting = NSHostingView(rootView: CredentialProviderView(model: model, onSelect: { [weak self] credential in
             self?.select(credential: credential)
         }, onCancel: { [weak self] in
@@ -35,6 +39,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// 候補の一覧を求められた時。サービス識別子 (ドメインか URL) に合う資格情報だけを出す
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         let generation = beginRequest(mode: .list)
+        currentServiceIdentifiers = serviceIdentifiers
         Task {
             do {
                 try await CredentialLock.shared.ensureUnlocked(reason: "自動入力する資格情報を読む")
@@ -42,7 +47,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     return
                 }
                 let all = try store.all()
-                let pageURLs = serviceIdentifiers.compactMap(CredentialProviderModel.pageURL(serviceIdentifier:))
+                let pageURLs = CredentialProviderModel.pageURLs(serviceIdentifiers: serviceIdentifiers)
                 var seen = Set<UUID>()
                 model.credentials = pageURLs
                     .flatMap { CredentialMatcher.candidates(credentials: all, pageURL: $0) }
@@ -58,12 +63,15 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     /// UI なしで充填を求められた時。本人確認 (UI) が要るため、UI ありで呼び直してもらう
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
+        // 前の要求で本人確認を待っている処理がこの要求の context に完了しないよう、世代を進めてから断る
+        _ = beginRequest(mode: .list)
         cancel(code: .userInteractionRequired)
     }
 
     /// 候補 (ASCredentialIdentityStore に登録した識別子) が選ばれた時。本人確認してからその 1 件を返す
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
         let generation = beginRequest(mode: .list)
+        currentServiceIdentifiers = [credentialRequest.credentialIdentity.serviceIdentifier]
         guard let recordIdentifier = credentialRequest.credentialIdentity.recordIdentifier, let id = UUID(uuidString: recordIdentifier) else {
             cancel(code: .credentialIdentityNotFound)
             return
@@ -101,9 +109,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task {
             do {
                 try await CredentialLock.shared.ensureUnlocked(reason: "自動入力の候補を登録する")
-                await CredentialIdentityRegistrar.sync(store: store)
             } catch {
                 model.message = "\(error)"
+                return
+            }
+            // 登録に失敗した時は閉じずに知らせ、もう一度「完了」で再試行できるようにする
+            guard await CredentialIdentityRegistrar.sync(store: store) else {
+                model.message = "自動入力候補の登録に失敗した (もう一度「完了」で再試行)"
                 return
             }
             extensionContext.completeExtensionConfigurationRequest()
@@ -119,7 +131,15 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 guard generation == requestGeneration else {
                     return
                 }
-                complete(credential: credential)
+                // 一覧を作ってから (別プロセスや iCloud 同期で) 更新・削除されていることがあるため、ストアから読み直して要求先と照合し直す
+                let pageURLs = CredentialProviderModel.pageURLs(serviceIdentifiers: currentServiceIdentifiers)
+                guard let current = try store.all().first(where: { $0.id == credential.id }),
+                      pageURLs.contains(where: { CredentialMatcher.matches(credentialURL: current.url, pageURL: $0) }) else {
+                    model.message = "資格情報が変更または削除されたため充填しない"
+                    model.credentials.removeAll { $0.id == credential.id }
+                    return
+                }
+                complete(credential: current)
             } catch {
                 if generation == requestGeneration {
                     model.message = "\(error)"
@@ -152,16 +172,28 @@ final class CredentialProviderModel {
     var message: String?
 
     /// サービス識別子をページの URL に読み替える。ドメイン型は https のトップとして扱う (CredentialMatcher が http の資格情報も候補に含める)
-    static func pageURL(serviceIdentifier: ASCredentialServiceIdentifier) -> URL? {
+    nonisolated static func pageURL(serviceIdentifier: ASCredentialServiceIdentifier) -> URL? {
         switch serviceIdentifier.type {
         case .domain:
-            return URL(string: "https://\(serviceIdentifier.identifier)/")
+            // ドメイン型は scheme を持たないため https として扱う。IPv6 のホストは角括弧で囲む
+            var components = URLComponents()
+            components.scheme = "https"
+            components.encodedHost = serviceIdentifier.identifier.contains(":") && !serviceIdentifier.identifier.hasPrefix("[") ? "[\(serviceIdentifier.identifier)]" : serviceIdentifier.identifier
+            components.path = "/"
+            return components.url
         case .URL:
             return URL(string: serviceIdentifier.identifier)
         default:
             // 将来の種類 (SDK に追加されたもの) は URL に読み替えられないため候補を出さない
             return nil
         }
+    }
+
+    /// 要求元のページ URL。scheme を持つ URL 型の識別子があればそれだけを使う
+    /// (同時に渡されたドメイン型を https と決めつけて、http のページに https 用の資格情報を出さないため)
+    nonisolated static func pageURLs(serviceIdentifiers: [ASCredentialServiceIdentifier]) -> [URL] {
+        let urlTyped = serviceIdentifiers.filter { $0.type == .URL }
+        return (urlTyped.isEmpty ? serviceIdentifiers : urlTyped).compactMap(pageURL(serviceIdentifier:))
     }
 }
 
