@@ -297,4 +297,21 @@ struct TatamiConfigTests {
         #expect(TatamiConfigParser.resolvedIncludePath(path: "/abs/x.conf", baseDirectory: "/base") == "/abs/x.conf")
         #expect(TatamiConfigParser.resolvedIncludePath(path: "x.conf", baseDirectory: nil) == "x.conf")
     }
+
+    @Test func loaderOverlaysExplicitFileOnBaseConfig() throws {
+        let fileURL = FileManager.default.temporaryDirectory.appending(path: "tatami-extras-\(UUID().uuidString).conf")
+        try "set -g user-agent TatamiTest/1.0".write(to: fileURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        var base = TatamiConfig()
+        base.homeURL = URL(string: "https://example.com/")!
+        // 明示したファイルは base へ重ねる (書かれていない項目を既定値へ戻さない)
+        let overlaid = TatamiConfigLoader.load(fileURL: fileURL, requireFile: true, base: base)
+        #expect(overlaid.config.homeURL == base.homeURL)
+        #expect(overlaid.config.userAgent == "TatamiTest/1.0")
+        // base 無しは既定値から作り直す
+        let fresh = TatamiConfigLoader.load(fileURL: fileURL, requireFile: true)
+        #expect(fresh.config.homeURL == TatamiConfig().homeURL)
+    }
 }
