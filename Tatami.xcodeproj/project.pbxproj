@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02E240FFA8AB4B9DB0282623 /* PaneTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10214FFA89244825ACDF4111 /* PaneTreeTests.swift */; };
 		98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */; };
+		9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8C5B56487F4F1F9006165F /* PaneTree.swift */; };
 		BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AFEAE9B940E262E5784834 /* TatamiApp.swift */; };
 		CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */; };
 		DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3506726C2C6A10CB80A88648 /* WebPaneView.swift */; };
@@ -25,6 +27,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		10214FFA89244825ACDF4111 /* PaneTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTreeTests.swift; sourceTree = "<group>"; };
 		1F1DC872C75B96AAEBF30600 /* Tatami.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tatami.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3506726C2C6A10CB80A88648 /* WebPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPaneView.swift; sourceTree = "<group>"; };
 		53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
@@ -33,6 +36,7 @@
 		A8AFEAE9B940E262E5784834 /* TatamiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TatamiApp.swift; sourceTree = "<group>"; };
 		B11310D9049C8AB6CB4A5A76 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CA8D4DD198E4EDFBD261C88D /* TatamiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TatamiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD8C5B56487F4F1F9006165F /* PaneTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTree.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -49,6 +53,7 @@
 			isa = PBXGroup;
 			children = (
 				A818790A4A13F5FD07FAE1B0 /* AddressInputTests.swift */,
+				10214FFA89244825ACDF4111 /* PaneTreeTests.swift */,
 			);
 			path = TatamiTests;
 			sourceTree = "<group>";
@@ -68,6 +73,7 @@
 				7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */,
 				53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */,
 				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
+				CD8C5B56487F4F1F9006165F /* PaneTree.swift */,
 				A8AFEAE9B940E262E5784834 /* TatamiApp.swift */,
 				3506726C2C6A10CB80A88648 /* WebPaneView.swift */,
 			);
@@ -158,6 +164,7 @@
 			files = (
 				98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */,
 				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
+				9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */,
 				BB7982EBEBAF1369A38E9820 /* TatamiApp.swift in Sources */,
 				DF7487B30828F650AF9E056C /* WebPaneView.swift in Sources */,
 			);
@@ -168,6 +175,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CB150FDE0C75678059ACE89E /* AddressInputTests.swift in Sources */,
+				02E240FFA8AB4B9DB0282623 /* PaneTreeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
