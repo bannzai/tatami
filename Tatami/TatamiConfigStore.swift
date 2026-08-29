@@ -39,7 +39,8 @@ final class TatamiConfigStore {
     /// 既定ファイルが無い時の再読込も現在の設定のままにする (既定値へ戻したい時はファイルを空にする)
     @discardableResult
     func reload(fileURL: URL, requireFile: Bool) -> [TatamiConfigError] {
-        let loaded = TatamiConfigLoader.load(fileURL: fileURL, requireFile: requireFile)
+        // 明示されたファイル (requireFile) は現在の設定へ重ねる。既定ファイルの再読込は既定値から作り直す
+        let loaded = TatamiConfigLoader.load(fileURL: fileURL, requireFile: requireFile, base: requireFile ? config : nil)
         if loaded.parsed {
             config = loaded.config
         }
