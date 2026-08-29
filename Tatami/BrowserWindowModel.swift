@@ -1071,6 +1071,10 @@ final class BrowserWindowModel {
             }
             do {
                 try await credentialLock.ensureUnlocked(reason: reason)
+                // 本人確認の間にウィンドウが閉じられていたら (deactivate 済み)、閉じたペインへの充填や書き出しを行わない
+                guard isActive else {
+                    return
+                }
                 action()
             } catch {
                 statusMessage = "\(error)"
