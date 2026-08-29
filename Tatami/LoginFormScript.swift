@@ -151,15 +151,13 @@ enum LoginFormScript {
         try { send(payload); } catch (e) {}
       };
       const capture = (scope) => notify(collectSubmission(scope));
-      // submit は、送信時点の値を同期的にスナップショットし (ページが直後に欄を消しても回収できる)、
-      // 伝播後に defaultPrevented を確認してキャンセルされた送信は通知しない
+      // submit は送信時点の値を同期的に読んで通知する (ページが直後に欄を消しても回収できる)。
+      // preventDefault は検証キャンセルと AJAX ログイン (React の preventDefault + fetch) の両方で使われ区別できないため、
+      // defaultPrevented では捨てない。保存・更新の提案は非破壊 (y/n) で、誤って出ても n で消せる一方、実ログインの取りこぼしは避ける
       document.addEventListener('submit', (event) => {
         const form = event.target;
         if (!form || !form.querySelector) { return; }
-        const payload = collectSubmission(form);
-        setTimeout(() => {
-          if (!event.defaultPrevented) { notify(payload); }
-        }, 0);
+        notify(collectSubmission(form));
       }, true);
       // 制約検証 (required / pattern 等) で送信されないクリック・Enter は通知しない (通常のフォームは submit イベント側で捕捉する)
       const passesValidation = (form, button) => !form || form.noValidate || (button && button.formNoValidate) || typeof form.checkValidity !== 'function' || form.checkValidity();
