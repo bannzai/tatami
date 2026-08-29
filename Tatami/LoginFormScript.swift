@@ -62,13 +62,18 @@ enum LoginFormScript {
       // 可視で操作できる欄だけを対象にする (非表示の honeypot や無効化された欄を送信値として扱わない)
       const usablePasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
         .filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+      // autocomplete の無い「現在・新規・確認」の 3 欄の変更フォームでは、末尾 2 欄の値が一致すればその前の欄を現在、2 番目を新規とみなす
+      const isUnmarkedChangeForm = (fields) => fields.length >= 3 && !fields.some((field) => hasAutocomplete(field, 'new-password') || hasAutocomplete(field, 'current-password'))
+        && fields[fields.length - 2].value === fields[fields.length - 1].value;
       const passwordFieldToReport = (scope) => {
         const fields = usablePasswordFields(scope);
+        if (isUnmarkedChangeForm(fields)) { return fields[fields.length - 2]; }
         return fields.find((field) => hasAutocomplete(field, 'new-password')) || fields[0] || null;
       };
       // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、新規の欄より前の欄)
       const currentPasswordValue = (scope, reported) => {
         const fields = usablePasswordFields(scope);
+        if (isUnmarkedChangeForm(fields)) { return fields[fields.length - 3].value; }
         const current = fields.find((field) => hasAutocomplete(field, 'current-password'))
           || fields.find((field) => field !== reported && !hasAutocomplete(field, 'new-password'));
         return current && current !== reported ? current.value : '';
@@ -147,7 +152,7 @@ enum LoginFormScript {
         send({ hasNewPassword });
       };
       // SPA が既存の input の type / autocomplete を後から変える場合も検出する
-      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });
+      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden'] });
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
@@ -178,6 +183,15 @@ enum LoginFormScript {
       post();
       // 既存の input の type を後から password に変えるページも検出する
       new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type'] });
+      // Back/Forward Cache から復元されたページは pagehide で状態を消した後、初期化が再実行されないため、現在の状態を送り直す
+      window.addEventListener('pageshow', (event) => {
+        if (!event.persisted) { return; }
+        lastHasPassword = null;
+        lastHasNewPassword = null;
+        post();
+        postNewPassword();
+        postEditing();
+      });
     })();
     """
 

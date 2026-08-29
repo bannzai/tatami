@@ -256,6 +256,20 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         return URL(string: "\(origin.protocol)://\(origin.host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
     }
 
+    /// 通知元フレームのページ URL。トップレベルは webView.url、iframe は request URL (http(s) のホストがある時)、
+    /// 継承オリジン (`about:blank` / `srcdoc` / `blob:`) の iframe は security origin から組み立てたオリジン URL。
+    /// スクリプトからの申告 (location.href) ではなく WebKit が持つフレーム情報だけを使う
+    static func frameURL(message: WKScriptMessage) -> URL? {
+        let frame = message.frameInfo
+        if frame.isMainFrame {
+            return message.webView?.url
+        }
+        if let url = frame.request.url, let host = url.host(), !host.isEmpty, WebPane.isWebPage(url: url) {
+            return url
+        }
+        return originURL(frame: frame)
+    }
+
     /// 資格情報の充填先フレーム。トップレベルに欄があればそれ、無ければ資格情報と同じオリジンの iframe (別オリジンの iframe には渡さない)。
     /// 該当が無ければ nil
     func loginFormFrame(credentialURL: URL) -> WKFrameInfo? {
@@ -331,13 +345,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             }
             isEditingText = !editingFrames.isEmpty
         }
-        if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = message.frameInfo.request.url {
+        if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = WebPane.frameURL(message: message) {
             pendingUsername = (usernameOnly, WebPane.origin(url: frameURL))
         }
         if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
             // 送信元フレームの URL (スクリプトからの申告ではなく WebKit が持つフレーム情報) を使う
-            let frameURL = message.frameInfo.request.url ?? (body["frameURL"] as? String).flatMap(URL.init(string:)) ?? webView.url
-            guard let frameURL else {
+            guard let frameURL = WebPane.frameURL(message: message) else {
                 return
             }
             var username = body["username"] as? String ?? ""
