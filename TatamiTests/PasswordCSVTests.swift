@@ -335,11 +335,12 @@ struct PasswordCSVTests {
             rows: [
                 PasswordCSV.Row(name: "app", url: "android://hash-one@com.example.app/", username: "alice", password: "dummy-1", note: ""),
                 PasswordCSV.Row(name: "app", url: "android://hash-two@com.example.app/", username: "alice", password: "dummy-2", note: ""),
+                PasswordCSV.Row(name: "app", url: "android://hash-one@com.Example.App/", username: "alice", password: "dummy-3", note: ""),
             ],
             existing: [],
             now: now
         )
-        #expect(result.added == 2)
+        #expect(result.added == 3)
         // http(s) の userinfo はオリジンに含めない
         let web = PasswordImporter.merge(
             rows: [PasswordCSV.Row(name: "", url: "https://example.com/", username: "alice", password: "dummy-new", note: "")],
