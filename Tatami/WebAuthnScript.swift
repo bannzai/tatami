@@ -95,6 +95,7 @@ enum WebAuthnScript {
             challenge: encodeOptional(publicKey.challenge),
             algorithms: (publicKey.pubKeyCredParams || []).map((param) => param.alg),
             excludeCredentials: (publicKey.excludeCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
+            userVerification: (publicKey.authenticatorSelection && publicKey.authenticatorSelection.userVerification) || 'preferred',
           });
           return makeCredential(reply, true);
         },
@@ -110,6 +111,7 @@ enum WebAuthnScript {
             rpId: publicKey.rpId || null,
             challenge: encodeOptional(publicKey.challenge),
             allowCredentials: (publicKey.allowCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
+            userVerification: publicKey.userVerification || 'preferred',
           });
           return makeCredential(reply, false);
         },

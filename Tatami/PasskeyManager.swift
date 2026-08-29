@@ -30,8 +30,8 @@ enum PasskeyManager {
                     algorithms: (body["algorithms"] as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.intValue },
                     excludeCredentialIDs: (body["excludeCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
                 )
-                try await CredentialLock.shared.ensureUnlocked(reason: "\(origin.host() ?? "") に Passkey を登録する")
-                let response = try authenticator.makeCredential(request: request, origin: origin, userVerified: true)
+                let userVerified = try await verifyUser(body: body, reason: "\(origin.host() ?? "") に Passkey を登録する")
+                let response = try authenticator.makeCredential(request: request, origin: origin, userVerified: userVerified)
                 return [
                     "id": WebAuthn.base64url(response.credentialID),
                     "clientDataJSON": WebAuthn.base64url(response.clientDataJSON),
@@ -50,8 +50,8 @@ enum PasskeyManager {
                 guard let passkey = candidates.first else {
                     throw WebAuthnError(name: "NotAllowedError", description: "このサイトの Passkey は無い")
                 }
-                try await CredentialLock.shared.ensureUnlocked(reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする")
-                let response = try authenticator.getAssertion(passkey: passkey, request: request, origin: origin, userVerified: true)
+                let userVerified = try await verifyUser(body: body, reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする")
+                let response = try authenticator.getAssertion(passkey: passkey, request: request, origin: origin, userVerified: userVerified)
                 return [
                     "id": WebAuthn.base64url(response.credentialID),
                     "clientDataJSON": WebAuthn.base64url(response.clientDataJSON),
@@ -67,6 +67,20 @@ enum PasskeyManager {
         } catch {
             return ["error": "\(error)", "name": "NotAllowedError"]
         }
+    }
+
+    /// RP の userVerification に従って本人確認する。`discouraged` では確認せず UV フラグを立てない (存在確認 UP だけ)。
+    /// `preferred` / `required` では Touch ID / パスワードで確認し、失敗・キャンセルは NotAllowedError
+    private static func verifyUser(body: [String: Any], reason: String) async throws -> Bool {
+        if body["userVerification"] as? String == "discouraged" {
+            return false
+        }
+        do {
+            try await CredentialLock.shared.ensureUnlocked(reason: reason)
+        } catch {
+            throw WebAuthnError(name: "NotAllowedError", description: "\(error)")
+        }
+        return true
     }
 
     private static func string(_ body: [String: Any], _ key: String) throws -> String {
