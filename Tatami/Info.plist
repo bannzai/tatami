@@ -10,6 +10,9 @@
 	<string>Web ページがカメラを使う時に利用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Web ページがマイクを使う時に利用します。</string>
+	<!-- Web ページの navigator.geolocation で位置情報を使う時の利用目的 -->
+	<key>NSLocationUsageDescription</key>
+	<string>Web ページが位置情報を使う時に利用します。</string>
 	<!-- GENERATE_INFOPLIST_FILE = YES の生成内容にマージされる部分 Info.plist。
 	     CFBundleURLTypes は INFOPLIST_KEY_* build setting で表現できないためここに置く。
 	     http / https を宣言することで、既定ブラウザの候補になり他アプリからの URL オープンを受けられる。 -->
