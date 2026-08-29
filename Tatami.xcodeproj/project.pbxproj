@@ -30,6 +30,9 @@
 		8620771B769049D7AA26F29F /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623175DED39C4C3F8906160A /* DownloadManager.swift */; };
 		A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */; };
 		F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */; };
+		BD4878EB44E04B87B955EA20 /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */; };
+		1E2C56B249C44C49ACB512B5 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */; };
+		5F1D64B1C3A5455F9EE2D227 /* CredentialStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */; };
 		001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +74,10 @@
 		FFEF1F93A53047EAAFD51DC7 /* Tatami.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tatami.entitlements; sourceTree = "<group>"; };
 		06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingData.swift; sourceTree = "<group>"; };
 		68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataTests.swift; sourceTree = "<group>"; };
+		4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Credential.swift; sourceTree = "<group>"; };
+		542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
+		8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStoreTests.swift; sourceTree = "<group>"; };
+		7F8B859B6FA14E06B050C34D /* Tatami.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tatami.Debug.entitlements; sourceTree = "<group>"; };
 		46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -93,6 +100,7 @@
 				8F572FFD162F4027A1E13CFC /* StatusLineTests.swift */,
 				3D4021D3BE364E5FB0820129 /* SessionSnapshotTests.swift */,
 				68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */,
+				8414DF4D4FEB47DAB1CC3675 /* CredentialStoreTests.swift */,
 				F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */,
 			);
 			path = TatamiTests;
@@ -114,6 +122,7 @@
 				53DF93E596D4DE53EDE6822D /* BrowserWindowView.swift */,
 				B11310D9049C8AB6CB4A5A76 /* Info.plist */,
 				FFEF1F93A53047EAAFD51DC7 /* Tatami.entitlements */,
+				7F8B859B6FA14E06B050C34D /* Tatami.Debug.entitlements */,
 				CD8C5B56487F4F1F9006165F /* PaneTree.swift */,
 				85CED8AA8672425F88EAD428 /* WebPane.swift */,
 				623175DED39C4C3F8906160A /* DownloadManager.swift */,
@@ -123,6 +132,8 @@
 				DD0AAE174D2B4CF8BB7650B8 /* StatusLine.swift */,
 				47A3CDFFBBD9408794530CEA /* SessionSnapshot.swift */,
 				06CFE190B06A4D11ACBCD503 /* BrowsingData.swift */,
+				542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */,
+				4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
 				08C8B351A1564048AD9E3F69 /* PaneWindow.swift */,
 				4C994E2C5AFC4444B9379F43 /* KeyBinding.swift */,
@@ -226,6 +237,8 @@
 				B9049D8593FE40CF9E764ECC /* StatusLine.swift in Sources */,
 				BA99ED9D4DB14361A5156BD9 /* SessionSnapshot.swift in Sources */,
 				A74FCF2746044C55AA9FE25F /* BrowsingData.swift in Sources */,
+				1E2C56B249C44C49ACB512B5 /* KeychainCredentialStore.swift in Sources */,
+				BD4878EB44E04B87B955EA20 /* Credential.swift in Sources */,
 				001548FC75764958A0CF9035 /* BrowsingDataStore.swift in Sources */,
 				78976A46B34E4CA8A932A795 /* PaneWindow.swift in Sources */,
 				B36C8CD7DDD84F199564C66C /* KeyBinding.swift in Sources */,
@@ -245,6 +258,7 @@
 				194809B1A41C46418A5E0AF4 /* StatusLineTests.swift in Sources */,
 				1F673FE893444F6187ABEAB9 /* SessionSnapshotTests.swift in Sources */,
 				F396B499096D43D09D902200 /* BrowsingDataTests.swift in Sources */,
+				5F1D64B1C3A5455F9EE2D227 /* CredentialStoreTests.swift in Sources */,
 				E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -450,7 +464,7 @@
 		EA839FADD8DA5380513C2EE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Tatami/Tatami.Debug.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

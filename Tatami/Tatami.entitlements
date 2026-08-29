@@ -7,5 +7,10 @@
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Password Manager の Keychain アイテムを Credential Provider Extension と共有するための access group (documents/adr/0004) -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.bannzai.Tatami.shared</string>
+	</array>
 </dict>
 </plist>

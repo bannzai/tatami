@@ -24,7 +24,7 @@ make test          # ユニットテスト
 make macos         # Release ビルドを /Applications/Tatami.app に配置する
 ```
 
-署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする。
+署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする。ad-hoc 署名のビルドでは Password Manager の資格情報を iCloud Keychain と同期せず、ローカルのログインキーチェーンに置く (共有 access group の entitlement が無いため)。Team 署名と ad-hoc 署名では資格情報の置き場所が異なり互いに読めないので、切り替える前に `:export-passwords` で書き出し、切り替え後に `:import-passwords` で取り込む。
 
 ## 公開ページ
 

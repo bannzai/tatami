@@ -17,7 +17,8 @@ CODE_SIGNING_ALLOWED :=
 DEVELOPMENT_TEAM :=
 SIGNING := automatic
 ifeq ($(SIGNING),adhoc)
-SIGNING_FLAGS = CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
+# ad-hoc 署名では provisioning profile が要る keychain-access-groups を含められないため、Debug 用の entitlements (それを含まない) を使う
+SIGNING_FLAGS = CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= CODE_SIGN_ENTITLEMENTS=Tatami/Tatami.Debug.entitlements
 else
 SIGNING_FLAGS = $(if $(CODE_SIGNING_ALLOWED),CODE_SIGNING_ALLOWED=$(CODE_SIGNING_ALLOWED),-allowProvisioningUpdates -allowProvisioningDeviceRegistration) $(if $(DEVELOPMENT_TEAM),DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM))
 endif
