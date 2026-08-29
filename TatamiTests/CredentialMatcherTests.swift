@@ -104,4 +104,11 @@ struct CredentialMatcherTests {
         #expect(CredentialMatcher.sameOrigin(credentialURL: unicode, pageURL: punycode))
         #expect(CredentialMatcher.matches(credentialURL: unicode, pageURL: punycode))
     }
+
+    @Test func ipv6HostsMatchAcrossNotations() {
+        let stored = URL(string: "https://[0:0:0:0:0:0:0:1]/")!
+        let page = URL(string: "https://[::1]/login")!
+        #expect(CredentialMatcher.sameOrigin(credentialURL: stored, pageURL: page))
+        #expect(CredentialMatcher.matches(credentialURL: stored, pageURL: page))
+    }
 }
