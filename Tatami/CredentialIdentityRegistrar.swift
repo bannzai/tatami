@@ -25,6 +25,11 @@ enum CredentialIdentityRegistrar {
         components.path = "/"
         components.query = nil
         components.fragment = nil
+        // 既定ポートの明示 (https の 443・http の 80) はページ側の省略形の識別子と一致するよう外す (CredentialMatcher と同じ扱い)
+        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        if components.port == defaultPort {
+            components.port = nil
+        }
         guard let identifier = components.string else {
             return nil
         }
