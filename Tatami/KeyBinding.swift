@@ -185,6 +185,8 @@ enum BrowserCommand: Hashable, Sendable {
     case commandPrompt
     /// ページ内検索のプロンプトを開く (prefix + [。tmux の copy-mode の読み替え)
     case findPrompt
+    /// Tatami を既定のブラウザにする (コマンドプロンプトとメニューから。既定バインド無し)
+    case setDefaultBrowser
     /// セッションを保存したままウィンドウを閉じる (prefix + d)
     case detachClient
     case chooseSession
@@ -252,6 +254,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "command-prompt"
         case .findPrompt:
             return "find"
+        case .setDefaultBrowser:
+            return "set-default-browser"
         case .detachClient:
             return "detach-client"
         case .chooseSession:
@@ -300,7 +304,7 @@ enum BrowserCommand: Hashable, Sendable {
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
-        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt,
+        .detachClient, .chooseSession, .renameSession, .commandPrompt, .findPrompt, .setDefaultBrowser,
     ]
 }
 
