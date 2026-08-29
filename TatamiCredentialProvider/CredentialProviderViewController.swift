@@ -10,6 +10,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private let model = CredentialProviderModel()
     /// 現在の要求のサービス識別子。候補の選択時に、その時点のストアの内容と要求先を照合し直すために持つ
     private var currentServiceIdentifiers: [ASCredentialServiceIdentifier] = []
+    /// 一覧を出すために本人確認した時刻。同じ要求の中で候補を選ぶ時は、一覧を長く開いたままでなければ再確認しない
+    /// (拡張は要求ごとに確認する設定のため、そのままだと 1 回の自動入力で 2 回確認になる)
+    private var listAuthenticatedAt: ContinuousClock.Instant?
     /// 要求の世代。同じ view controller で次の要求が始まった時に、前の要求の非同期処理が古い候補を出さないようにする
     private var requestGeneration = 0
 
@@ -19,6 +22,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.mode = mode
         model.credentials = []
         model.message = nil
+        listAuthenticatedAt = nil
         return requestGeneration
     }
 
@@ -46,6 +50,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 guard generation == requestGeneration else {
                     return
                 }
+                listAuthenticatedAt = .now
                 let all = try store.all()
                 let pageURLs = CredentialProviderModel.pageURLs(serviceIdentifiers: serviceIdentifiers)
                 var seen = Set<UUID>()
@@ -125,9 +130,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// 候補の選択。一覧を開いたまま自動ロックの期限を過ぎていることがあるため、返す直前にも本人確認する (アンロック中なら即時)
     private func select(credential: Credential) {
         let generation = requestGeneration
+        // 一覧のための本人確認から既定の自動ロック時間 (アプリ側の既定と同じ 5 分) 以内なら、その確認を再利用する
+        let recentlyAuthenticated = listAuthenticatedAt.map { ContinuousClock.now - $0 < .seconds(CredentialLockPolicy.defaultLockTimeout) } ?? false
         Task {
             do {
-                try await CredentialLock.shared.ensureUnlocked(reason: "\(credential.username) を自動入力する")
+                if !recentlyAuthenticated {
+                    try await CredentialLock.shared.ensureUnlocked(reason: "\(credential.username) を自動入力する")
+                }
                 guard generation == requestGeneration else {
                     return
                 }
