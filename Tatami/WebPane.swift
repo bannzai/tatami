@@ -369,10 +369,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 return
             }
             var username = body["username"] as? String ?? ""
+            // 保留中のユーザー名は同じオリジンの送信に使った時だけ消す (別オリジンの iframe の送信が先に来ても、本来の 2 段目のために残す)
             if username.isEmpty, let pendingUsername, pendingUsername.origin == WebPane.origin(url: frameURL) {
                 username = pendingUsername.username
+                self.pendingUsername = nil
+            } else if pendingUsername?.origin == WebPane.origin(url: frameURL) {
+                self.pendingUsername = nil
             }
-            pendingUsername = nil
             onLoginSubmit?(frameURL, username, password, body["currentPassword"] as? String ?? "", body["isNewPassword"] as? Bool ?? false)
         }
     }
