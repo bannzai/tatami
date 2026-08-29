@@ -74,10 +74,21 @@ enum LoginFormScript {
       // パスワード欄での Enter) を検出し、その時点のユーザー名・パスワードをネイティブへ渡す
       // 送信時に報告するパスワード欄。変更フォーム (現在・新規・確認) では新しいパスワード (autocomplete=new-password) を優先する
       // 可視で操作できる欄だけを対象にする (非表示の honeypot や無効化された欄を送信値として扱わない)
-      const usablePasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
+      // type=password の欄と、パスワード表示ボタンで text に変わったが autocomplete でパスワード用途と分かる欄
+      const isPasswordField = (field) => {
+        const type = (field.getAttribute('type') || 'text').toLowerCase();
+        return type === 'password' || (type === 'text' && (hasAutocomplete(field, 'current-password') || hasAutocomplete(field, 'new-password')));
+      };
+      // ユーザー名だけの段階で覚えておく候補 (可視で操作できる text / email 系で、名前がユーザー名らしく値が入っている欄)
+      const usernameCandidate = (scope) => inputsIn(scope).find((input) => {
+        const type = (input.getAttribute('type') || 'text').toLowerCase();
+        return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input)
+          && /username|email|user|login|account/i.test(`${input.autocomplete} ${input.name} ${input.id} ${input.type}`) && input.value;
+      });
+      const usablePasswordFields = (scope) => inputsIn(scope).filter(isPasswordField)
         .filter((field) => isVisible(field) && !field.matches(':disabled') && !field.readOnly);
       // 検出用 (画面外でも数える)
-      const renderedPasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
+      const renderedPasswordFields = (scope) => inputsIn(scope).filter(isPasswordField)
         .filter((field) => isRendered(field) && !field.matches(':disabled') && !field.readOnly);
       // autocomplete も無い変更フォームで、欄の名前から現在のパスワード欄を見分ける (current / old / 現在 / 旧)
       const looksLikeCurrentPassword = (field) => /current|old|existing|現在|旧/i.test(`${field.name} ${field.id} ${field.placeholder} ${field.getAttribute('aria-label') || ''}`);
@@ -120,12 +131,7 @@ enum LoginFormScript {
         }
         if (!passwordField || !passwordField.value) {
           // ユーザー名だけのページ (複数段階ログインの 1 段目) はユーザー名を覚えておく
-          // hidden の内部 ID (account_id 等) を拾わないよう、通常のユーザー名検出と同じく可視で操作できる text / email 系の欄に限る
-          const usernameOnly = inputsIn(scope).find((input) => {
-            const type = (input.getAttribute('type') || 'text').toLowerCase();
-            return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input)
-              && /username|email|user|login|account/i.test(`${input.autocomplete} ${input.name} ${input.id} ${input.type}`) && input.value;
-          });
+          const usernameOnly = usernameCandidate(scope);
           if (usernameOnly) {
             send({ usernameOnly: usernameOnly.value });
           }
@@ -147,9 +153,13 @@ enum LoginFormScript {
           });
         } catch (e) {}
       };
+      // ページ側が submit をキャンセルして独自検証する場合があるため、伝播後に defaultPrevented を確認してから通知する
       document.addEventListener('submit', (event) => {
         const form = event.target;
-        if (form && form.querySelector) { capture(form); }
+        setTimeout(() => {
+          if (event.defaultPrevented || !form || !form.querySelector) { return; }
+          capture(form);
+        }, 0);
       }, true);
       // 制約検証 (required / pattern 等) で送信されないクリック・Enter は通知しない (通常のフォームは submit イベント側で捕捉する)
       const passesValidation = (form, button) => !form || form.noValidate || (button && button.formNoValidate) || typeof form.checkValidity !== 'function' || form.checkValidity();
@@ -157,15 +167,15 @@ enum LoginFormScript {
       const loginScope = (element) => element.closest('dialog, [role="dialog"], form, section, article, main, aside, nav, fieldset') || null;
       // 送信になりうるボタンだけを対象にする (type=button のパスワード表示切替などで入力途中の値を送らない)
       document.addEventListener('click', (event) => {
-        const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"]') : null;
+        const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"], [role="button"]') : null;
         if (!button) { return; }
         const form = button.form || button.closest('form');
         if (!passesValidation(form, button)) { return; }
         if (!form) {
-          // form の無いボタンは HTML 上は送信しない。SPA のログイン UI を補助する目的で、パスワード欄と同じ区画 (dialog / section / main 等) にある
-          // ボタンだけを送信とみなし、ヘルプやモーダルを開く無関係なボタンでは通知しない
+          // form の無いボタン (role=button の AJAX ログインを含む) は HTML 上は送信しない。SPA のログイン UI を補助する目的で、
+          // パスワード欄かユーザー名候補を持つ区画 (dialog / section / main 等) のボタンだけを送信とみなす (無関係なボタンは無視)
           const container = loginScope(button);
-          if (!container || !container.querySelector('input[type="password"]')) { return; }
+          if (!container || !(usablePasswordFields(container).length || usernameCandidate(container))) { return; }
           capture(container);
           return;
         }
