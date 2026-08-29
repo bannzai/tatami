@@ -31,6 +31,8 @@ enum LoginFormScript {
       const isVisible = (element) => {
         const rect = element.getBoundingClientRect();
         if (!(rect.width > 0 && rect.height > 0)) { return false; }
+        // 画面外 (left: -10000px 等) の honeypot に平文を入れないよう、ビューポートと交差していることも要求する
+        if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) { return false; }
         if (typeof element.checkVisibility === 'function') {
           return element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
         }
@@ -44,7 +46,7 @@ enum LoginFormScript {
         const form = passwordField.form || document;
         const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
-          return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input);
+          return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
         });
         const explicit = candidates.find((input) => /username|email|user|login|account|id/i.test(`${input.autocomplete} ${input.name} ${input.id}`));
         if (explicit) { return explicit; }
@@ -56,7 +58,7 @@ enum LoginFormScript {
         const fields = Array.from(document.querySelectorAll('input[type="password"]'))
           .filter((field) => !hasAutocomplete(field, 'new-password'));
         // 可視で操作できる欄だけを対象にする。非表示の欄 (honeypot 等) へ充填するとページのスクリプトに平文を渡してしまう
-        const usable = fields.filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+        const usable = fields.filter((field) => isVisible(field) && !field.matches(':disabled') && !field.readOnly);
         const passwordField = usable.find((field) => hasAutocomplete(field, 'current-password')) || usable[0];
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);

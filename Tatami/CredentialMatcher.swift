@@ -16,7 +16,7 @@ enum CredentialMatcher {
     /// 資格情報の URL と充填先フレームの URL が同じオリジン (scheme・host・port の完全一致) か。
     /// iframe への充填はこの条件に限る (同じ eTLD+1 の別サブドメインの iframe に資格情報を渡さない)
     static func sameOrigin(credentialURL: URL, pageURL: URL) -> Bool {
-        guard let credentialHost = credentialURL.host()?.lowercased(), let pageHost = pageURL.host()?.lowercased(), !credentialHost.isEmpty else {
+        guard let credentialHost = host(url: credentialURL), let pageHost = host(url: pageURL), !credentialHost.isEmpty else {
             return false
         }
         return credentialHost == pageHost
@@ -26,7 +26,7 @@ enum CredentialMatcher {
 
     /// 資格情報の URL がページの URL に対して候補になるか
     static func matches(credentialURL: URL, pageURL: URL, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> Bool {
-        guard let credentialHost = credentialURL.host()?.lowercased(), let pageHost = pageURL.host()?.lowercased(),
+        guard let credentialHost = host(url: credentialURL), let pageHost = host(url: pageURL),
               !credentialHost.isEmpty, !pageHost.isEmpty else {
             return false
         }
@@ -49,13 +49,21 @@ enum CredentialMatcher {
         return credentialDomain == pageDomain
     }
 
-    /// ページに対する候補。同じオリジン (ホストの完全一致) → 同じ登録可能ドメインの順で、それぞれ更新日時の新しい順
+    /// ページに対する候補。同じオリジン (scheme・host・port の一致) → 同じホストの http からの昇格 → 同じ登録可能ドメインの順で、
+    /// それぞれ更新日時の新しい順 (既定の選択で別スキーム用のパスワードを入れない)
     static func candidates(credentials: [Credential], pageURL: URL, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> [Credential] {
-        let matching = credentials.filter { matches(credentialURL: $0.url, pageURL: pageURL, rules: rules) }
-        let pageHost = pageURL.host()?.lowercased() ?? ""
-        let exact = matching.filter { $0.host == pageHost }.sorted { $0.updatedAt > $1.updatedAt }
-        let related = matching.filter { $0.host != pageHost }.sorted { $0.updatedAt > $1.updatedAt }
-        return exact + related
+        let matching = credentials.filter { matches(credentialURL: $0.url, pageURL: pageURL, rules: rules) }.sorted { $0.updatedAt > $1.updatedAt }
+        let pageHost = host(url: pageURL) ?? ""
+        let exact = matching.filter { sameOrigin(credentialURL: $0.url, pageURL: pageURL) }
+        let upgraded = matching.filter { !sameOrigin(credentialURL: $0.url, pageURL: pageURL) && host(url: $0.url) == pageHost }
+        let related = matching.filter { host(url: $0.url) != pageHost }
+        return exact + upgraded + related
+    }
+
+    /// 照合に使うホスト。IDN は Unicode 表記 (`URL.host()` は percent-encoded で返す) と punycode (`xn--`) で表現が分かれるため、
+    /// 常に IDNA の ASCII 形 (`encodedHost`) に揃える
+    static func host(url: URL) -> String? {
+        (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host())?.lowercased()
     }
 
     /// 既定ポートの明示 (https の 443 等) は省略と同一視する
