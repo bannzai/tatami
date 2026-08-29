@@ -345,7 +345,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             } else {
                 newPasswordFrames.removeValue(forKey: frameKey)
             }
-            let aggregated = !newPasswordFrames.isEmpty
+            // 生成提案を出すのは、生成値を実際に入れられるフレーム (トップレベル、またはトップレベルと同じオリジンの iframe) がある時だけ
+            // (fillNewPassword の対象と揃える。別オリジンの iframe だけの登録フォームでは提案しても必ず失敗するため)
+            let aggregated = newPasswordFrames.values.contains { frame in
+                frame.isMainFrame || WebPane.originURL(frame: frame).flatMap { origin in webView.url.map { CredentialMatcher.sameOrigin(credentialURL: origin, pageURL: $0) } } == true
+            }
             if aggregated != hasNewPasswordForm {
                 hasNewPasswordForm = aggregated
                 onNewPasswordFormChange?(aggregated)
