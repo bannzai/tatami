@@ -912,14 +912,16 @@ final class BrowserWindowModel {
 
     /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
     private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, currentPassword: String, isNewPassword: Bool) {
-        guard WebPane.isWebPage(url: frameURL), let host = frameURL.host()?.lowercased(), !host.isEmpty else {
+        guard WebPane.isWebPage(url: frameURL), let host = CredentialMatcher.host(url: frameURL), !host.isEmpty else {
             return
         }
         let existing: [Credential]
         do {
-            // 更新対象は同じオリジン (scheme・host・ポート) の項目に限る (http 用や別ポート用の項目を上書きしない)
-            existing = try credentialStore.credentials(host: host).filter {
-                $0.url.scheme?.lowercased() == frameURL.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: frameURL)
+            // 更新対象は同じオリジン (scheme・host・ポート) の項目に限る (http 用や別ポート用の項目を上書きしない)。
+            // ホストは IDNA の ASCII 形で照合する (Unicode 表記で保存した項目と punycode で届くフレームの URL を同じホストとして扱う)
+            existing = try credentialStore.all().filter {
+                CredentialMatcher.host(url: $0.url) == host && $0.url.scheme?.lowercased() == frameURL.scheme?.lowercased()
+                    && CredentialMatcher.matches(credentialURL: $0.url, pageURL: frameURL)
             }
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
@@ -996,6 +998,9 @@ final class BrowserWindowModel {
         proposalPane = nil
         proposalURL = nil
         proposalGeneration = nil
+        defer {
+            reevaluateAfterResolving(proposal: proposal)
+        }
         // 保存・更新の提案は送信時に捕捉済みの値なので、送信後の遷移 (ダッシュボードへのリダイレクト等) の後でも承認できる。
         // ページの同一性を確かめるのは、現在の文書へ充填する生成提案だけ
         switch proposal {
@@ -1022,8 +1027,8 @@ final class BrowserWindowModel {
             guard let pane else {
                 return
             }
-            // 提案を出した後に別のページや同じ URL の別文書へ移っていたら、そのフォームへは入れない
-            guard pane.url == url, pane.documentGeneration == generation else {
+            // 提案を出した後に別のページや同じ URL の別文書へ移っていたり、対象のペインが閉じられていたら、そのフォームへは入れない
+            guard windows.contains(where: { $0.panes[pane.id] === pane }), pane.url == url, pane.documentGeneration == generation else {
                 statusMessage = "ページが変わったため提案を取り消した"
                 return
             }
@@ -1045,10 +1050,23 @@ final class BrowserWindowModel {
 
     /// 提案を却下する (n / Escape)
     func dismissProposal() {
+        let resolved = proposal
         proposal = nil
         proposalPane = nil
         proposalURL = nil
         proposalGeneration = nil
+        reevaluateAfterResolving(proposal: resolved)
+    }
+
+    /// 保存・更新の提案が片付いた後、その間に捨てた新規パスワード欄の通知を補うため現在のペインを評価し直す
+    /// (生成提案そのものの解決後は、同じ欄について即座に再提案しない)
+    private func reevaluateAfterResolving(proposal resolved: Proposal?) {
+        switch resolved {
+        case .save, .update:
+            evaluateNewPasswordProposal()
+        case .generatePassword, nil:
+            break
+        }
     }
 
     /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
