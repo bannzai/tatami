@@ -26,8 +26,9 @@ enum AddressInput {
         // 設定の検索 URL に含まれるパラメータは残す。値が空文字のパラメータ (`?p=`) があればそこに検索語を入れ、無ければ `q` を足す。
         // 値そのものが無いパラメータ (`?flag`) は固定フラグとしてそのまま残す
         var queryItems = components.queryItems ?? []
-        // 空のパラメータが複数ある時は `q` を優先し、無ければ最初の空のパラメータを検索語用とみなす
-        if let index = queryItems.firstIndex(where: { $0.name == "q" && $0.value == "" }) ?? queryItems.firstIndex(where: { $0.value == "" }) {
+        // `q` は値が入っていても検索語用の枠として置き換える (アドレスバーからコピーした検索 URL をそのまま設定できるように)。
+        // 無ければ最初の空のパラメータを検索語用とみなす
+        if let index = queryItems.firstIndex(where: { $0.name == "q" && $0.value != nil }) ?? queryItems.firstIndex(where: { $0.value == "" }) {
             queryItems[index] = URLQueryItem(name: queryItems[index].name, value: trimmed)
         } else {
             queryItems.append(URLQueryItem(name: "q", value: trimmed))
