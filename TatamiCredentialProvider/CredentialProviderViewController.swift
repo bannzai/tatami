@@ -111,15 +111,22 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// 設定画面の完了。有効化した直後から候補が出るよう、この時点でストアの全件を OS の候補に登録してから閉じる
     /// (アプリ側の同期はプロバイダが有効な時にしか登録できないため)
     private func finishConfiguration() {
+        let generation = requestGeneration
         Task {
             do {
                 try await CredentialLock.shared.ensureUnlocked(reason: "自動入力の候補を登録する")
             } catch {
-                model.message = "\(error)"
+                if generation == requestGeneration {
+                    model.message = "\(error)"
+                }
+                return
+            }
+            let synced = await CredentialIdentityRegistrar.sync(store: store)
+            guard generation == requestGeneration else {
                 return
             }
             // 登録に失敗した時は閉じずに知らせ、もう一度「完了」で再試行できるようにする
-            guard await CredentialIdentityRegistrar.sync(store: store) else {
+            guard synced else {
                 model.message = "自動入力候補の登録に失敗した (もう一度「完了」で再試行)"
                 return
             }
@@ -218,8 +225,10 @@ struct CredentialProviderView: View {
             switch model.mode {
             case .configuration:
                 Text("Tatami の Password Manager に保存した資格情報を Safari や他のアプリに自動入力します")
+                    .accessibilityIdentifier("configurationSummary")
                 Text("資格情報の保存・インポートは Tatami のウィンドウで行います (prefix + a / :import-passwords)")
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("configurationDetail")
                 HStack {
                     Spacer()
                     Button("完了", action: onFinishConfiguration)
