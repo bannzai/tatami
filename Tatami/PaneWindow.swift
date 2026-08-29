@@ -16,6 +16,10 @@ final class PaneWindow {
     var onFocusedURLChange: ((URL) -> Void)?
     /// フォーカスの有無を問わず、どのペインの URL が変わった時も、WebKit 起点でペインが閉じた時も呼ぶ通知先 (セッションの保存に使う)
     var onContentChange: (() -> Void)?
+    /// どのペインでも実際のナビゲーションがあった時の通知先 (履歴の記録)
+    var onVisit: ((URL, String) -> Void)?
+    /// どのペインでもタイトルだけが変わった時の通知先 (履歴のタイトル更新)
+    var onTitleChange: ((URL, String) -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -50,7 +54,7 @@ final class PaneWindow {
     /// 復元したペインの URL を読み込む。復元の init では読み込まず、セッションの所有権が確定した後に呼ぶ
     func loadRestoredPanes() {
         for pane in panes.values {
-            pane.loadInitialURL()
+            pane.loadRestoredURL()
         }
     }
 
@@ -216,6 +220,12 @@ final class PaneWindow {
         }
         pane.onClose = { [weak self] in
             self?.close(paneID: id)
+        }
+        pane.onVisit = { [weak self] url, title in
+            self?.onVisit?(url, title)
+        }
+        pane.onTitleChange = { [weak self] url, title in
+            self?.onTitleChange?(url, title)
         }
         return pane
     }

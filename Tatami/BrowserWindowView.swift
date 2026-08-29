@@ -36,8 +36,19 @@ struct BrowserWindowView: View {
                     .focused($isAddressFieldFocused)
                     .accessibilityIdentifier("addressField")
                     .onSubmit {
-                        model.navigate(text: model.addressText)
+                        model.submitAddressBar()
                         isAddressFieldFocused = false
+                    }
+                    .onChange(of: model.addressText) {
+                        model.addressTextDidChange()
+                    }
+                    .onKeyPress(.downArrow) {
+                        model.moveAddressSuggestion(delta: 1)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        model.moveAddressSuggestion(delta: -1)
+                        return .handled
                     }
             }
             .padding(8)
@@ -51,6 +62,8 @@ struct BrowserWindowView: View {
                 .overlay(alignment: .topLeading) {
                     if model.chooser != nil {
                         chooserList
+                    } else if isAddressFieldFocused, !model.addressSuggestions.isEmpty {
+                        addressSuggestionList
                     }
                 }
             statusLine
@@ -138,7 +151,8 @@ struct BrowserWindowView: View {
                     .onExitCommand {
                         model.cancelPrompt()
                     }
-            } else if let statusMessage = model.statusMessage {
+            } else if let statusMessage = BrowsingDataStore.shared.lastSaveError ?? model.statusMessage {
+                // 履歴の保存は非同期 (debounce) のため、失敗はストアのエラー状態を表示側で監視し、成功メッセージより優先して出す
                 Text(statusMessage)
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("statusMessage")
@@ -168,6 +182,35 @@ struct BrowserWindowView: View {
         case .find:
             return "/"
         }
+    }
+
+    /// アドレスバーの候補 (ブックマーク → 履歴)。上下キーで選び Enter で開く
+    private var addressSuggestionList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(model.addressSuggestions.enumerated()), id: \.offset) { index, suggestion in
+                HStack(spacing: 6) {
+                    Image(systemName: suggestion.isBookmark ? "bookmark.fill" : "clock")
+                        .foregroundStyle(.secondary)
+                    Text(suggestion.title)
+                        .lineLimit(1)
+                    Text(suggestion.url.absoluteString)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(index == model.addressSuggestionIndex ? Color.accentColor.opacity(0.3) : Color.clear)
+                .accessibilityIdentifier("suggestionRow-\(index)")
+            }
+        }
+        .font(.system(.body, design: .monospaced))
+        .padding(8)
+        .frame(width: 560)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(8)
+        .accessibilityIdentifier("addressSuggestions")
     }
 
     /// choose-window / choose-session の一覧。j / k / 数字 / Enter / Escape はモデルのキー処理で受ける

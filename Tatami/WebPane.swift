@@ -19,6 +19,20 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     var onCreateWebView: ((WKWebViewConfiguration) -> WKWebView?)?
     /// ページが window.close() を呼んだ時の通知先 (OAuth の完了画面など)。ペインを閉じる
     var onClose: (() -> Void)?
+    /// 実際のナビゲーション (読み込み完了・History API の遷移) の通知先 (履歴の記録に使う)。URL とその時点のタイトル
+    var onVisit: ((URL, String) -> Void)?
+    /// 表示中のページのタイトルだけが変わった時の通知先 (履歴のタイトル更新。順序は変えない)
+    var onTitleChange: ((URL, String) -> Void)?
+    /// 証明書エラーの警告ページを表示している間 true。警告ページは履歴に残さない
+    private var isShowingCertificateWarning = false
+    /// セッションの復元による読み込みのナビゲーション。復元は新しい訪問ではないため、このナビゲーションの完了は履歴に記録しない
+    /// (フラグではなくナビゲーションを持つことで、復元が終わる前にユーザーが開いた別ページの完了を復元扱いしない)
+    private var restoringNavigation: WKNavigation?
+    /// 復元後、復元直後の SPA の初期化による History API の遷移を訪問として記録しないための抑止。
+    /// ユーザー起点のナビゲーション開始で解除するほか、復元の読み込み完了から一定時間で解除する (pushState だけで遷移する SPA でユーザー操作を記録するため)
+    private var isSuppressingRestoredVisits = false
+    /// 復元の読み込み完了後に抑止を続ける時間。SPA の初期化 (replaceState 等) は読み込み直後に集中するため、その後のユーザー操作を取りこぼさない短さにした
+    private static let restoredVisitSuppressionGrace: Duration = .seconds(2)
     /// KVO 監視。このインスタンスの寿命に合わせて解除する
     private var observations: [NSKeyValueObservation] = []
 
@@ -45,6 +59,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 Task { @MainActor in
                     self.url = changedURL
                     self.onNavigate?(changedURL)
+                    // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する。
+                    // 同じターンで pushState が続くと後の KVO で webView.url が進んでいるため、捕捉した changedURL を記録する
+                    if !self.webView.isLoading, !self.isSuppressingRestoredVisits {
+                        self.notifyVisitIfWebPage(url: changedURL)
+                    }
                 }
             },
             webView.observe(\.title) { [weak self] _, _ in
@@ -53,6 +72,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 }
                 Task { @MainActor in
                     self.onStateChange?()
+                    // 読み込み完了後にタイトルが決まるページや、未読件数をタイトルに出すページのために、履歴のタイトルだけを更新する (順序と訪問日時は変えない)
+                    if let url = self.webView.url, self.isWebPage(url: url), !self.isShowingCertificateWarning, let title = self.title {
+                        self.onTitleChange?(url, title)
+                    }
                 }
             },
             webView.observe(\.estimatedProgress) { [weak self] _, _ in
@@ -103,7 +126,15 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         webView.load(URLRequest(url: url))
     }
 
+    /// セッション復元による読み込み。完了しても履歴には記録しない
+    func loadRestoredURL() {
+        isSuppressingRestoredVisits = true
+        restoringNavigation = webView.load(URLRequest(url: url))
+    }
+
     func load(url: URL) {
+        // アドレスバーやブックマークからの読み込みは利用者の操作なので、復元に伴う訪問の抑止を終える
+        isSuppressingRestoredVisits = false
         webView.load(URLRequest(url: url))
     }
 
@@ -119,9 +150,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// ページのタイトル。無題なら nil
+    /// ページのタイトル。無題なら nil。読み込み中は前のページのタイトルが残っていて現在の URL に属さないため nil
     var title: String? {
-        webView.title.flatMap { $0.isEmpty ? nil : $0 }
+        guard !webView.isLoading else {
+            return nil
+        }
+        return webView.title.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     func webView(
@@ -219,13 +253,79 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         return await alert.beginSheetModal(for: window)
     }
 
-    // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定)
+    // MARK: ナビゲーション (証明書エラーの警告ページ・ダウンロードの判定・履歴)
+
+    /// 警告 HTML 自体の読み込み。この開始と完了では証明書エラーの状態を解除しない
+    private var certificateWarningNavigation: WKNavigation?
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard navigation !== certificateWarningNavigation else {
+            return
+        }
+        isShowingCertificateWarning = false
         certificateFailedURL = nil
+        certificateWarningNavigation = nil
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let restoringNavigation, navigation === restoringNavigation {
+            self.restoringNavigation = nil
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: WebPane.restoredVisitSuppressionGrace)
+                self?.isSuppressingRestoredVisits = false
+            }
+            return
+        }
+        restoringNavigation = nil
+        // 復元に伴う自動遷移 (location 変更・meta refresh・認証リダイレクト) の完了は訪問として記録しない
+        guard !isSuppressingRestoredVisits else {
+            return
+        }
+        notifyVisitIfWebPage()
+        // 読み込み中は title を nil にしているため、その間の document.title の変化は通知されない。完了時点の確定タイトルをここで通知する
+        if let url = webView.url, isWebPage(url: url), !isShowingCertificateWarning, let title {
+            onTitleChange?(url, title)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        if navigation === restoringNavigation {
+            restoringNavigation = nil
+            isSuppressingRestoredVisits = false
+        }
+    }
+
+    private func isWebPage(url: URL) -> Bool {
+        WebPane.isWebPage(url: url)
+    }
+
+    /// http / https のページか。スキームは大小文字を区別しない (`HTTPS://example.com` も有効な URL)
+    static func isWebPage(url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "http" || scheme == "https"
+    }
+
+    /// http / https のページだけを履歴に記録する (about:blank・証明書の警告ページ・セッション復元の読み込みは記録しない)
+    private func notifyVisitIfWebPage(url: URL? = nil) {
+        guard let url = url ?? webView.url, isWebPage(url: url), !isShowingCertificateWarning else {
+            return
+        }
+        onVisit?(url, title ?? url.host() ?? url.absoluteString)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        // 復元したページの自動遷移 (location 変更・meta refresh・認証リダイレクト) は復元の一部として履歴に記録しない。
+        // 利用者の操作 (リンク・フォーム送信・戻る/進む・再読み込み) が起きた時点で抑止を終える
+        switch navigationAction.navigationType {
+        case .linkActivated, .formSubmitted, .formResubmitted, .backForward, .reload:
+            isSuppressingRestoredVisits = false
+        case .other:
+            break
+        @unknown default:
+            break
+        }
         // ダウンロードへの変換はトップレベルの操作に限る (隠し iframe からスクリプトで download 属性のリンクを起動して
         // Downloads へ大量保存させない。response 側の制限と同じ理由)
         if navigationAction.shouldPerformDownload {
@@ -246,14 +346,19 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 証明書エラー (信頼できない・期限切れ・ホスト名不一致等) は WebKit が既定で通さない。その時は白紙ではなく警告ページを出す。
     /// 例外的に通す手段は持たない (作者の用途では自己署名の開発サーバーは http で使う)
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        if navigation === restoringNavigation {
+            restoringNavigation = nil
+            isSuppressingRestoredVisits = false
+        }
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain, WebPane.certificateErrorCodes.contains(nsError.code),
               let failedURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL else {
             return
         }
-        // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)
+        // baseURL に失敗した URL を渡し、アドレスバーにそのままの URL が残るようにする (再読み込みで再試行できる)。警告ページは履歴に記録しない
+        isShowingCertificateWarning = true
         certificateFailedURL = failedURL
-        webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
+        certificateWarningNavigation = webView.loadHTMLString(WebPane.certificateWarningHTML(url: failedURL, message: nsError.localizedDescription), baseURL: failedURL)
     }
 
     /// NSURLError の証明書関連のコード (-1200 SecureConnectionFailed 〜 -1206 ClientCertificateRequired)

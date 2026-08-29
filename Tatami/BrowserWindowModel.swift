@@ -18,11 +18,13 @@ final class BrowserWindowModel {
         case find
     }
 
-    /// 一覧から選ぶ操作 (choose-window / choose-session)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
+    /// 一覧から選ぶ操作 (choose-window / choose-session / ブックマーク)。表示中は j / k / 数字 / Enter / Escape をこの一覧の操作に使う
     enum Chooser: Equatable {
         case window
         /// 保存済みセッションの名前一覧
         case session([String])
+        /// ブックマークの一覧。x で選択中の項目を削除する
+        case bookmark
     }
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
@@ -80,6 +82,12 @@ final class BrowserWindowModel {
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
+    /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
+    var browsingData: BrowsingData {
+        BrowsingDataStore.shared.data
+    }
+    /// アドレスバーの候補で選択中の添字。nil なら未選択 (入力そのものを開く)
+    private(set) var addressSuggestionIndex: Int?
     /// 一覧で選択中の添字
     private(set) var chooserSelectionIndex = 0
     /// detach の要求回数。View が onChange で拾って macOS のウィンドウを閉じる
@@ -155,6 +163,7 @@ final class BrowserWindowModel {
         terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.saveNow()
+                BrowsingDataStore.shared.saveNow()
             }
         }
     }
@@ -165,6 +174,7 @@ final class BrowserWindowModel {
             return
         }
         saveNow()
+        BrowsingDataStore.shared.saveNow()
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
         DownloadManager.shared.unsubscribe(model: self)
@@ -580,6 +590,8 @@ final class BrowserWindowModel {
             let text = arguments.joined(separator: " ")
             addressText = text
             navigate(text: text)
+        case "bookmark":
+            toggleBookmark()
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
@@ -721,9 +733,87 @@ final class BrowserWindowModel {
             return windows.map(\.name)
         case .session(let names):
             return names
+        case .bookmark:
+            return browsingData.bookmarks.map { "\($0.title)  \($0.url.absoluteString)" }
         case nil:
             return []
         }
+    }
+
+    /// アドレスバーの入力に対する候補
+    var addressSuggestions: [BrowsingData.Suggestion] {
+        browsingData.suggestions(prefix: addressText)
+    }
+
+    /// 候補を上下キーで選ぶ。nil (未選択) → 0 → … → 末尾 → nil と巡回する
+    func moveAddressSuggestion(delta: Int) {
+        let count = addressSuggestions.count
+        guard count > 0 else {
+            addressSuggestionIndex = nil
+            return
+        }
+        switch (addressSuggestionIndex, delta) {
+        case (nil, let d) where d > 0:
+            addressSuggestionIndex = 0
+        case (nil, _):
+            addressSuggestionIndex = count - 1
+        case (let index?, let d):
+            let next = index + d
+            addressSuggestionIndex = (0..<count).contains(next) ? next : nil
+        }
+    }
+
+    /// アドレスバーの入力を開く。候補を選んでいればその URL、そうでなければ入力そのものを解決する
+    func submitAddressBar() {
+        if let index = addressSuggestionIndex, addressSuggestions.indices.contains(index) {
+            let url = addressSuggestions[index].url
+            addressText = url.absoluteString
+            addressSuggestionIndex = nil
+            currentWindow.focusedPane.load(url: url)
+            webContentFocusRequestCount += 1
+            return
+        }
+        addressSuggestionIndex = nil
+        navigate(text: addressText)
+    }
+
+    /// 入力が変わったら候補の選択を解除する
+    func addressTextDidChange() {
+        addressSuggestionIndex = nil
+    }
+
+    /// 表示中のページをブックマークする (`:bookmark`)。既にあれば解除する (トグル)
+    func toggleBookmark() {
+        let pane = currentWindow.focusedPane
+        guard WebPane.isWebPage(url: pane.url) else {
+            statusMessage = "このページはブックマークできない: \(pane.url.absoluteString)"
+            return
+        }
+        if browsingData.isBookmarked(url: pane.url) {
+            BrowsingDataStore.shared.removeBookmark(url: pane.url)
+            statusMessage = "ブックマークを解除した: \(pane.url.absoluteString)"
+        } else {
+            // 読み込み中はタイトルが未確定のためホスト名を仮に入れ、確定したら置き換える
+            BrowsingDataStore.shared.addBookmark(url: pane.url, title: pane.title ?? pane.url.host() ?? pane.url.absoluteString, isTitleProvisional: pane.title == nil)
+            statusMessage = "ブックマークした: \(pane.url.absoluteString)"
+        }
+    }
+
+    /// ブックマークの一覧を開く (prefix + b)
+    func beginChooseBookmark() {
+        cancelPrompt()
+        cancelPrefix()
+        chooserSelectionIndex = 0
+        chooser = .bookmark
+    }
+
+    /// 訪問を履歴に記録する
+    private func recordVisit(url: URL, title: String) {
+        // 表示されなかったモデル (SwiftUI が作って捨てた @State の初期値等) の初期読み込みを履歴にしない
+        guard isActive else {
+            return
+        }
+        BrowsingDataStore.shared.recordVisit(url: url, title: title)
     }
 
     /// 一覧のキー操作。一覧を閉じるまで他のキーは消費する
@@ -738,6 +828,15 @@ final class BrowserWindowModel {
             confirmChooser(index: chooserSelectionIndex)
         case "Escape", "q":
             chooser = nil
+        case "x" where chooser == .bookmark:
+            guard browsingData.bookmarks.indices.contains(chooserSelectionIndex) else {
+                return
+            }
+            BrowsingDataStore.shared.removeBookmark(url: browsingData.bookmarks[chooserSelectionIndex].url)
+            chooserSelectionIndex = min(chooserSelectionIndex, max(browsingData.bookmarks.count - 1, 0))
+            if browsingData.bookmarks.isEmpty {
+                chooser = nil
+            }
         default:
             if let number = Int(keyStroke.key), number < count {
                 confirmChooser(index: number)
@@ -756,6 +855,14 @@ final class BrowserWindowModel {
                 return
             }
             attach(sessionName: names[index])
+        case .bookmark:
+            guard browsingData.bookmarks.indices.contains(index) else {
+                return
+            }
+            let url = browsingData.bookmarks[index].url
+            addressText = url.absoluteString
+            currentWindow.focusedPane.load(url: url)
+            webContentFocusRequestCount += 1
         case nil:
             break
         }
@@ -899,6 +1006,8 @@ final class BrowserWindowModel {
             beginFindPrompt()
         case .setDefaultBrowser:
             setAsDefaultBrowser()
+        case .chooseBookmark:
+            beginChooseBookmark()
         case .sourceFile(let path):
             // 相対パスは設定ファイルのディレクトリを基準にする (GUI から起動したアプリのカレントディレクトリは当てにならない)
             reload(
@@ -950,6 +1059,12 @@ final class BrowserWindowModel {
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
+        }
+        window.onVisit = { [weak self] url, title in
+            self?.recordVisit(url: url, title: title)
+        }
+        window.onTitleChange = { url, title in
+            BrowsingDataStore.shared.updateTitle(url: url, title: title)
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {
