@@ -61,7 +61,10 @@ enum LoginFormScript {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
           return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
         });
-        const explicit = candidates.find((input) => /username|email|user|login|account|id/i.test(`${input.autocomplete} ${input.name} ${input.id}`));
+        // autocomplete=username / email の明示を最優先し、次に名前・id の語で探す (`id` は tenant-id 等に部分一致しないよう語として扱う)
+        const marked = candidates.find((input) => hasAutocomplete(input, 'username') || hasAutocomplete(input, 'email'));
+        if (marked) { return marked; }
+        const explicit = candidates.find((input) => /username|email|user|login|account|(^|[^a-z])id($|[^a-z])/i.test(`${input.name} ${input.id}`));
         if (explicit) { return explicit; }
         const before = candidates.filter((input) => input.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING);
         return before[before.length - 1] || candidates[0] || null;
@@ -202,18 +205,21 @@ enum LoginFormScript {
         }
         return filled.size > 0;
       };
+      // 充填できるパスワード欄 (現在の DOM から)。登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れず、
+      // current-password を優先する。可視で操作できる欄だけを対象にする (非表示の honeypot に平文を渡さない)
+      const findFillablePasswordField = () => {
+        const usable = Array.from(document.querySelectorAll('input[type="password"]'))
+          .filter((field) => !hasAutocomplete(field, 'new-password') && isVisible(field) && !field.matches(':disabled') && !field.readOnly);
+        return usable.find((field) => hasAutocomplete(field, 'current-password')) || usable[0];
+      };
       window.__tatamiFill = (username, password) => {
-        // 登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れない。current-password を優先する
-        const fields = Array.from(document.querySelectorAll('input[type="password"]'))
-          .filter((field) => !hasAutocomplete(field, 'new-password'));
-        // 可視で操作できる欄だけを対象にする。非表示の欄 (honeypot 等) へ充填するとページのスクリプトに平文を渡してしまう
-        const usable = fields.filter((field) => isVisible(field) && !field.matches(':disabled') && !field.readOnly);
-        const passwordField = usable.find((field) => hasAutocomplete(field, 'current-password')) || usable[0];
+        const passwordField = findFillablePasswordField();
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
         if (usernameField && username) { setValue(usernameField, username); }
-        // ユーザー名の input / change でフォームを再描画するページでは、保持していたパスワード欄が DOM から外れていることがあるため再探索する
-        const target = passwordField.isConnected ? passwordField : (usable.find((field) => field.isConnected) || null);
+        // ユーザー名の input / change でフォームを再描画するページでは、保持していたパスワード欄が DOM から外れていることがあるため、
+        // 現在の DOM から操作できる欄を探し直す
+        const target = passwordField.isConnected ? passwordField : (findFillablePasswordField() || null);
         if (!target || !target.isConnected) { return false; }
         setValue(target, password);
         target.focus();
@@ -221,7 +227,7 @@ enum LoginFormScript {
       };
       post();
       // 既存の input の type を後から password に変えるページも検出する
-      new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type'] });
+      new MutationObserver(post).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete'] });
       // Back/Forward Cache から復元されたページは pagehide で状態を消した後、初期化が再実行されないため、現在の状態を送り直す
       window.addEventListener('pageshow', (event) => {
         if (!event.persisted) { return; }
