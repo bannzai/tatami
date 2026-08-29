@@ -32,6 +32,8 @@ final class TatamiConfigStore {
             baseDirectory: TatamiConfigLoader.defaultFileURL.deletingLastPathComponent().path(percentEncoded: false)
         )
         config = updated
+        // 全ウィンドウへの反映 (applyConfigToAllWindows) は loadErrors を参照するため、コマンドの結果もここへ載せる
+        loadErrors = errors
         return errors
     }
 
