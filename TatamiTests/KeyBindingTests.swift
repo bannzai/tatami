@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 @testable import Tatami
 
@@ -90,5 +91,16 @@ struct KeyBindingTests {
 
     @Test func cancelledStateIsIdle() {
         #expect(PrefixKeyState.awaitingCommand.cancelled == .idle)
+    }
+
+    @Test @MainActor func capsLockUppercasesLetterKeys() throws {
+        func stroke(flags: NSEvent.ModifierFlags, characters: String) throws -> KeyStroke {
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: "x", isARepeat: false, keyCode: 7))
+            return try #require(KeyStroke.candidates(event: event).first)
+        }
+        #expect(try stroke(flags: [], characters: "x").key == "x")
+        #expect(try stroke(flags: [.shift], characters: "X").key == "X")
+        #expect(try stroke(flags: [.capsLock], characters: "X").key == "X")
+        #expect(try stroke(flags: [.capsLock, .shift], characters: "x").key == "x")
     }
 }
