@@ -41,9 +41,19 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         download.delegate = self
     }
 
+    /// サーバー由来の suggestedFilename を 1 つのファイル名に制限する (`../` などのパス区切りで Downloads の外へ書かせない)
+    static func sanitizedFileName(_ suggested: String) -> String {
+        let name = (suggested as NSString).lastPathComponent
+        // 空・カレント・親ディレクトリは保存名にならないため既定名にする
+        if name.isEmpty || name == "." || name == ".." {
+            return "download"
+        }
+        return name
+    }
+
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
         let directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        let destinationURL = uniqueFileURL(directoryURL: directoryURL, fileName: suggestedFilename)
+        let destinationURL = uniqueFileURL(directoryURL: directoryURL, fileName: DownloadManager.sanitizedFileName(suggestedFilename))
         let entry = Entry(destinationURL: destinationURL)
         entry.observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
             guard let self, let download else {
