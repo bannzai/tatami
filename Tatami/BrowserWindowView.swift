@@ -110,11 +110,19 @@ struct BrowserWindowView: View {
     private var statusLine: some View {
         HStack {
             if let prompt = model.prompt {
-                Text(prompt == .renameWindow ? "(rename-window)" : "(rename-session)")
+                Text(promptLabel(prompt: prompt))
                     .accessibilityIdentifier("promptLabel")
                 TextField("", text: $model.promptText)
                     .textFieldStyle(.plain)
                     .focused($isPromptFocused)
+                    .onKeyPress(.upArrow) {
+                        model.recallOlderCommand()
+                        return model.prompt == .command ? .handled : .ignored
+                    }
+                    .onKeyPress(.downArrow) {
+                        model.recallNewerCommand()
+                        return model.prompt == .command ? .handled : .ignored
+                    }
                     // onChange(of: prompt) と同じ更新で入力欄が現れる時に FocusState の反映が抜けることがあるため、出現時にも求める
                     .onAppear {
                         isPromptFocused = true
@@ -142,6 +150,18 @@ struct BrowserWindowView: View {
         .frame(height: 20)
         .background(.bar)
         .accessibilityIdentifier("statusLine")
+    }
+
+    /// プロンプトの種類の表示。コマンドプロンプトは tmux と同じく `:` を出す
+    private func promptLabel(prompt: BrowserWindowModel.Prompt) -> String {
+        switch prompt {
+        case .renameWindow:
+            return "(rename-window)"
+        case .renameSession:
+            return "(rename-session)"
+        case .command:
+            return ":"
+        }
     }
 
     /// choose-window / choose-session の一覧。j / k / 数字 / Enter / Escape はモデルのキー処理で受ける

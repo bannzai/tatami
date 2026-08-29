@@ -181,6 +181,8 @@ enum BrowserCommand: Hashable, Sendable {
     case goBack
     case goForward
     case reload
+    /// status line のコマンドプロンプトを開く (prefix + :)
+    case commandPrompt
     /// セッションを保存したままウィンドウを閉じる (prefix + d)
     case detachClient
     case chooseSession
@@ -244,6 +246,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "forward"
         case .reload:
             return "reload"
+        case .commandPrompt:
+            return "command-prompt"
         case .detachClient:
             return "detach-client"
         case .chooseSession:
@@ -292,7 +296,7 @@ enum BrowserCommand: Hashable, Sendable {
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
-        .detachClient, .chooseSession, .renameSession,
+        .detachClient, .chooseSession, .renameSession, .commandPrompt,
     ]
 }
 
@@ -334,6 +338,7 @@ struct KeyBindingTable: Equatable, Sendable {
             ("d", .detachClient),
             ("s", .chooseSession),
             ("$", .renameSession),
+            (":", .commandPrompt),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }

@@ -19,6 +19,22 @@ final class TatamiConfigStore {
         loadErrors = loaded.errors
     }
 
+    /// コマンドプロンプトからの 1 行 (`set` / `bind` / `unbind` / `source-file`) を現在の設定に適用する。設定ファイルと同じ解釈を使う
+    func apply(line: String) -> [TatamiConfigError] {
+        var updated = config
+        let errors = TatamiConfigParser.apply(
+            text: line,
+            config: &updated,
+            fileName: "command-prompt",
+            includeResolver: { path in
+                try String(contentsOf: URL(filePath: path), encoding: .utf8)
+            },
+            baseDirectory: TatamiConfigLoader.defaultFileURL.deletingLastPathComponent().path(percentEncoded: false)
+        )
+        config = updated
+        return errors
+    }
+
     /// 設定ファイルを読み直す。ファイルが無い・読めない (ディレクトリ・権限不足) 時は現在の設定を維持し、エラーだけを返す。
     /// 既定ファイルが無い時の再読込も現在の設定のままにする (既定値へ戻したい時はファイルを空にする)
     @discardableResult
