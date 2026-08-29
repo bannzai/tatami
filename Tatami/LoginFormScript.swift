@@ -55,8 +55,9 @@ enum LoginFormScript {
       const hasAutocomplete = (field, token) => (field.autocomplete || field.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/).includes(token);
       // form 属性で関連付けられた (DOM 上はフォームの子孫でない) 欄も含めるため、フォームでは elements を使う
       const inputsIn = (scope) => Array.from(scope.elements ? scope.elements : scope.querySelectorAll('input')).filter((element) => element.tagName === 'INPUT');
-      const findUsernameField = (passwordField) => {
-        const form = passwordField.form || document;
+      // form の無い UI では、クリック処理が渡した区画 (scope) の中からユーザー名欄を探す (別区画のメール欄を拾わない)
+      const findUsernameField = (passwordField, scope) => {
+        const form = passwordField.form || scope || document;
         const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
           return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
