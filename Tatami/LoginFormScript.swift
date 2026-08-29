@@ -15,7 +15,8 @@ enum LoginFormScript {
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
-        const hasPassword = !!document.querySelector('input[type="password"]');
+        // 充填できる欄 (new-password だけのフォームは対象外) があるフレームだけを充填先の候補として知らせる
+        const hasPassword = Array.from(document.querySelectorAll('input[type="password"]')).some((field) => !hasAutocomplete(field, 'new-password'));
         if (hasPassword === lastHasPassword) { return; }
         lastHasPassword = hasPassword;
         try { window.webkit.messageHandlers.tatamiLoginForm.postMessage({ hasPassword }); } catch (e) {}
