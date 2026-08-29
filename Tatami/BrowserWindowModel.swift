@@ -1028,11 +1028,12 @@ final class BrowserWindowModel {
             do {
                 // 別ウィンドウで同じアカウントを先に保存していることがあるため、保存の直前に同じオリジン・ユーザー名を再照合し、
                 // 既にあれば新規保存せず更新にする (同じ Keychain を複数ウィンドウが参照するため)
-                if let existing = try credentialStore.credentials(host: url.host()?.lowercased() ?? "").first(where: {
-                    $0.url.scheme?.lowercased() == url.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: url)
+                if let existing = try credentialStore.all().first(where: {
+                    CredentialMatcher.host(url: $0.url) == CredentialMatcher.host(url: url)
+                        && $0.url.scheme?.lowercased() == url.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: url)
                         && $0.username.unicodeScalars.elementsEqual(username.unicodeScalars)
                 }) {
-                    if existing.password != password {
+                    if !existing.password.unicodeScalars.elementsEqual(password.unicodeScalars) {
                         var updated = existing
                         updated.password = password
                         updated.updatedAt = Date()
@@ -1049,18 +1050,20 @@ final class BrowserWindowModel {
             } catch {
                 statusMessage = "保存に失敗: \(error)"
             }
-        case .update(var credential, let password):
-            credential.password = password
-            credential.updatedAt = Date()
+        case .update(let credential, let password):
             do {
-                try credentialStore.save(credential: credential)
+                // 提案を出してから承認するまでに別ウィンドウ・インポートが同じ項目を変えていることがあるため、
+                // 最新の項目を id で読み直し、その note / URL を保ったままパスワードだけを更新する
+                var updated = (try credentialStore.all().first { $0.id == credential.id }) ?? credential
+                updated.password = password
+                updated.updatedAt = Date()
+                try credentialStore.save(credential: updated)
                 syncCredentialIdentities()
-                statusMessage = "更新した: \(credential.username)"
+                statusMessage = "更新した: \(updated.username)"
             } catch {
                 statusMessage = "更新に失敗: \(error)"
             }
         case .generatePassword:
-            let password = config.passwordGenerator.generate()
             guard let pane else {
                 return
             }
@@ -1070,8 +1073,15 @@ final class BrowserWindowModel {
                 statusMessage = "ページが変わったため提案を取り消した"
                 return
             }
+            let generator = config.passwordGenerator
             Task { @MainActor [weak self] in
                 // 非同期に入るまでに文書が置き換わっていることがあるため、JavaScript を呼ぶ直前にも世代を確かめる
+                guard pane.documentGeneration == generation else {
+                    self?.statusMessage = "ページが変わったため提案を取り消した"
+                    return
+                }
+                // 対象欄の maxLength に収めて生成する (切り詰めると必須文字種が落ちるため、最初からその長さで作る)
+                let password = generator.generate(maxLength: await pane.newPasswordMaxLength())
                 guard pane.documentGeneration == generation else {
                     self?.statusMessage = "ページが変わったため提案を取り消した"
                     return
