@@ -422,7 +422,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             .filter { frame in frame.isMainFrame || WebPane.originURL(frame: frame).flatMap { origin in webView.url.map { CredentialMatcher.sameOrigin(credentialURL: origin, pageURL: $0) } } == true }
             .sorted { $0.isMainFrame && !$1.isMainFrame }
         for frame in frames {
-            let result = try await webView.callAsyncJavaScript(
+            // 候補フレームが充填の途中で削除・再読み込みされると callAsyncJavaScript が throw する。
+            // その候補は飛ばして次のフレームを試す (最後まで充填できなければ false)
+            let result = try? await webView.callAsyncJavaScript(
                 "return window.__tatamiFillNewPassword(password);",
                 arguments: ["password": password],
                 in: frame,
