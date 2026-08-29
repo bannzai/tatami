@@ -40,6 +40,25 @@ struct CredentialLockTests {
         #expect(authenticated == 2)
     }
 
+    @Test func concurrentRequestsShareOneAuthentication() async throws {
+        var authenticated = 0
+        let lock = CredentialLock { _ in
+            authenticated += 1
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        lock.apply(lockTimeout: 60)
+        let first = Task {
+            try await lock.ensureUnlocked(reason: "a")
+        }
+        let second = Task {
+            try await lock.ensureUnlocked(reason: "b")
+        }
+        try await first.value
+        try await second.value
+        #expect(authenticated == 1)
+        #expect(!lock.isLocked)
+    }
+
     @Test func lockDuringAuthenticationInvalidatesPendingRequest() async {
         let lock = CredentialLock { _ in
             try await Task.sleep(for: .milliseconds(50))

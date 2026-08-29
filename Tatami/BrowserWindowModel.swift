@@ -239,6 +239,10 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
         DownloadManager.shared.unsubscribe(model: self)
+        if let lockObservation {
+            NotificationCenter.default.removeObserver(lockObservation)
+            self.lockObservation = nil
+        }
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -910,7 +914,8 @@ final class BrowserWindowModel {
         let byCurrentPassword = username.isEmpty && !currentPassword.isEmpty
             ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
             : []
-        let matched = existing.first(where: { $0.username == username }) ?? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
+        // ユーザー名も正規化形だけが違う値を別アカウントとして扱う (PasswordImporter.matchKey と同じ) ため、スカラー値で比較する
+        let matched = existing.first(where: { $0.username.unicodeScalars.elementsEqual(username.unicodeScalars) }) ?? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
         if username.isEmpty, byCurrentPassword.count > 1 {
             statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
             return
@@ -1122,8 +1127,15 @@ final class BrowserWindowModel {
     /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
     /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
     private func fill(credential: Credential, pane: WebPane) {
-        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)
+        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)。
+        // 本人確認の間に同じ URL の別文書や別ページへ移っていたら、確認した時とは別のフォームへ充填しない
+        let url = pane.url
+        let generation = pane.documentGeneration
         withUnlockedCredentials(reason: "\(credential.username) を充填する") { [weak self] in
+            guard pane.url == url, pane.documentGeneration == generation else {
+                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+                return
+            }
             self?.fillUnlocked(credential: credential, pane: pane)
         }
     }
@@ -1140,21 +1152,24 @@ final class BrowserWindowModel {
             return
         }
         Task { @MainActor [weak self] in
-            // 非同期に入るまでにリダイレクトや History API の遷移が起きていることがあるため、JavaScript を呼ぶ直前に
-            // トップレベルと充填先フレーム (別オリジンの iframe に欄がある場合) の URL を改めて照合する
-            // 充填先が iframe の場合はトップレベルの候補検索 (同じ eTLD+1 を許す) より厳しく、資格情報と同じオリジンだけに渡す
-            guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url), let frameURL = pane.loginFormURL,
-                  pane.isLoginFormInSubframe
-                    ? CredentialMatcher.sameOrigin(credentialURL: credential.url, pageURL: frameURL)
-                    : CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
-                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
+            // 非同期に入るまでにリダイレクトや History API の遷移・ペインの破棄 (window.close 等) が起きていることがあるため、
+            // JavaScript を呼ぶ直前にペインの所属とトップレベルの URL を改めて照合する。
+            // 充填先の iframe は資格情報と同じオリジンのものを WebPane が選ぶ (別オリジンの iframe には渡さない)
+            guard let self else {
+                return
+            }
+            guard windows.contains(where: { $0.panes[pane.id] === pane }),
+                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
+                  let frameURL = pane.loginFormURL(credentialURL: credential.url),
+                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
+                statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
                 return
             }
             do {
                 let filled = try await pane.fill(credential: credential)
-                self?.statusMessage = filled ? "充填した: \(credential.username)" : "ログインフォームが見つからない"
+                statusMessage = filled ? "充填した: \(credential.username)" : "ログインフォームが見つからない"
             } catch {
-                self?.statusMessage = "充填に失敗: \(error)"
+                statusMessage = "充填に失敗: \(error)"
             }
         }
     }

@@ -32,20 +32,34 @@ final class KeychainCredentialStore: CredentialStore {
     }
 
     func all() throws -> [Credential] {
-        var query = baseQuery()
-        query[kSecMatchLimit as String] = kSecMatchLimitAll
-        query[kSecReturnData as String] = true
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound {
+        // ファイルベースのログインキーチェーン (entitlement 無しの署名で使う) は複数件の kSecReturnData を errSecParam (-50) で拒むため、
+        // 先に属性 (account) だけを列挙し、データは 1 件ずつ取る (Data Protection Keychain でも同じ手順で動く)
+        var listQuery = baseQuery()
+        listQuery[kSecMatchLimit as String] = kSecMatchLimitAll
+        listQuery[kSecReturnAttributes as String] = true
+        var listResult: CFTypeRef?
+        let listStatus = SecItemCopyMatching(listQuery as CFDictionary, &listResult)
+        if listStatus == errSecItemNotFound {
             return []
         }
-        guard status == errSecSuccess, let items = result as? [Data] else {
-            throw KeychainError(status: status)
+        guard listStatus == errSecSuccess, let attributes = listResult as? [[String: Any]] else {
+            throw KeychainError(status: listStatus)
         }
         let decoder = JSONDecoder()
-        // 復号できない項目 (旧スキーマ・破損) を黙って捨てると保存済みのパスワードが消えたように見えるため、エラーとして伝える
-        return try items.map { try decoder.decode(Credential.self, from: $0) }.sorted { $0.updatedAt > $1.updatedAt }
+        let credentials = try attributes.compactMap { $0[kSecAttrAccount as String] as? String }.map { account -> Credential in
+            var query = baseQuery()
+            query[kSecAttrAccount as String] = account
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            query[kSecReturnData as String] = true
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            guard status == errSecSuccess, let data = result as? Data else {
+                throw KeychainError(status: status)
+            }
+            // 復号できない項目 (旧スキーマ・破損) を黙って捨てると保存済みのパスワードが消えたように見えるため、エラーとして伝える
+            return try decoder.decode(Credential.self, from: data)
+        }
+        return credentials.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func save(credential: Credential) throws {

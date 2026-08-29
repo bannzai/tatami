@@ -340,5 +340,12 @@ struct PasswordCSVTests {
             now: now
         )
         #expect(result.added == 2)
+        // http(s) の userinfo はオリジンに含めない
+        let web = PasswordImporter.merge(
+            rows: [PasswordCSV.Row(name: "", url: "https://example.com/", username: "alice", password: "dummy-new", note: "")],
+            existing: [makeCredential(url: "https://alice@example.com/", username: "alice", password: "dummy-old", date: past)],
+            now: now
+        )
+        #expect(web.updated == 1)
     }
 }

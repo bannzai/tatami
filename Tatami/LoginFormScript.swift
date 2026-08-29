@@ -34,6 +34,8 @@ enum LoginFormScript {
       const isVisible = (element) => {
         const rect = element.getBoundingClientRect();
         if (!(rect.width > 0 && rect.height > 0)) { return false; }
+        // 画面外 (left: -10000px 等) の honeypot に平文を入れないよう、ビューポートと交差していることも要求する
+        if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) { return false; }
         if (typeof element.checkVisibility === 'function') {
           return element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
         }
@@ -47,7 +49,7 @@ enum LoginFormScript {
         const form = passwordField.form || document;
         const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
-          return ['text', 'email', 'tel', 'username'].includes(type) && !input.disabled && !input.readOnly && isVisible(input);
+          return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
         });
         const explicit = candidates.find((input) => /username|email|user|login|account|id/i.test(`${input.autocomplete} ${input.name} ${input.id}`));
         if (explicit) { return explicit; }
@@ -58,17 +60,17 @@ enum LoginFormScript {
       // パスワード欄での Enter) を検出し、その時点のユーザー名・パスワードをネイティブへ渡す
       // 送信時に報告するパスワード欄。変更フォーム (現在・新規・確認) では新しいパスワード (autocomplete=new-password) を優先する
       // 可視で操作できる欄だけを対象にする (非表示の honeypot や無効化された欄を送信値として扱わない)
-      const usablePasswordFields = (scope) => Array.from(scope.querySelectorAll('input[type="password"]'))
+      const usablePasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
         .filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
       const passwordFieldToReport = (scope) => {
         const fields = usablePasswordFields(scope);
-        return fields.find((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields[0] || null;
+        return fields.find((field) => hasAutocomplete(field, 'new-password')) || fields[0] || null;
       };
       // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、新規の欄より前の欄)
       const currentPasswordValue = (scope, reported) => {
         const fields = usablePasswordFields(scope);
-        const current = fields.find((field) => (field.autocomplete || '').toLowerCase() === 'current-password')
-          || fields.find((field) => field !== reported && (field.autocomplete || '').toLowerCase() !== 'new-password');
+        const current = fields.find((field) => hasAutocomplete(field, 'current-password'))
+          || fields.find((field) => field !== reported && !hasAutocomplete(field, 'new-password'));
         return current && current !== reported ? current.value : '';
       };
       const capture = (scope) => {
@@ -87,7 +89,7 @@ enum LoginFormScript {
           return;
         }
         const usernameField = findUsernameField(passwordField);
-        const isNewPassword = (passwordField.autocomplete || '').toLowerCase() === 'new-password'
+        const isNewPassword = hasAutocomplete(passwordField, 'new-password')
           || (passwordField.form ? Array.from(passwordField.form.querySelectorAll('input[type="password"]')).filter(isVisible).length : 0) >= 2;
         try {
           send({
@@ -119,6 +121,8 @@ enum LoginFormScript {
       const postEditing = () => {
         send({ editing: isTextTarget(document.activeElement) });
       };
+      // 破棄される iframe (削除・再読み込み) は false 通知を送れないため、pagehide でこのフレームの状態を全て消してもらう
+      window.addEventListener('pagehide', () => send({ gone: true }));
       document.addEventListener('focusin', postEditing, true);
       document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
       postEditing();
@@ -131,7 +135,7 @@ enum LoginFormScript {
       const isNewPasswordForm = (scope) => {
         // 送信・充填側と同じく操作できる欄だけで判定する (表示用の disabled / readOnly の欄を 2 つ目と数えない)
         const fields = usablePasswordFields(scope);
-        return fields.some((field) => (field.autocomplete || '').toLowerCase() === 'new-password') || fields.length >= 2;
+        return fields.some((field) => hasAutocomplete(field, 'new-password')) || fields.length >= 2;
       };
       let lastHasNewPassword = null;
       const postNewPassword = () => {
@@ -147,13 +151,12 @@ enum LoginFormScript {
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
-        const visible = Array.from(document.querySelectorAll('input[type="password"]')).filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
-        const marked = visible.filter((field) => (field.autocomplete || '').toLowerCase() === 'new-password');
-        // 新規の欄が印付きでも、同じフォームの確認欄 (印無し) にも同じ値を入れる。現在のパスワード欄だけを除外する
-        const notCurrent = visible.filter((field) => (field.autocomplete || '').toLowerCase() !== 'current-password');
-        const fields = marked.length > 0
-          ? notCurrent.filter((field) => marked.includes(field) || marked.some((m) => m.form === field.form))
-          : notCurrent;
+        // 生成値は新規パスワードフォームと判定したフォーム (form 要素、または form に属さない欄の組) の欄にだけ入れる
+        // (同じ文書に並ぶ通常のログインフォームの入力済みパスワードを上書きしない)。現在のパスワード欄は保持する
+        const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm);
+        const formless = { querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) };
+        if (isNewPasswordForm(formless)) { scopes.push(formless); }
+        const fields = scopes.flatMap((scope) => usablePasswordFields(scope).filter((field) => !hasAutocomplete(field, 'current-password')));
         if (fields.length === 0) { return false; }
         fields.forEach((field) => setValue(field, password));
         return true;
@@ -163,7 +166,7 @@ enum LoginFormScript {
         const fields = Array.from(document.querySelectorAll('input[type="password"]'))
           .filter((field) => !hasAutocomplete(field, 'new-password'));
         // 可視で操作できる欄だけを対象にする。非表示の欄 (honeypot 等) へ充填するとページのスクリプトに平文を渡してしまう
-        const usable = fields.filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+        const usable = fields.filter((field) => isVisible(field) && !field.matches(':disabled') && !field.readOnly);
         const passwordField = usable.find((field) => hasAutocomplete(field, 'current-password')) || usable[0];
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
