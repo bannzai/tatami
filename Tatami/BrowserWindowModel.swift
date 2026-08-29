@@ -521,6 +521,8 @@ final class BrowserWindowModel {
         }
         currentWindowIndex = min(closingIndex, windows.count - 1)
         syncAddressTextToFocusedPane()
+        // 表示されたウィンドウで検出済みの登録フォームの生成提案を出す (select(windowIndex:) と同じ)
+        evaluateNewPasswordProposal()
     }
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
