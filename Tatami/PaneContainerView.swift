@@ -14,6 +14,10 @@ final class PaneContainerView: NSView {
     var onDividerDrag: ((_ dividerPath: [SplitSide], _ delta: Double) -> Void)?
     /// ペインがクリックされた時の通知先
     var onPaneClick: ((PaneID) -> Void)?
+    /// このウィンドウへのキー入力の通知先 (1 つの入力の候補を先頭から照合する)。true を返すと入力を消費し、WKWebView (Web ページ) へ渡さない
+    var onKeyDown: (([KeyStroke]) -> Bool)?
+    /// ウィンドウがキーウィンドウでなくなった時の通知先 (prefix 待ちの取り消し)
+    var onResignKey: (() -> Void)?
 
     private var paneTree = PaneTree()
     private var webViews: [PaneID: WKWebView] = [:]
@@ -23,6 +27,11 @@ final class PaneContainerView: NSView {
     private var lastDragLocation: CGPoint = .zero
     /// ウィンドウ内のクリックを WKWebView より先に見てフォーカス移動に使う監視。WKWebView はマウスイベントを自分で消費するため、responder chain では受け取れない
     private var clickMonitor: Any?
+    /// ウィンドウ内のキー入力を WKWebView より先に見て prefix キーを捕捉する監視。Web ページのテキスト入力にフォーカスがあっても prefix が効くようにする
+    private var keyMonitor: Any?
+    /// 消費したキーの keyCode の集合。押し続けた時のリピートと、対応する keyUp も同じ扱い (消費) にして Web ページへ流さないために keyUp まで覚える。
+    /// prefix を離す前に次のキーを押すロールオーバーでは複数のキーが同時に消費中になるため、1 つではなく集合で持つ
+    private var consumedKeyCodes: Set<UInt16> = []
 
     /// PaneTree の矩形は y が下向きに増える座標系で、AppKit の既定 (y が上向き) と合わないため反転する
     override var isFlipped: Bool { true }
@@ -140,14 +149,58 @@ final class PaneContainerView: NSView {
         draggingDivider = nil
     }
 
+    /// ウィンドウがキーウィンドウでなくなった時に消費中のキーを忘れる (離された keyUp は届かない)
+    private var resignKeyObserver: NSObjectProtocol?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
+        if let window {
+            resignKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    // 消費済みのキー記録はここでは消さない (押したまま別アプリへ移って戻った時のリピートも消費し続ける)。
+                    // 別アプリで離されて keyUp が届かなかった記録は、次のリピートでない keyDown で消える
+                    self?.onResignKey?()
+                }
+            }
+        }
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
         }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
         guard window != nil else {
             return
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, event.window === window else {
+                return event
+            }
+            if event.type == .keyUp {
+                return consumedKeyCodes.remove(event.keyCode) == nil ? event : nil
+            }
+            if event.isARepeat {
+                // リピートは最初の keyDown の扱いを引き継ぐ。消費したキーのリピートは捨て、ページへ渡したキーのリピートは
+                // prefix の判定やコマンドに使わずそのままページへ渡す (長押し中に prefix を押しても次のリピートがコマンドにならない)
+                return consumedKeyCodes.contains(event.keyCode) ? nil : event
+            }
+            // 別アプリへ移った間に離されたキーは keyUp が届かず集合に残るため、リピートでない keyDown が来た時点で古い記録を消す
+            consumedKeyCodes.remove(event.keyCode)
+            let keyStrokes = KeyStroke.candidates(event: event)
+            guard !keyStrokes.isEmpty else {
+                return event
+            }
+            let consumed = onKeyDown?(keyStrokes) == true
+            if consumed {
+                consumedKeyCodes.insert(event.keyCode)
+            }
+            return consumed ? nil : event
         }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, event.window === window else {
@@ -183,6 +236,12 @@ struct PaneContainer: NSViewRepresentable {
         }
         view.onPaneClick = { paneID in
             model.focus(paneID: paneID)
+        }
+        view.onKeyDown = { keyStrokes in
+            model.handle(keyStrokes: keyStrokes)
+        }
+        view.onResignKey = {
+            model.cancelPrefix()
         }
         return view
     }

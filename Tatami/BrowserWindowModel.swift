@@ -12,6 +12,10 @@ final class BrowserWindowModel {
     private(set) var panes: [PaneID: WebPane] = [:]
     /// アドレスバーに入力中のテキスト。フォーカス中のペインの URL に追随する
     var addressText = ""
+    /// prefix キーとコマンドの対応。tatami.conf (#7) の読み込みで差し替える
+    var keyBindings = KeyBindingTable.default
+    /// prefix キーの 2 ストローク検出の状態。status line に prefix 待ちを表示するために公開する
+    private(set) var prefixKeyState = PrefixKeyState.idle
 
     init() {
         let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
@@ -102,6 +106,66 @@ final class BrowserWindowModel {
     /// 境界線のドラッグ量を割合の変化として反映する
     func resize(dividerPath: [SplitSide], delta: Double) {
         paneTree.resize(dividerPath: dividerPath, delta: delta)
+    }
+
+    /// キー入力を prefix キーの検出に通し、アプリが消費したかどうかを返す。true なら Web ページへ渡さない
+    func handle(keyStroke: KeyStroke) -> Bool {
+        handle(keyStrokes: [keyStroke])
+    }
+
+    /// ウィンドウがキーウィンドウでなくなった時に prefix 待ちを取り消す (戻った後の最初のキーをコマンドとして消費しないため)
+    func cancelPrefix() {
+        prefixKeyState = prefixKeyState.cancelled
+    }
+
+    /// 1 つのキー入力の候補 (KeyStroke.candidates) をまとめて渡す
+    func handle(keyStrokes: [KeyStroke]) -> Bool {
+        guard !keyStrokes.isEmpty else {
+            return false
+        }
+        let handled = prefixKeyState.handling(keyStrokes: keyStrokes, table: keyBindings)
+        prefixKeyState = handled.state
+        switch handled.outcome {
+        case .passThrough:
+            return false
+        case .consume:
+            return true
+        case .perform(let command):
+            perform(command: command)
+            return true
+        }
+    }
+
+    /// キーバインド (と後続のコマンドプロンプト) から呼ばれる操作の入口
+    func perform(command: BrowserCommand) {
+        switch command {
+        case .splitWindowHorizontal:
+            split(axis: .horizontal)
+        case .splitWindowVertical:
+            split(axis: .vertical)
+        case .killPane:
+            closeFocusedPane()
+        case .selectPaneNext:
+            focusNext()
+        case .selectPaneLast:
+            focusLastPane()
+        case .selectPaneLeft:
+            focus(direction: .left)
+        case .selectPaneDown:
+            focus(direction: .down)
+        case .selectPaneUp:
+            focus(direction: .up)
+        case .selectPaneRight:
+            focus(direction: .right)
+        case .resizePaneZoom:
+            toggleZoom()
+        case .swapPaneUp:
+            swapWithPrevious()
+        case .swapPaneDown:
+            swapWithNext()
+        case .nextLayout:
+            applyNextLayout()
+        }
     }
 
     private func makePane(id: PaneID, url: URL) -> WebPane {
