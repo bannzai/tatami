@@ -255,25 +255,9 @@ enum PasswordImporter {
     /// 両方で持つことがあるため、URL 全体ではなくホスト名 (小文字) とユーザー名で照合する
     /// 突き合わせのキー。同じホストでもスキームやポートが違えば別のログイン先なのでオリジン (scheme + host + port) 単位にし、パスは無視する
     /// (Chrome はログインページとサイトのトップを同じサイトとして持つことがあるため)。既定ポートの明示 (https の 443 等) は省略と同一視する
-    /// IP アドレスのホストは表記 (`[::1]` と `[0:0:0:0:0:0:0:1]`、`::ffff:127.0.0.1` 等) が揃わないため、アドレスとして解釈して標準形にする。
-    /// 名前のホストはそのまま返す
+    /// IP アドレスの表記の正規化は CredentialMatcher と共有する (拡張ターゲットは CSV のコードを含まないため実体はそちらに置く)
     static func normalizedHost(host: String) -> String {
-        let bare = host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
-        var v6 = in6_addr()
-        if inet_pton(AF_INET6, bare, &v6) == 1 {
-            var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
-            if inet_ntop(AF_INET6, &v6, &buffer, socklen_t(INET6_ADDRSTRLEN)) != nil {
-                return "[\(String(cString: buffer))]"
-            }
-        }
-        var v4 = in_addr()
-        if inet_pton(AF_INET, bare, &v4) == 1 {
-            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-            if inet_ntop(AF_INET, &v4, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
-                return String(cString: buffer)
-            }
-        }
-        return host
+        CredentialMatcher.normalizedHost(host: host)
     }
 
     private static func matchKey(url: URL, username: String) -> String {
