@@ -49,7 +49,8 @@ final class KeychainPasskeyStore: PasskeyStore {
         }
         var item = query
         item.merge(attributes) { _, new in new }
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // 端末固有の鍵 (BE/BS 無しの宣言) をバックアップ・端末移行にも乗せない
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let addStatus = SecItemAdd(item as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw KeychainError(status: addStatus)

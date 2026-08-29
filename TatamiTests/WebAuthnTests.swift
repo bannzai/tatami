@@ -134,4 +134,10 @@ struct WebAuthnTests {
         let none = try authenticator.candidates(request: PasskeyAuthenticator.GetRequest(rpId: "example.com", challenge: "Yg", allowCredentialIDs: [Data([0])]), origin: origin)
         #expect(none.isEmpty)
     }
+
+    @Test func originStringBracketsIPv6() {
+        #expect(PasskeyAuthenticator.originString(url: URL(string: "https://[2001:db8::1]/")!) == "https://[2001:db8::1]")
+        #expect(PasskeyAuthenticator.originString(url: URL(string: "https://example.com:443/")!) == "https://example.com")
+        #expect(PasskeyAuthenticator.originString(url: URL(string: "https://example.com:8443/")!) == "https://example.com:8443")
+    }
 }

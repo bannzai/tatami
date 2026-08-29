@@ -120,8 +120,8 @@ enum PasskeyManager {
         let alert = NSAlert()
         alert.messageText = "Passkey を使う"
         alert.informativeText = reason
-        alert.addButton(withTitle: "許可")
-        alert.addButton(withTitle: "キャンセル")
+        alert.addButton(withTitle: "許可").setAccessibilityIdentifier("passkeyAllowButton")
+        alert.addButton(withTitle: "キャンセル").setAccessibilityIdentifier("passkeyCancelButton")
         return alert.runModal() == .alertFirstButtonReturn
     }
 
