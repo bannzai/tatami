@@ -99,8 +99,9 @@ struct KeyStroke: Hashable, Sendable {
               let character = characters.first, !character.isNewline else {
             return nil
         }
-        if event.modifierFlags.contains(.shift), character.isLetter {
-            // Shift + 英字は charactersIgnoringModifiers が小文字のままのため大文字にして区別する
+        // Shift + 英字は charactersIgnoringModifiers が小文字のままのため大文字にして区別する。Caps Lock も印字の大小に反映する
+        // (Caps Lock 中の Shift + 英字は小文字)
+        if event.modifierFlags.contains(.shift) != event.modifierFlags.contains(.capsLock), character.isLetter {
             self.key = String(character).uppercased()
         } else {
             self.key = String(character)

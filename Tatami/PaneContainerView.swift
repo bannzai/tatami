@@ -177,7 +177,8 @@ final class PaneContainerView: NSView {
         if let window {
             resignKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    self?.consumedKeyCodes.removeAll()
+                    // 消費済みのキー記録はここでは消さない (押したまま別アプリへ移って戻った時のリピートも消費し続ける)。
+                    // 別アプリで離されて keyUp が届かなかった記録は、次のリピートでない keyDown で消える
                     self?.onResignKey?()
                 }
             }
