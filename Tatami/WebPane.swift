@@ -312,6 +312,17 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         return message.frameInfo.request.url?.absoluteString ?? (message.frameInfo.isMainFrame ? "main" : "frame")
     }
 
+    /// 生成提案を出せるか (充填できるフレームがあるか) を集約して通知する。充填対象はトップレベルか、トップレベルと同じオリジンの iframe
+    private func updateHasNewPasswordForm() {
+        let aggregated = newPasswordFrames.values.contains { frame in
+            frame.isMainFrame || WebPane.originURL(frame: frame).flatMap { origin in webView.url.map { CredentialMatcher.sameOrigin(credentialURL: origin, pageURL: $0) } } == true
+        }
+        if aggregated != hasNewPasswordForm {
+            hasNewPasswordForm = aggregated
+            onNewPasswordFormChange?(aggregated)
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
@@ -323,9 +334,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             hasLoginForm = !loginFormFrames.isEmpty
             editingFrames.remove(key)
             isEditingText = !editingFrames.isEmpty
-            if newPasswordFrames.removeValue(forKey: key) != nil, newPasswordFrames.isEmpty, hasNewPasswordForm {
-                hasNewPasswordForm = false
-                onNewPasswordFormChange?(false)
+            if newPasswordFrames.removeValue(forKey: key) != nil {
+                updateHasNewPasswordForm()
             }
             return
         }
@@ -347,13 +357,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             }
             // 生成提案を出すのは、生成値を実際に入れられるフレーム (トップレベル、またはトップレベルと同じオリジンの iframe) がある時だけ
             // (fillNewPassword の対象と揃える。別オリジンの iframe だけの登録フォームでは提案しても必ず失敗するため)
-            let aggregated = newPasswordFrames.values.contains { frame in
-                frame.isMainFrame || WebPane.originURL(frame: frame).flatMap { origin in webView.url.map { CredentialMatcher.sameOrigin(credentialURL: origin, pageURL: $0) } } == true
-            }
-            if aggregated != hasNewPasswordForm {
-                hasNewPasswordForm = aggregated
-                onNewPasswordFormChange?(aggregated)
-            }
+            updateHasNewPasswordForm()
         }
         if let editing = body["editing"] as? Bool {
             if editing {
