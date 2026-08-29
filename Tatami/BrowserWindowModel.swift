@@ -912,7 +912,7 @@ final class BrowserWindowModel {
             // 旧設定の prefix で始めた入力が新しい対応表で実行されないよう prefix 待ちも解除する
             model.cancelPrefix()
             // 起動時や前回の読み込みのエラー表示を全ウィンドウで今回の結果に置き換える (成功したら消す)
-            model.statusMessage = TatamiConfigError.statusMessage(errors: errors)
+            model.statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
             for window in model.windows {
                 window.apply(homeURL: model.config.homeURL, userAgent: model.config.userAgent)
             }
