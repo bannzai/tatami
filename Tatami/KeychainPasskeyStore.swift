@@ -1,15 +1,11 @@
 import Foundation
 import Security
 
-/// Passkey を Keychain に保存するストア。属性の設計は KeychainCredentialStore (ADR 0004) と同じで、service だけを分ける
-/// (資格情報の列挙・CSV の入出力に Passkey が混ざらないようにする)
+/// Passkey を Keychain に保存するストア。資格情報 (KeychainCredentialStore) と違い、共有 access group にも iCloud 同期にも乗せない:
+/// 秘密鍵 (Secure Enclave の dataRepresentation は端末固有で他の Mac では復元できない。ソフトウェア鍵は生の秘密鍵) を
+/// Credential Provider Extension から読めるようにせず、端末内の資格情報 (authenticatorData の BE/BS 無し) として扱うため
 final class KeychainPasskeyStore: PasskeyStore {
     static let service = "com.bannzai.Tatami.passkeys"
-    private let accessGroup: String?
-
-    init(accessGroup: String? = KeychainCredentialStore.sharedAccessGroup) {
-        self.accessGroup = accessGroup
-    }
 
     func all() throws -> [Passkey] {
         var listQuery = baseQuery()
@@ -54,9 +50,6 @@ final class KeychainPasskeyStore: PasskeyStore {
         var item = query
         item.merge(attributes) { _, new in new }
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        if let accessGroup {
-            item[kSecAttrAccessGroup as String] = accessGroup
-        }
         let addStatus = SecItemAdd(item as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw KeychainError(status: addStatus)
@@ -76,7 +69,7 @@ final class KeychainPasskeyStore: PasskeyStore {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: KeychainPasskeyStore.service,
-            kSecAttrSynchronizable as String: accessGroup != nil,
+            kSecAttrSynchronizable as String: false,
         ]
     }
 }

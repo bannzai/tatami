@@ -83,10 +83,31 @@ enum WebAuthn {
     static func isValidRpId(_ rpId: String, originHost: String, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> Bool {
         let rp = rpId.lowercased()
         let host = originHost.lowercased()
-        guard !rp.isEmpty, host == rp || host.hasSuffix("." + rp) else {
+        guard !rp.isEmpty else {
             return false
         }
-        return rules.registrableDomain(host: rp) != nil
+        // ホストそのもの (effective domain) は PSL に無いドメイン (社内ドメイン・localhost) でも有効
+        if host == rp {
+            return true
+        }
+        // 親ドメインを指す場合だけ、公開サフィックス (com・co.jp 等) そのものでないことを PSL で確かめる
+        return host.hasSuffix("." + rp) && rules.registrableDomain(host: rp) != nil
+    }
+
+    /// WebAuthn を許す「信頼できる」オリジンか。https と、ローカル開発用の localhost / 127.0.0.1 だけ
+    /// (平文 http のページは改ざんされ得るため、既存 Passkey の assertion を要求させない)
+    static func isTrustworthyOrigin(_ url: URL) -> Bool {
+        guard let host = url.host()?.lowercased(), !host.isEmpty else {
+            return false
+        }
+        switch url.scheme?.lowercased() {
+        case "https":
+            return true
+        case "http":
+            return host == "localhost" || host.hasSuffix(".localhost") || host == "127.0.0.1" || host == "[::1]"
+        default:
+            return false
+        }
     }
 }
 
@@ -228,6 +249,8 @@ final class PasskeyAuthenticator {
         var challenge: String
         var algorithms: [Int]
         var excludeCredentialIDs: [Data]
+        /// authenticatorSelection.authenticatorAttachment。この authenticator は platform なので cross-platform の要求には応じない
+        var authenticatorAttachment: String?
     }
 
     struct CreateResponse {
@@ -252,22 +275,38 @@ final class PasskeyAuthenticator {
         var userHandle: Data
     }
 
-    /// 登録。rpId の検証 → 鍵の生成 → 保存 → attestation ("none") の組み立て。同じ RP・同じ userHandle の既存 Passkey は置き換える
-    func makeCredential(request: CreateRequest, origin: URL, userVerified: Bool) throws -> CreateResponse {
-        guard let host = origin.host()?.lowercased(), !host.isEmpty else {
-            throw WebAuthnError(name: "SecurityError", description: "オリジンにホストが無い")
-        }
-        let rpId = request.rpId ?? host
-        guard WebAuthn.isValidRpId(rpId, originHost: host) else {
-            throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
-        }
+    /// 登録要求の検証 (本人確認の前に行い、鍵を作れない要求で確認ダイアログを出さない)。有効なら rpId を返す
+    func validate(request: CreateRequest, origin: URL) throws -> String {
+        let rpId = try validatedRpId(rpId: request.rpId, origin: origin)
         guard request.algorithms.contains(WebAuthn.es256Algorithm) else {
             throw WebAuthnError(name: "NotSupportedError", description: "ES256 以外のアルゴリズムには対応しない")
         }
-        let existing = try store.all().filter { $0.rpId == rpId }
-        if existing.contains(where: { request.excludeCredentialIDs.contains($0.credentialID) }) {
+        if request.authenticatorAttachment == "cross-platform" {
+            throw WebAuthnError(name: "NotAllowedError", description: "セキュリティキー (cross-platform) の要求にはこの authenticator では応じない")
+        }
+        if try store.all().contains(where: { $0.rpId == rpId && request.excludeCredentialIDs.contains($0.credentialID) }) {
             throw WebAuthnError(name: "InvalidStateError", description: "この RP に登録済みの Passkey がある")
         }
+        return rpId
+    }
+
+    /// オリジンが信頼できること (https / localhost) と rpId の有効性を確かめ、既定 (オリジンのホスト) を補った rpId を返す
+    private func validatedRpId(rpId requested: String?, origin: URL) throws -> String {
+        guard WebAuthn.isTrustworthyOrigin(origin), let host = origin.host()?.lowercased() else {
+            throw WebAuthnError(name: "SecurityError", description: "信頼できないオリジン (https でない): \(origin.absoluteString)")
+        }
+        let rpId = requested ?? host
+        guard WebAuthn.isValidRpId(rpId, originHost: host) else {
+            throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
+        }
+        return rpId
+    }
+
+    /// 登録。検証 → 鍵の生成 → 保存 → attestation ("none") の組み立て。同じ RP・同じ userHandle の既存 Passkey は、
+    /// 新しい項目の保存に成功してから削除する (保存に失敗した時に既存の鍵を失わない)
+    func makeCredential(request: CreateRequest, origin: URL, userVerified: Bool) throws -> CreateResponse {
+        let rpId = try validate(request: request, origin: origin)
+        let existing = try store.all().filter { $0.rpId == rpId }
         let key = try makeKey()
         var credentialID = Data(count: 32)
         credentialID.withUnsafeMutableBytes { buffer in
@@ -278,10 +317,10 @@ final class PasskeyAuthenticator {
             userDisplayName: request.userDisplayName, privateKey: key.privateKey, isSecureEnclave: key.isSecureEnclave,
             publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date()
         )
+        try store.save(passkey: passkey)
         for old in existing where old.userHandle == request.userID {
             try store.delete(id: old.id)
         }
-        try store.save(passkey: passkey)
         let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified)
         return CreateResponse(
             credentialID: credentialID,
@@ -294,18 +333,16 @@ final class PasskeyAuthenticator {
 
     /// この RP で使える Passkey (allowCredentials があればその中のもの)。複数ある場合は呼び出し側が選ばせる
     func candidates(request: GetRequest, origin: URL) throws -> [Passkey] {
-        guard let host = origin.host()?.lowercased(), !host.isEmpty else {
-            throw WebAuthnError(name: "SecurityError", description: "オリジンにホストが無い")
-        }
-        let rpId = request.rpId ?? host
-        guard WebAuthn.isValidRpId(rpId, originHost: host) else {
-            throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
-        }
+        let rpId = try validatedRpId(rpId: request.rpId, origin: origin)
         return try store.all().filter { $0.rpId == rpId && (request.allowCredentialIDs.isEmpty || request.allowCredentialIDs.contains($0.credentialID)) }
     }
 
-    /// 認証。署名カウンタを進めて保存し、assertion を返す
-    func getAssertion(passkey: Passkey, request: GetRequest, origin: URL, userVerified: Bool) throws -> GetResponse {
+    /// 認証。署名カウンタを進めて保存し、assertion を返す。カウンタは本人確認の待機中に別の要求が進めていることがあるため、
+    /// 署名の直前にストアの最新値を読み直してから増やす (同期的に読み取り → 増分 → 保存まで行い、要求ごとに直列になる)
+    func getAssertion(passkey selected: Passkey, request: GetRequest, origin: URL, userVerified: Bool) throws -> GetResponse {
+        guard let passkey = try store.all().first(where: { $0.id == selected.id }) else {
+            throw WebAuthnError(name: "NotAllowedError", description: "Passkey が削除された")
+        }
         var updated = passkey
         updated.signCount &+= 1
         let authenticatorData = WebAuthn.assertionAuthenticatorData(rpId: passkey.rpId, signCount: updated.signCount, userVerified: userVerified)

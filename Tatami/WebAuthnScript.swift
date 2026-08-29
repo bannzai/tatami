@@ -76,8 +76,14 @@ enum WebAuthnScript {
         return credential;
       };
       const original = navigator.credentials;
-      const request = async (body) => {
-        const reply = await window.webkit.messageHandlers.tatamiWebAuthn.postMessage(body);
+      // AbortSignal: 開始時点で abort 済みなら要求せず、待機中に abort されたら AbortError で終える
+      // (ネイティブ側の本人確認は取り消せないため、その結果は捨てる)
+      const request = async (body, signal) => {
+        if (signal && signal.aborted) { throw new DOMException('The operation was aborted.', 'AbortError'); }
+        const native = window.webkit.messageHandlers.tatamiWebAuthn.postMessage(body);
+        const reply = await (signal
+          ? Promise.race([native, new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }))])
+          : native);
         if (!reply || reply.error) { throw domException(reply || {}); }
         return reply;
       };
@@ -96,7 +102,8 @@ enum WebAuthnScript {
             algorithms: (publicKey.pubKeyCredParams || []).map((param) => param.alg),
             excludeCredentials: (publicKey.excludeCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
             userVerification: (publicKey.authenticatorSelection && publicKey.authenticatorSelection.userVerification) || 'preferred',
-          });
+            authenticatorAttachment: (publicKey.authenticatorSelection && publicKey.authenticatorSelection.authenticatorAttachment) || null,
+          }, options.signal);
           return makeCredential(reply, true);
         },
         get: async (options) => {
@@ -112,10 +119,10 @@ enum WebAuthnScript {
             challenge: encodeOptional(publicKey.challenge),
             allowCredentials: (publicKey.allowCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
             userVerification: publicKey.userVerification || 'preferred',
-          });
+          }, options.signal);
           return makeCredential(reply, false);
         },
-        preventSilentAccess: () => Promise.resolve(),
+        preventSilentAccess: () => original.preventSilentAccess(),
         store: (credential) => original.store(credential),
       };
       Object.defineProperty(navigator, 'credentials', { value: shim, configurable: true });

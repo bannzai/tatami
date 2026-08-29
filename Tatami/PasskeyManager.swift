@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// アプリ全体で 1 つの Passkey authenticator と、ページからの要求 (message handler の body) の解釈。
@@ -28,8 +29,11 @@ enum PasskeyManager {
                     userDisplayName: body["userDisplayName"] as? String ?? "",
                     challenge: try string(body, "challenge"),
                     algorithms: (body["algorithms"] as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.intValue },
-                    excludeCredentialIDs: (body["excludeCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
+                    excludeCredentialIDs: (body["excludeCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:)),
+                    authenticatorAttachment: body["authenticatorAttachment"] as? String
                 )
+                // 鍵を作れない要求 (無効な rpId・非対応のアルゴリズム・exclude 済み) では本人確認のダイアログを出さない
+                _ = try authenticator.validate(request: request, origin: origin)
                 let userVerified = try await verifyUser(body: body, reason: "\(origin.host() ?? "") に Passkey を登録する")
                 let response = try authenticator.makeCredential(request: request, origin: origin, userVerified: userVerified)
                 return [
@@ -69,18 +73,32 @@ enum PasskeyManager {
         }
     }
 
-    /// RP の userVerification に従って本人確認する。`discouraged` では確認せず UV フラグを立てない (存在確認 UP だけ)。
-    /// `preferred` / `required` では Touch ID / パスワードで確認し、失敗・キャンセルは NotAllowedError
+    /// WebAuthn の要求ごとに利用者の操作を求める (資格情報の自動ロックとは独立。ページのスクリプトが操作なしに assertion を得られないようにする)。
+    /// `discouraged` では確認ダイアログでの同意 (存在確認 UP のみ。UV フラグは立てない)、`preferred` / `required` では
+    /// Touch ID / パスワードでこの要求のために本人確認し、成功した時だけ UV を立てる。拒否・失敗・キャンセルは NotAllowedError
     private static func verifyUser(body: [String: Any], reason: String) async throws -> Bool {
         if body["userVerification"] as? String == "discouraged" {
+            guard confirmPresence(reason: reason) else {
+                throw WebAuthnError(name: "NotAllowedError", description: "利用者が許可しなかった")
+            }
             return false
         }
         do {
-            try await CredentialLock.shared.ensureUnlocked(reason: reason)
+            try await CredentialLock.shared.authenticateNow(reason: reason)
         } catch {
             throw WebAuthnError(name: "NotAllowedError", description: "\(error)")
         }
         return true
+    }
+
+    /// 存在確認 (UP) のための同意ダイアログ。モーダルで表示し、「許可」で true
+    private static func confirmPresence(reason: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Passkey を使う"
+        alert.informativeText = reason
+        alert.addButton(withTitle: "許可")
+        alert.addButton(withTitle: "キャンセル")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private static func string(_ body: [String: Any], _ key: String) throws -> String {

@@ -28,16 +28,55 @@ struct WebAuthnTests {
     @Test func rpIdValidation() {
         #expect(WebAuthn.isValidRpId("webauthn.io", originHost: "webauthn.io"))
         #expect(WebAuthn.isValidRpId("example.com", originHost: "login.example.com"))
+        #expect(WebAuthn.isValidRpId("localhost", originHost: "localhost"))
+        #expect(WebAuthn.isValidRpId("intranet", originHost: "intranet"))
         #expect(!WebAuthn.isValidRpId("login.example.com", originHost: "example.com"))
         #expect(!WebAuthn.isValidRpId("com", originHost: "example.com"))
         #expect(!WebAuthn.isValidRpId("evil.com", originHost: "example.com"))
+    }
+
+    @Test func trustworthyOrigins() {
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "https://example.com/")!))
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://localhost:8080/")!))
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://127.0.0.1/")!))
+        #expect(!WebAuthn.isTrustworthyOrigin(URL(string: "http://example.com/")!))
+        #expect(!WebAuthn.isTrustworthyOrigin(URL(string: "file:///tmp/a.html")!))
+    }
+
+    @Test func createIsValidatedBeforeKeyGeneration() throws {
+        let store = InMemoryPasskeyStore()
+        let authenticator = PasskeyAuthenticator(store: store, usesSecureEnclave: false)
+        let origin = URL(string: "https://example.com")!
+        let base = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([1]), userName: "a", userDisplayName: "A", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: [], authenticatorAttachment: nil)
+        var crossPlatform = base
+        crossPlatform.authenticatorAttachment = "cross-platform"
+        #expect(throws: WebAuthnError.self) {
+            try authenticator.validate(request: crossPlatform, origin: origin)
+        }
+        var rsaOnly = base
+        rsaOnly.algorithms = [-257]
+        #expect(throws: WebAuthnError.self) {
+            try authenticator.validate(request: rsaOnly, origin: origin)
+        }
+        #expect(throws: WebAuthnError.self) {
+            try authenticator.validate(request: base, origin: URL(string: "http://example.com")!)
+        }
+        #expect(try authenticator.validate(request: base, origin: origin) == "example.com")
+        #expect(try store.all().isEmpty)
+        // 同じ RP・同じ userHandle の再登録では、新しい項目を保存してから古い項目を消す
+        let first = try authenticator.makeCredential(request: base, origin: origin, userVerified: true)
+        let second = try authenticator.makeCredential(request: base, origin: origin, userVerified: true)
+        let remaining = try store.all()
+        #expect(remaining.count == 1)
+        #expect(remaining[0].credentialID == second.credentialID)
+        #expect(remaining[0].credentialID != first.credentialID)
     }
 
     @Test func makeCredentialProducesVerifiableAttestation() throws {
         let store = InMemoryPasskeyStore()
         let authenticator = PasskeyAuthenticator(store: store, usesSecureEnclave: false)
         let origin = URL(string: "https://webauthn.io")!
-        let request = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([1, 2, 3]), userName: "alice", userDisplayName: "Alice", challenge: "Y2hhbGxlbmdl", algorithms: [-7, -257], excludeCredentialIDs: [])
+        let request = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([1, 2, 3]), userName: "alice", userDisplayName: "Alice", challenge: "Y2hhbGxlbmdl", algorithms: [-7, -257], excludeCredentialIDs: [], authenticatorAttachment: nil)
         let response = try authenticator.makeCredential(request: request, origin: origin, userVerified: true)
         let passkeys = try store.all()
         #expect(passkeys.count == 1)
@@ -62,7 +101,7 @@ struct WebAuthnTests {
         let publicKey = try P256.Signing.PublicKey(derRepresentation: response.publicKeyDER)
         #expect(publicKey.x963Representation == passkeys[0].publicKeyX963)
         // 同じ RP で excludeCredentials に含まれていれば登録を拒む
-        let excluded = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([9]), userName: "bob", userDisplayName: "Bob", challenge: "eA", algorithms: [-7], excludeCredentialIDs: [response.credentialID])
+        let excluded = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([9]), userName: "bob", userDisplayName: "Bob", challenge: "eA", algorithms: [-7], excludeCredentialIDs: [response.credentialID], authenticatorAttachment: nil)
         #expect(throws: WebAuthnError.self) {
             try authenticator.makeCredential(request: excluded, origin: origin, userVerified: true)
         }
@@ -73,7 +112,7 @@ struct WebAuthnTests {
         let authenticator = PasskeyAuthenticator(store: store, usesSecureEnclave: false)
         let origin = URL(string: "https://login.example.com:8443")!
         let created = try authenticator.makeCredential(
-            request: PasskeyAuthenticator.CreateRequest(rpId: "example.com", userID: Data([7]), userName: "alice", userDisplayName: "Alice", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: []),
+            request: PasskeyAuthenticator.CreateRequest(rpId: "example.com", userID: Data([7]), userName: "alice", userDisplayName: "Alice", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: [], authenticatorAttachment: nil),
             origin: origin,
             userVerified: true
         )

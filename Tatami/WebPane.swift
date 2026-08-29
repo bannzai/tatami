@@ -228,8 +228,16 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             guard message.name == WebAuthnScript.messageName, let body = message.body as? [String: Any] else {
                 return (nil, "invalid message")
             }
-            // オリジンはスクリプトの申告ではなく WebKit が持つフレームの security origin から決める
-            return (await PasskeyManager.handle(body: body, origin: WebPane.originURL(frame: message.frameInfo)), nil)
+            // オリジンはスクリプトの申告ではなく WebKit が持つフレームの security origin から決める。
+            // 別オリジンの iframe からの要求は許さない (通常の WebAuthn は Permissions Policy の明示的な委譲が無ければ拒む。
+            // 委譲の解釈は持たないため、トップレベルと同じオリジンのフレームだけを許す。clientDataJSON の crossOrigin は常に false で正しい)
+            let frameOrigin = WebPane.originURL(frame: message.frameInfo)
+            if !message.frameInfo.isMainFrame {
+                guard let frameOrigin, let topURL = message.webView?.url, CredentialMatcher.sameOrigin(credentialURL: frameOrigin, pageURL: topURL) else {
+                    return (["error": "別オリジンの iframe からの WebAuthn には対応しない", "name": "NotAllowedError"], nil)
+                }
+            }
+            return (await PasskeyManager.handle(body: body, origin: frameOrigin), nil)
         }
     }
 
