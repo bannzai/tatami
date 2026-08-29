@@ -10,7 +10,7 @@ enum WebAuthnScript {
     (() => {
       if (navigator.__tatamiWebAuthn) { return; }
       navigator.__tatamiWebAuthn = true;
-      const encode = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\\\\+/g, '-').replace(/\\\\//g, '_').replace(/=+$/, '');
+      const encode = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
       const decode = (text) => {
         let base64 = text.replace(/-/g, '+').replace(/_/g, '/');
         base64 += '='.repeat((4 - base64.length % 4) % 4);
@@ -27,7 +27,15 @@ enum WebAuthnScript {
       };
       const encodeOptional = (value) => { const buffer = toBuffer(value); return buffer ? encode(buffer) : null; };
       const domException = (reply) => new DOMException(reply.error || 'WebAuthn request failed', reply.name || 'NotAllowedError');
-      const attach = (target, prototype) => (prototype ? Object.assign(Object.create(prototype), target) : target);
+      // ネイティブの prototype (PublicKeyCredential 等) を継承させつつ、id / response などは自前の own property にする
+      // (prototype の getter はネイティブのインスタンスにしか使えず、代入では上書きできないため defineProperty で定義する)
+      const attach = (target, prototype) => {
+        const object = Object.create(prototype || Object.prototype);
+        for (const key of Object.keys(target)) {
+          Object.defineProperty(object, key, { value: target[key], enumerable: true, configurable: true, writable: true });
+        }
+        return object;
+      };
       const makeCredential = (reply, isCreate) => {
         const rawId = decode(reply.id);
         const clientDataJSON = decode(reply.clientDataJSON);
