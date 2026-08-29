@@ -220,9 +220,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// フレームのオリジンを表す URL。`about:blank` / `srcdoc` / `blob:` の iframe は request URL に host が無く親のオリジンを継承するため、
     /// WebKit が持つ security origin から組み立てる (sandbox で opaque なオリジンは host が空になり、照合に通らない)
     static func originURL(frame: WKFrameInfo) -> URL? {
-        if let url = frame.request.url, let host = url.host(), !host.isEmpty {
-            return url
-        }
+        // request URL にホストがあっても sandbox で opaque になったフレームは security origin の host が空になる。
+        // その場合は request URL へフォールバックせず拒否する (別オリジン扱いのフレームへ資格情報を渡さない)
         let origin = frame.securityOrigin
         guard !origin.host.isEmpty else {
             return nil
