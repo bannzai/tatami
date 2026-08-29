@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C18E00000000000000000001 /* WebAuthn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000002 /* WebAuthn.swift */; };
+		C18E00000000000000000003 /* WebAuthnScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000004 /* WebAuthnScript.swift */; };
+		C18E00000000000000000005 /* PasskeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000006 /* PasskeyManager.swift */; };
+		C18E00000000000000000007 /* KeychainPasskeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E00000000000000000008 /* KeychainPasskeyStore.swift */; };
+		C18E00000000000000000009 /* WebAuthnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C18E0000000000000000000A /* WebAuthnTests.swift */; };
 		C17E0000000000000000003A /* CredentialIdentityRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */; };
 		C17E0000000000000000001E /* Credential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6A8C9C0CC347D9BDAF8826 /* Credential.swift */; };
 		C17E0000000000000000001F /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542979D41C1F4772A4C1F7AA /* KeychainCredentialStore.swift */; };
@@ -89,6 +94,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C18E00000000000000000002 /* WebAuthn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthn.swift; sourceTree = "<group>"; };
+		C18E00000000000000000004 /* WebAuthnScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthnScript.swift; sourceTree = "<group>"; };
+		C18E00000000000000000006 /* PasskeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyManager.swift; sourceTree = "<group>"; };
+		C18E00000000000000000008 /* KeychainPasskeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPasskeyStore.swift; sourceTree = "<group>"; };
+		C18E0000000000000000000A /* WebAuthnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthnTests.swift; sourceTree = "<group>"; };
 		C17E00000000000000000002 /* TatamiCredentialProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TatamiCredentialProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C17E0000000000000000000D /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialIdentityRegistrar.swift; sourceTree = "<group>"; };
@@ -175,6 +185,7 @@
 				58A4780B128A494BB1220DAD /* CredentialMatcherTests.swift */,
 				44424E98CCB84DBD8AF2AF28 /* PasswordGeneratorTests.swift */,
 				C1ED1A0C0016000000000004 /* CredentialLockTests.swift */,
+				C18E0000000000000000000A /* WebAuthnTests.swift */,
 				B7A0C4E852D9416FBE38C207 /* PasswordCSVTests.swift */,
 				F4DA173EC504628BDE6081A3 /* TatamiConfigTests.swift */,
 			);
@@ -216,6 +227,10 @@
 				C1ED1A0C0016000000000002 /* CredentialLock.swift */,
 				2D88187C3539432C8DC1AF97 /* PublicSuffixList.dat */,
 				C17E00000000000000000013 /* CredentialIdentityRegistrar.swift */,
+				C18E00000000000000000002 /* WebAuthn.swift */,
+				C18E00000000000000000004 /* WebAuthnScript.swift */,
+				C18E00000000000000000006 /* PasskeyManager.swift */,
+				C18E00000000000000000008 /* KeychainPasskeyStore.swift */,
 				1086BDA8A4DA42BA84615D60 /* PublicSuffixList.swift */,
 				C4E9B18D7A5F42C39D6E0183 /* PasswordCSV.swift */,
 				46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */,
@@ -370,6 +385,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				C17E00000000000000000014 /* CredentialIdentityRegistrar.swift in Sources */,
+				C18E00000000000000000001 /* WebAuthn.swift in Sources */,
+				C18E00000000000000000003 /* WebAuthnScript.swift in Sources */,
+				C18E00000000000000000005 /* PasskeyManager.swift in Sources */,
+				C18E00000000000000000007 /* KeychainPasskeyStore.swift in Sources */,
 				98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */,
 				FF6872B4A46097CF051FFCF6 /* BrowserWindowView.swift in Sources */,
 				9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */,
@@ -412,6 +431,7 @@
 				4D6E9CFDFF5E4D35BBDD4A1C /* CredentialMatcherTests.swift in Sources */,
 				1D40C047A0F246938A4B3A1F /* PasswordGeneratorTests.swift in Sources */,
 				C1ED1A0C0016000000000003 /* CredentialLockTests.swift in Sources */,
+				C18E00000000000000000009 /* WebAuthnTests.swift in Sources */,
 				F2D5A96C31B84E07AC1F5D92 /* PasswordCSVTests.swift in Sources */,
 				E3C9062DB4F3517ACD5F7092 /* TatamiConfigTests.swift in Sources */,
 			);

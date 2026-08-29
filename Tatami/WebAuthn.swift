@@ -1,0 +1,349 @@
+import CryptoKit
+import Foundation
+
+/// WebAuthn (Passkey) の自前 authenticator の純粋ロジック。WKWebView は任意サイトの WebAuthn を扱えない (Associated Domains 限定) ため、
+/// `navigator.credentials` を注入スクリプトで置き換え、ここで attestation / assertion を組み立てる (スパイク #18。設計の前提は documents/PROJECT.md 技術リスク)
+enum WebAuthn {
+    /// 登録時に登録するアルゴリズム。ES256 (COSE -7) だけに対応する (Secure Enclave / CryptoKit の P-256)
+    static let es256Algorithm = -7
+    /// AAGUID。自前 authenticator の識別子で、attestation が "none" のため検証には使われない。ゼロは「識別しない」を表す慣例
+    static let aaguid = Data(repeating: 0, count: 16)
+
+    /// base64url (パディング無し)。WebAuthn の JSON 表現 (challenge・id・レスポンス) はこの形で受け渡す
+    static func base64url(_ data: Data) -> String {
+        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+
+    static func data(base64url text: String) -> Data? {
+        var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        return Data(base64Encoded: base64)
+    }
+
+    /// clientDataJSON。RP はこの JSON の hash に署名されていることを確かめるため、ここで組み立てた文字列をそのまま渡す
+    static func clientDataJSON(type: String, challenge: String, origin: String) -> Data {
+        Data("{\"type\":\"\(type)\",\"challenge\":\"\(challenge)\",\"origin\":\"\(origin)\",\"crossOrigin\":false}".utf8)
+    }
+
+    /// 公開鍵の COSE_Key (EC2, P-256, ES256)。CTAP2 の canonical CBOR の順序 (1, 3, -1, -2, -3) で並べる
+    static func coseKey(publicKeyX963: Data) -> Data {
+        // X9.63 の非圧縮形式は 0x04 || x (32) || y (32)
+        let x = publicKeyX963.subdata(in: 1..<33)
+        let y = publicKeyX963.subdata(in: 33..<65)
+        return CBOR.encode(.map([
+            (.unsigned(1), .unsigned(2)),
+            (.unsigned(3), .negative(Int64(es256Algorithm))),
+            (.negative(-1), .unsigned(1)),
+            (.negative(-2), .bytes(x)),
+            (.negative(-3), .bytes(y)),
+        ]))
+    }
+
+    /// 登録時の authenticatorData: rpIdHash (32) | flags | signCount (4, BE) | aaguid (16) | credentialIdLength (2, BE) | credentialId | COSE 公開鍵
+    static func attestedAuthenticatorData(rpId: String, credentialID: Data, publicKeyX963: Data, userVerified: Bool) -> Data {
+        var data = Data(SHA256.hash(data: Data(rpId.utf8)))
+        data.append(flags(userVerified: userVerified, attested: true))
+        data.append(contentsOf: [0, 0, 0, 0])
+        data.append(aaguid)
+        data.append(contentsOf: [UInt8(credentialID.count >> 8), UInt8(credentialID.count & 0xff)])
+        data.append(credentialID)
+        data.append(coseKey(publicKeyX963: publicKeyX963))
+        return data
+    }
+
+    /// 認証時の authenticatorData: rpIdHash (32) | flags | signCount (4, BE)
+    static func assertionAuthenticatorData(rpId: String, signCount: UInt32, userVerified: Bool) -> Data {
+        var data = Data(SHA256.hash(data: Data(rpId.utf8)))
+        data.append(flags(userVerified: userVerified, attested: false))
+        data.append(contentsOf: [UInt8(signCount >> 24), UInt8((signCount >> 16) & 0xff), UInt8((signCount >> 8) & 0xff), UInt8(signCount & 0xff)])
+        return data
+    }
+
+    /// flags: UP (0x01) | UV (0x04) | AT (0x40)。BE (backup eligible) / BS は付けない (端末内の鍵で、同期しない)
+    static func flags(userVerified: Bool, attested: Bool) -> UInt8 {
+        0x01 | (userVerified ? 0x04 : 0) | (attested ? 0x40 : 0)
+    }
+
+    /// attestationObject (fmt "none")。canonical CBOR の順序 (fmt, attStmt, authData)
+    static func attestationObject(authenticatorData: Data) -> Data {
+        CBOR.encode(.map([
+            (.text("fmt"), .text("none")),
+            (.text("attStmt"), .map([])),
+            (.text("authData"), .bytes(authenticatorData)),
+        ]))
+    }
+
+    /// 署名対象: authenticatorData || SHA-256(clientDataJSON)
+    static func signedData(authenticatorData: Data, clientDataJSON: Data) -> Data {
+        authenticatorData + Data(SHA256.hash(data: clientDataJSON))
+    }
+
+    /// rpId がオリジンに対して有効か (WebAuthn の「registrable domain suffix」)。オリジンのホストと同じか、ホストの親ドメインで、
+    /// かつ公開サフィックス (com・co.jp 等) そのものではないこと
+    static func isValidRpId(_ rpId: String, originHost: String, rules: PublicSuffixList.Rules = PublicSuffixList.bundled) -> Bool {
+        let rp = rpId.lowercased()
+        let host = originHost.lowercased()
+        guard !rp.isEmpty, host == rp || host.hasSuffix("." + rp) else {
+            return false
+        }
+        return rules.registrableDomain(host: rp) != nil
+    }
+}
+
+/// WebAuthn が要求する最小限の CBOR エンコーダ (RFC 8949)。デコードは RP 側で行うため持たない
+indirect enum CBOR: Equatable {
+    case unsigned(UInt64)
+    /// 負の整数 (値そのもの。エンコードは -1 - n)
+    case negative(Int64)
+    case bytes(Data)
+    case text(String)
+    case array([CBOR])
+    /// キーの順序は呼び出し側が canonical に並べる
+    case map([(CBOR, CBOR)])
+
+    static func == (lhs: CBOR, rhs: CBOR) -> Bool {
+        encode(lhs) == encode(rhs)
+    }
+
+    static func encode(_ value: CBOR) -> Data {
+        var out = Data()
+        append(value, to: &out)
+        return out
+    }
+
+    private static func append(_ value: CBOR, to out: inout Data) {
+        switch value {
+        case .unsigned(let n):
+            appendHead(major: 0, value: n, to: &out)
+        case .negative(let n):
+            precondition(n < 0)
+            appendHead(major: 1, value: UInt64(-1 - n), to: &out)
+        case .bytes(let data):
+            appendHead(major: 2, value: UInt64(data.count), to: &out)
+            out.append(data)
+        case .text(let text):
+            let data = Data(text.utf8)
+            appendHead(major: 3, value: UInt64(data.count), to: &out)
+            out.append(data)
+        case .array(let items):
+            appendHead(major: 4, value: UInt64(items.count), to: &out)
+            for item in items {
+                append(item, to: &out)
+            }
+        case .map(let pairs):
+            appendHead(major: 5, value: UInt64(pairs.count), to: &out)
+            for (key, item) in pairs {
+                append(key, to: &out)
+                append(item, to: &out)
+            }
+        }
+    }
+
+    private static func appendHead(major: UInt8, value: UInt64, to out: inout Data) {
+        let type = major << 5
+        switch value {
+        case 0..<24:
+            out.append(type | UInt8(value))
+        case 24..<0x100:
+            out.append(type | 24)
+            out.append(UInt8(value))
+        case 0x100..<0x10000:
+            out.append(type | 25)
+            out.append(contentsOf: [UInt8(value >> 8), UInt8(value & 0xff)])
+        case 0x10000..<0x1_0000_0000:
+            out.append(type | 26)
+            out.append(contentsOf: (0..<4).reversed().map { UInt8((value >> (8 * UInt64($0))) & 0xff) })
+        default:
+            out.append(type | 27)
+            out.append(contentsOf: (0..<8).reversed().map { UInt8((value >> (8 * UInt64($0))) & 0xff) })
+        }
+    }
+}
+
+/// 保存する Passkey。秘密鍵は Secure Enclave が使える環境ではその dataRepresentation (SE の外では使えない)、
+/// 使えない環境 (VM・GitHub Actions runner) では CryptoKit の P-256 秘密鍵の生表現。どちらも Keychain に置く
+struct Passkey: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let rpId: String
+    /// RP へ返す credential id (ランダム 32 バイト)
+    let credentialID: Data
+    let userHandle: Data
+    let userName: String
+    let userDisplayName: String
+    let privateKey: Data
+    let isSecureEnclave: Bool
+    /// 公開鍵 (X9.63 非圧縮)
+    let publicKeyX963: Data
+    var signCount: UInt32
+    let createdAt: Date
+}
+
+/// Passkey の保存先。Keychain 実装とユニットテスト用のメモリ実装
+protocol PasskeyStore {
+    func all() throws -> [Passkey]
+    func save(passkey: Passkey) throws
+    func delete(id: UUID) throws
+}
+
+final class InMemoryPasskeyStore: PasskeyStore {
+    private var storage: [UUID: Passkey] = [:]
+
+    func all() throws -> [Passkey] {
+        storage.values.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func save(passkey: Passkey) throws {
+        storage[passkey.id] = passkey
+    }
+
+    func delete(id: UUID) throws {
+        storage[id] = nil
+    }
+}
+
+/// WebAuthn の処理で起きたエラー。ページへは DOMException の name (NotAllowedError 等) と説明を返す
+struct WebAuthnError: Error, CustomStringConvertible, Equatable {
+    /// DOMException の name
+    let name: String
+    let description: String
+}
+
+/// `navigator.credentials.create / get` の要求を処理する authenticator。鍵の生成・署名と Passkey の保存を行う
+final class PasskeyAuthenticator {
+    private let store: any PasskeyStore
+    /// Secure Enclave を使うか。テストと VM (runner) では使えないため、ソフトウェア鍵にフォールバックする
+    private let usesSecureEnclave: Bool
+
+    init(store: any PasskeyStore, usesSecureEnclave: Bool = SecureEnclave.isAvailable) {
+        self.store = store
+        self.usesSecureEnclave = usesSecureEnclave
+    }
+
+    /// `navigator.credentials.create` の publicKey オプション (注入スクリプトが base64url に直列化したもの)
+    struct CreateRequest {
+        var rpId: String?
+        var userID: Data
+        var userName: String
+        var userDisplayName: String
+        var challenge: String
+        var algorithms: [Int]
+        var excludeCredentialIDs: [Data]
+    }
+
+    struct CreateResponse {
+        var credentialID: Data
+        var clientDataJSON: Data
+        var attestationObject: Data
+        var authenticatorData: Data
+        var publicKeyDER: Data
+    }
+
+    struct GetRequest {
+        var rpId: String?
+        var challenge: String
+        var allowCredentialIDs: [Data]
+    }
+
+    struct GetResponse {
+        var credentialID: Data
+        var clientDataJSON: Data
+        var authenticatorData: Data
+        var signature: Data
+        var userHandle: Data
+    }
+
+    /// 登録。rpId の検証 → 鍵の生成 → 保存 → attestation ("none") の組み立て。同じ RP・同じ userHandle の既存 Passkey は置き換える
+    func makeCredential(request: CreateRequest, origin: URL, userVerified: Bool) throws -> CreateResponse {
+        guard let host = origin.host()?.lowercased(), !host.isEmpty else {
+            throw WebAuthnError(name: "SecurityError", description: "オリジンにホストが無い")
+        }
+        let rpId = request.rpId ?? host
+        guard WebAuthn.isValidRpId(rpId, originHost: host) else {
+            throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
+        }
+        guard request.algorithms.contains(WebAuthn.es256Algorithm) else {
+            throw WebAuthnError(name: "NotSupportedError", description: "ES256 以外のアルゴリズムには対応しない")
+        }
+        let existing = try store.all().filter { $0.rpId == rpId }
+        if existing.contains(where: { request.excludeCredentialIDs.contains($0.credentialID) }) {
+            throw WebAuthnError(name: "InvalidStateError", description: "この RP に登録済みの Passkey がある")
+        }
+        let key = try makeKey()
+        var credentialID = Data(count: 32)
+        credentialID.withUnsafeMutableBytes { buffer in
+            _ = SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
+        }
+        let passkey = Passkey(
+            id: UUID(), rpId: rpId, credentialID: credentialID, userHandle: request.userID, userName: request.userName,
+            userDisplayName: request.userDisplayName, privateKey: key.privateKey, isSecureEnclave: key.isSecureEnclave,
+            publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date()
+        )
+        for old in existing where old.userHandle == request.userID {
+            try store.delete(id: old.id)
+        }
+        try store.save(passkey: passkey)
+        let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified)
+        return CreateResponse(
+            credentialID: credentialID,
+            clientDataJSON: WebAuthn.clientDataJSON(type: "webauthn.create", challenge: request.challenge, origin: PasskeyAuthenticator.originString(url: origin)),
+            attestationObject: WebAuthn.attestationObject(authenticatorData: authenticatorData),
+            authenticatorData: authenticatorData,
+            publicKeyDER: key.publicKeyDER
+        )
+    }
+
+    /// この RP で使える Passkey (allowCredentials があればその中のもの)。複数ある場合は呼び出し側が選ばせる
+    func candidates(request: GetRequest, origin: URL) throws -> [Passkey] {
+        guard let host = origin.host()?.lowercased(), !host.isEmpty else {
+            throw WebAuthnError(name: "SecurityError", description: "オリジンにホストが無い")
+        }
+        let rpId = request.rpId ?? host
+        guard WebAuthn.isValidRpId(rpId, originHost: host) else {
+            throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
+        }
+        return try store.all().filter { $0.rpId == rpId && (request.allowCredentialIDs.isEmpty || request.allowCredentialIDs.contains($0.credentialID)) }
+    }
+
+    /// 認証。署名カウンタを進めて保存し、assertion を返す
+    func getAssertion(passkey: Passkey, request: GetRequest, origin: URL, userVerified: Bool) throws -> GetResponse {
+        var updated = passkey
+        updated.signCount &+= 1
+        let authenticatorData = WebAuthn.assertionAuthenticatorData(rpId: passkey.rpId, signCount: updated.signCount, userVerified: userVerified)
+        let clientDataJSON = WebAuthn.clientDataJSON(type: "webauthn.get", challenge: request.challenge, origin: PasskeyAuthenticator.originString(url: origin))
+        let signature = try sign(passkey: passkey, data: WebAuthn.signedData(authenticatorData: authenticatorData, clientDataJSON: clientDataJSON))
+        try store.save(passkey: updated)
+        return GetResponse(credentialID: passkey.credentialID, clientDataJSON: clientDataJSON, authenticatorData: authenticatorData, signature: signature, userHandle: passkey.userHandle)
+    }
+
+    /// WebAuthn の origin 文字列 (scheme://host[:port]。既定ポートは省略)
+    static func originString(url: URL) -> String {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(url.host()?.lowercased() ?? "")\(port)"
+    }
+
+    private struct GeneratedKey {
+        var privateKey: Data
+        var isSecureEnclave: Bool
+        var publicKeyX963: Data
+        var publicKeyDER: Data
+    }
+
+    private func makeKey() throws -> GeneratedKey {
+        if usesSecureEnclave {
+            let key = try SecureEnclave.P256.Signing.PrivateKey()
+            return GeneratedKey(privateKey: key.dataRepresentation, isSecureEnclave: true, publicKeyX963: key.publicKey.x963Representation, publicKeyDER: key.publicKey.derRepresentation)
+        }
+        let key = P256.Signing.PrivateKey()
+        return GeneratedKey(privateKey: key.rawRepresentation, isSecureEnclave: false, publicKeyX963: key.publicKey.x963Representation, publicKeyDER: key.publicKey.derRepresentation)
+    }
+
+    /// ECDSA (P-256, SHA-256) の DER 署名
+    private func sign(passkey: Passkey, data: Data) throws -> Data {
+        if passkey.isSecureEnclave {
+            return try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: passkey.privateKey).signature(for: data).derRepresentation
+        }
+        return try P256.Signing.PrivateKey(rawRepresentation: passkey.privateKey).signature(for: data).derRepresentation
+    }
+}

@@ -219,6 +219,19 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
+    /// WebAuthn (Passkey) の要求の中継。返信付き handler で、ページの Promise に結果を返す
+    private final class WebAuthnRelay: NSObject, WKScriptMessageHandlerWithReply {
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) async -> (Any?, String?) {
+            guard message.name == WebAuthnScript.messageName, let body = message.body as? [String: Any] else {
+                return (nil, "invalid message")
+            }
+            // オリジンはスクリプトの申告ではなく WebKit が持つフレームの security origin から決める
+            return (await PasskeyManager.handle(body: body, origin: WebPane.originURL(frame: message.frameInfo)), nil)
+        }
+    }
+
+    private static let webAuthnRelay = WebAuthnRelay()
+
     /// controller ごとの中継。同じ controller に 2 回 add すると WebKit が例外を投げるため、ここで 1 度だけ登録する。
     /// キーは controller の弱参照 (解放後にアドレスが再利用されても古い中継を共有済みと誤認しない)
     private static let relays = NSMapTable<WKUserContentController, ScriptMessageRelay>.weakToStrongObjects()
@@ -233,6 +246,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         relays.setObject(relay, forKey: controller)
         controller.addUserScript(LoginFormScript.makeUserScript())
         controller.add(relay, contentWorld: LoginFormScript.contentWorld, name: LoginFormScript.messageName)
+        // Passkey: ページの world で navigator.credentials を置き換える (ページのスクリプトから見える必要があるため専用 world ではない)
+        controller.addUserScript(WebAuthnScript.makeUserScript())
+        controller.addScriptMessageHandler(webAuthnRelay, contentWorld: .page, name: WebAuthnScript.messageName)
     }
 
     /// パスワード欄を検出したフレーム (フレームの URL ごと)。iframe 内のログインフォームにも充填できるよう、充填はこのフレームで実行する。
