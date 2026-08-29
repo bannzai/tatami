@@ -390,6 +390,21 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// 生成したパスワードを、新規パスワード欄を検出したフレームの全てのパスワード欄 (新規と確認) に入れる。
     /// 新規パスワード欄を検出していなければ何もしない (通常のログイン欄へ生成値を入れて入力済みの値を上書きしない)
+    /// 生成対象の欄の最小 maxLength (0 は上限なし)。Swift 側がこの長さに収めてパスワードを作る
+    func newPasswordMaxLength() async -> Int {
+        let frame = newPasswordFrames.values.first(where: \.isMainFrame) ?? newPasswordFrames.values.first
+        guard let frame else {
+            return 0
+        }
+        let result = try? await webView.callAsyncJavaScript(
+            "return window.__tatamiNewPasswordMaxLength();",
+            arguments: [:],
+            in: frame,
+            contentWorld: LoginFormScript.contentWorld
+        )
+        return (result as? Int) ?? (result as? NSNumber)?.intValue ?? 0
+    }
+
     func fillNewPassword(_ password: String) async throws -> Bool {
         // 検出済みのフレームを順に試し (トップレベル優先)、最初に充填できたフレームで成功とする
         // (トップレベルの登録フォームが画面外で充填できない時に、表示中の iframe の登録フォームを使えるように)。
