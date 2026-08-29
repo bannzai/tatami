@@ -55,6 +55,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 複数段階ログインの 1 段目で入力されたユーザー名と、そのオリジン。次の段で同じオリジンからパスワードだけが送信された時に関連付け、
     /// 別のサイトへ移った (オリジンが変わった) 時は使わない
     private(set) var pendingUsername: (username: String, origin: String)?
+    /// 保留中のユーザー名を持ち越せる残りの文書遷移の回数。1 段目 → 2 段目のページ遷移 (1 回) だけを許し、
+    /// それ以上の無関係な遷移では捨てる (別のパスワード専用フォームに古いユーザー名を付けない)
+    private var pendingUsernameNavigationsRemaining = 0
     /// フレームごとの新規パスワード欄の有無。ペイン全体の有無はいずれかのフレームが true か
     private var newPasswordFrames: [String: WKFrameInfo] = [:]
     /// テキスト入力中のフレーム。いずれかのフレームで入力中ならペインとして入力中 (後から読み込まれた iframe の false で上書きしない)
@@ -269,7 +272,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard !origin.host.isEmpty else {
             return nil
         }
-        return URL(string: "\(origin.protocol)://\(origin.host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
+        // IPv6 のホストは角括弧で囲まないと URL にならない
+        let host = origin.host.contains(":") ? "[\(origin.host)]" : origin.host
+        return URL(string: "\(origin.protocol)://\(host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
     }
 
     /// 通知元フレームのページ URL。トップレベルは webView.url、iframe は request URL (http(s) のホストがある時)、
@@ -278,6 +283,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     static func frameURL(message: WKScriptMessage) -> URL? {
         let frame = message.frameInfo
         if frame.isMainFrame {
+            // 送信直後に History API やナビゲーションで URL が変わっていることがあるため、通知時点のフレームの URL を優先する
+            if let url = frame.request.url, let host = url.host(), !host.isEmpty, WebPane.isWebPage(url: url) {
+                return url
+            }
             return message.webView?.url
         }
         if let url = frame.request.url, let host = url.host(), !host.isEmpty, WebPane.isWebPage(url: url) {
@@ -363,6 +372,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
         if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = WebPane.frameURL(message: message) {
             pendingUsername = (usernameOnly, WebPane.origin(url: frameURL))
+            pendingUsernameNavigationsRemaining = 1
         }
         if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
             // 送信元フレームの URL (スクリプトからの申告ではなく WebKit が持つフレーム情報) を使う
@@ -504,6 +514,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         documentGeneration += 1
+        if pendingUsername != nil {
+            pendingUsernameNavigationsRemaining -= 1
+            if pendingUsernameNavigationsRemaining < 0 {
+                pendingUsername = nil
+            }
+        }
         // 旧文書が破棄される時点 (commit) で、そのフレーム情報 (false 通知は届かない) と新規パスワード欄・編集中の状態を捨てる。
         // provisional で失敗したナビゲーション (DNS エラー等) では旧文書が残るため、開始時点では捨てない (ユーザー名はオリジンで照合するため残す)
         loginFormFrames.removeAll()
