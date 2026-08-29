@@ -97,8 +97,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 Task { @MainActor in
                     self.url = changedURL
                     self.onNavigate?(changedURL)
-                    // History API の遷移でも保留中のユーザー名の持ち越し回数を減らす (同一文書の別ルートへ無期限に残さない)
-                    self.consumePendingUsernameNavigation()
+                    // History API (同一文書) の遷移でも保留中のユーザー名の持ち越し回数を減らす (同一文書の別ルートへ無期限に残さない)。
+                    // 通常の文書遷移は didCommit 側で数えるため、読み込み中の URL 変化はここでは数えない (二重に減らさない)
+                    if !self.webView.isLoading {
+                        self.consumePendingUsernameNavigation()
+                    }
                     // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する。
                     // 同じターンで pushState が続くと後の KVO で webView.url が進んでいるため、捕捉した changedURL を記録する
                     if !self.webView.isLoading, !self.isSuppressingRestoredVisits {
