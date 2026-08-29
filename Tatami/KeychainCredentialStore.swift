@@ -32,8 +32,25 @@ final class KeychainCredentialStore: CredentialStore {
     }
 
     func all() throws -> [Credential] {
+        let decoder = JSONDecoder()
+        // Data Protection Keychain (共有 access group がある Team 署名) では 1 回の呼び出しで全件のデータを取る
+        var bulkQuery = baseQuery()
+        bulkQuery[kSecMatchLimit as String] = kSecMatchLimitAll
+        bulkQuery[kSecReturnData as String] = true
+        var bulkResult: CFTypeRef?
+        let bulkStatus = SecItemCopyMatching(bulkQuery as CFDictionary, &bulkResult)
+        if bulkStatus == errSecItemNotFound {
+            return []
+        }
+        if bulkStatus == errSecSuccess, let items = bulkResult as? [Data] {
+            // 復号できない項目 (旧スキーマ・破損) を黙って捨てると保存済みのパスワードが消えたように見えるため、エラーとして伝える
+            return try items.map { try decoder.decode(Credential.self, from: $0) }.sorted { $0.updatedAt > $1.updatedAt }
+        }
+        guard bulkStatus == errSecParam else {
+            throw KeychainError(status: bulkStatus)
+        }
         // ファイルベースのログインキーチェーン (entitlement 無しの署名で使う) は複数件の kSecReturnData を errSecParam (-50) で拒むため、
-        // 先に属性 (account) だけを列挙し、データは 1 件ずつ取る (Data Protection Keychain でも同じ手順で動く)
+        // その時だけ属性 (account) を列挙してデータを 1 件ずつ取る
         var listQuery = baseQuery()
         listQuery[kSecMatchLimit as String] = kSecMatchLimitAll
         listQuery[kSecReturnAttributes as String] = true
@@ -45,7 +62,6 @@ final class KeychainCredentialStore: CredentialStore {
         guard listStatus == errSecSuccess, let attributes = listResult as? [[String: Any]] else {
             throw KeychainError(status: listStatus)
         }
-        let decoder = JSONDecoder()
         let credentials = try attributes.compactMap { $0[kSecAttrAccount as String] as? String }.map { account -> Credential in
             var query = baseQuery()
             query[kSecAttrAccount as String] = account

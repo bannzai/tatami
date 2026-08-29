@@ -279,7 +279,9 @@ enum PasswordImporter {
     private static func matchKey(url: URL, username: String) -> String {
         let scheme = url.scheme?.lowercased() ?? ""
         // IDN は Unicode 表記 (percent-encoded で返る) と punycode (`xn--`) で表現が分かれるため、常に IDNA の ASCII 形に揃える
-        let host = PasswordImporter.normalizedHost(host: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? "").lowercased())
+        // Android の application ID (package 名) は大文字小文字を区別するため、android スキームではホストの大小文字を保つ
+        let rawHost = URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host() ?? ""
+        let host = scheme == "android" ? rawHost : PasswordImporter.normalizedHost(host: rawHost.lowercased())
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map(String.init) ?? ""
         // ユーザー名は正規化形だけが違う値を別アカウントとして扱えるよう、String の等価 (正規化を無視する) ではなくスカラー値の列で表す。
