@@ -20,17 +20,20 @@ enum CredentialIdentityRegistrar {
               let host = CredentialMatcher.host(url: credential.url), !host.isEmpty else {
             return nil
         }
+        // 元の scheme の既定ポート (http の 80・https の 443) の明示は省略形と同一オリジンなので、scheme を昇格する前に外す
+        // (http://example.com:80 → https identity を https://example.com/ にする。CredentialMatcher と同じ扱い)
+        let originalDefaultPort = originalScheme == "https" ? 443 : (originalScheme == "http" ? 80 : nil)
         let scheme = overrideScheme ?? originalScheme
         components.scheme = scheme
-        components.encodedHost = host.contains(":") ? "[\(host)]" : host
+        // host は CredentialMatcher.host が IPv6 を角括弧付きの標準形で返すためそのまま使う (二重に囲まない)
+        components.encodedHost = host
         components.user = nil
         components.password = nil
         components.path = "/"
         components.query = nil
         components.fragment = nil
-        // 既定ポートの明示 (https の 443・http の 80) はページ側の省略形の識別子と一致するよう外す (CredentialMatcher と同じ扱い)
-        let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
-        if components.port == defaultPort {
+        let targetDefaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
+        if components.port == originalDefaultPort || components.port == targetDefaultPort {
             components.port = nil
         }
         guard let identifier = components.string else {
