@@ -84,6 +84,35 @@ final class BrowserWindowModel {
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
+    /// status line に出す提案 (y で承認・n / Escape で却下)
+    enum Proposal: Equatable {
+        /// 未保存の資格情報を保存する
+        case save(url: URL, username: String, password: String)
+        /// 既存の資格情報のパスワードを更新する
+        case update(credential: Credential, password: String)
+        /// サインアップ用のパスワード欄に強いパスワードを生成して入れる
+        case generatePassword
+
+        var text: String {
+            switch self {
+            case .save(let url, let username, _):
+                return "\(url.host() ?? "") の \(username.isEmpty ? "(ユーザー名なし)" : username) のパスワードを保存する? (y/n)"
+            case .update(let credential, _):
+                return "\(credential.host) の \(credential.username) のパスワードを更新する? (y/n)"
+            case .generatePassword:
+                return "強いパスワードを生成して入れる? (y/n)"
+            }
+        }
+    }
+
+    /// 表示中の提案。nil なら無し
+    private(set) var proposal: Proposal?
+    /// 提案の対象ペイン。生成したパスワードの充填先になる
+    private var proposalPane: WebPane?
+    /// 提案を出した時のペインの URL。別のページへ移った後に承認しても、そのページへ充填・保存しない
+    private var proposalURL: URL?
+    /// 生成提案を出した時点の文書の世代。同じ URL の別文書 (再読み込み・DOM の置換) へ生成値を入れないために持つ
+    private var proposalGeneration: Int?
     /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
     var browsingData: BrowsingData {
         BrowsingDataStore.shared.data
@@ -469,6 +498,8 @@ final class BrowserWindowModel {
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
+        // 非表示のウィンドウで検出した登録フォームの生成提案は、表示された時に出す
+        evaluateNewPasswordProposal()
         scheduleSave()
     }
 
@@ -490,6 +521,8 @@ final class BrowserWindowModel {
         }
         currentWindowIndex = min(closingIndex, windows.count - 1)
         syncAddressTextToFocusedPane()
+        // 表示されたウィンドウで検出済みの登録フォームの生成提案を出す (select(windowIndex:) と同じ)
+        evaluateNewPasswordProposal()
     }
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
@@ -609,6 +642,8 @@ final class BrowserWindowModel {
             navigate(text: text)
         case "bookmark":
             toggleBookmark()
+        case "generate-password":
+            generatePassword()
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
@@ -842,6 +877,215 @@ final class BrowserWindowModel {
         }
     }
 
+    /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
+    private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, currentPassword: String, isNewPassword: Bool) {
+        guard WebPane.isWebPage(url: frameURL), let host = CredentialMatcher.host(url: frameURL), !host.isEmpty else {
+            return
+        }
+        let existing: [Credential]
+        do {
+            // 更新対象は同じオリジン (scheme・host・ポート) の項目に限る (http 用や別ポート用の項目を上書きしない)。
+            // ホストは IDNA の ASCII 形で照合する (Unicode 表記で保存した項目と punycode で届くフレームの URL を同じホストとして扱う)
+            existing = try credentialStore.all().filter {
+                CredentialMatcher.host(url: $0.url) == host && $0.url.scheme?.lowercased() == frameURL.scheme?.lowercased()
+                    && CredentialMatcher.matches(credentialURL: $0.url, pageURL: frameURL)
+            }
+        } catch {
+            statusMessage = "資格情報を読めない: \(error)"
+            return
+        }
+        // ユーザー名の無い変更フォーム (現在・新規・確認だけ) では、現在のパスワードが一致する既存の項目を更新対象にする。
+        // 同じ現在のパスワードを使う項目が複数あればどのアカウントか判別できないため、更新を提案しない (誤った項目を上書きしない)
+        let byCurrentPassword = username.isEmpty && !currentPassword.isEmpty
+            ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
+            : []
+        // ユーザー名も正規化形だけが違う値を別アカウントとして扱う (PasswordImporter.matchKey と同じ) ため、スカラー値で比較する
+        // ユーザー名が空の送信では、変更フォーム (isNewPassword) なら現在のパスワードが一意に一致する項目だけを使い、
+        // 通常のパスワード専用ログインならユーザー名の無い項目が 1 件だけあればそれを照合する (正しいパスワードの再送信で重複保存しない)
+        let unnamed = existing.filter(\.username.isEmpty)
+        let matched = username.isEmpty
+            ? (isNewPassword ? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil) : (unnamed.count == 1 ? unnamed[0] : nil))
+            : existing.first(where: { $0.username.unicodeScalars.elementsEqual(username.unicodeScalars) })
+        if username.isEmpty, byCurrentPassword.count > 1 {
+            statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
+            return
+        }
+        if let same = matched {
+            // 正規化形だけが違う値は別のパスワードとして扱う (サーバーが受け取るバイト列が異なる) ため、スカラー値で比較する
+            guard !same.password.unicodeScalars.elementsEqual(password.unicodeScalars) else {
+                // 保存済みの正しいパスワードで送り直した時は、その前の誤ったパスワードの提案を残さない
+                if proposalPane === pane {
+                    dismissProposal()
+                }
+                return
+            }
+            proposalPane = pane
+            proposalURL = pane.url
+            proposal = .update(credential: same, password: password)
+        } else {
+            proposalPane = pane
+            proposalURL = pane.url
+            proposal = .save(url: frameURL, username: username, password: password)
+        }
+    }
+
+    /// フォーカスが移った時に、そのペインで検出済みのサインアップ用の欄について生成の提案を評価する
+    /// (バックグラウンドで読み込まれたページは検出時の通知が捨てられているため)
+    private func evaluateNewPasswordProposal() {
+        let pane = currentWindow.focusedPane
+        // 生成提案を出したペインが閉じられた・別ペインへ移った・遷移したら、前の提案を捨ててから評価し直す (status line に古い提案を残さない)
+        if proposal == .generatePassword, let proposalPane,
+           !windows.contains(where: { $0.panes[proposalPane.id] === proposalPane }) || proposalPane !== pane || pane.url != proposalURL || pane.documentGeneration != proposalGeneration {
+            dismissProposal()
+        }
+        guard pane.hasNewPasswordForm, proposal == nil else {
+            return
+        }
+        proposalPane = pane
+        proposalURL = pane.url
+        proposalGeneration = pane.documentGeneration
+        proposal = .generatePassword
+    }
+
+    /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
+    private func handleNewPasswordForm(pane: WebPane, hasNewPasswordForm: Bool) {
+        // 欄が消えた (モーダルを閉じた・SPA がログインフォームへ置き換えた) 時は、そのペインの生成提案を取り下げる
+        if !hasNewPasswordForm, proposal == .generatePassword, proposalPane === pane {
+            dismissProposal()
+            return
+        }
+        guard hasNewPasswordForm, proposal == nil, pane === currentWindow.focusedPane else {
+            return
+        }
+        proposalPane = pane
+        proposalURL = pane.url
+        proposalGeneration = pane.documentGeneration
+        proposal = .generatePassword
+    }
+
+    /// 提案を承認する (y)
+    func acceptProposal() {
+        guard let proposal else {
+            return
+        }
+        let pane = proposalPane
+        let url = proposalURL
+        let generation = proposalGeneration
+        self.proposal = nil
+        proposalPane = nil
+        proposalURL = nil
+        proposalGeneration = nil
+        defer {
+            reevaluateAfterResolving(proposal: proposal)
+        }
+        // 保存・更新の提案は送信時に捕捉済みの値なので、送信後の遷移 (ダッシュボードへのリダイレクト等) の後でも承認できる。
+        // ページの同一性を確かめるのは、現在の文書へ充填する生成提案だけ
+        switch proposal {
+        case .save(let url, let username, let password):
+            do {
+                // 別ウィンドウで同じアカウントを先に保存していることがあるため、保存の直前に同じオリジン・ユーザー名を再照合し、
+                // 既にあれば新規保存せず更新にする (同じ Keychain を複数ウィンドウが参照するため)
+                if let existing = try credentialStore.all().first(where: {
+                    CredentialMatcher.host(url: $0.url) == CredentialMatcher.host(url: url)
+                        && $0.url.scheme?.lowercased() == url.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: url)
+                        && $0.username.unicodeScalars.elementsEqual(username.unicodeScalars)
+                }) {
+                    if !existing.password.unicodeScalars.elementsEqual(password.unicodeScalars) {
+                        var updated = existing
+                        updated.password = password
+                        updated.updatedAt = Date()
+                        try credentialStore.save(credential: updated)
+                        statusMessage = "更新した: \(username)"
+                    } else {
+                        statusMessage = "変更なし: \(username)"
+                    }
+                    return
+                }
+                try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
+                statusMessage = "保存した: \(username)"
+            } catch {
+                statusMessage = "保存に失敗: \(error)"
+            }
+        case .update(let credential, let password):
+            do {
+                // 提案を出してから承認するまでに別ウィンドウ・インポートが同じ項目を変えていることがあるため、
+                // 最新の項目を id で読み直し、その note / URL を保ったままパスワードだけを更新する
+                var updated = (try credentialStore.all().first { $0.id == credential.id }) ?? credential
+                updated.password = password
+                updated.updatedAt = Date()
+                try credentialStore.save(credential: updated)
+                statusMessage = "更新した: \(updated.username)"
+            } catch {
+                statusMessage = "更新に失敗: \(error)"
+            }
+        case .generatePassword:
+            guard let pane else {
+                return
+            }
+            // 提案を出した後に別のページや同じ URL の別文書へ移っていたり、対象のペインが閉じられていたら、そのフォームへは入れない
+            // 別のペイン・ウィンドウへフォーカスを移した後の y で、見えていない元のペインへ入れない
+            guard pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
+                statusMessage = "ページが変わったため提案を取り消した"
+                return
+            }
+            let generator = config.passwordGenerator
+            Task { @MainActor [weak self] in
+                // 非同期に入るまでに文書が置き換わっていることがあるため、JavaScript を呼ぶ直前にも世代を確かめる
+                guard pane.documentGeneration == generation else {
+                    self?.statusMessage = "ページが変わったため提案を取り消した"
+                    return
+                }
+                // 対象欄の maxLength に収めて生成する (切り詰めると必須文字種が落ちるため、最初からその長さで作る)
+                let password = generator.generate(maxLength: await pane.newPasswordMaxLength())
+                guard let self else {
+                    return
+                }
+                // maxLength の取得を待つ間に別ペイン・ウィンドウ・ルート (History API) へ移っていたら、見えていない元ペインへ入れない
+                guard windows.contains(where: { $0.panes[pane.id] === pane }),
+                      pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
+                    statusMessage = "ページが変わったため提案を取り消した"
+                    return
+                }
+                do {
+                    let filled = try await pane.fillNewPassword(password)
+                    statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
+                } catch {
+                    statusMessage = "充填に失敗: \(error)"
+                }
+            }
+        }
+    }
+
+    /// 提案を却下する (n / Escape)
+    func dismissProposal() {
+        let resolved = proposal
+        proposal = nil
+        proposalPane = nil
+        proposalURL = nil
+        proposalGeneration = nil
+        reevaluateAfterResolving(proposal: resolved)
+    }
+
+    /// 保存・更新の提案が片付いた後、その間に捨てた新規パスワード欄の通知を補うため現在のペインを評価し直す
+    /// (生成提案そのものの解決後は、同じ欄について即座に再提案しない)
+    private func reevaluateAfterResolving(proposal resolved: Proposal?) {
+        switch resolved {
+        case .save, .update:
+            evaluateNewPasswordProposal()
+        case .generatePassword, nil:
+            break
+        }
+    }
+
+    /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
+    func generatePassword() {
+        proposalPane = currentWindow.focusedPane
+        proposalURL = currentWindow.focusedPane.url
+        proposalGeneration = currentWindow.focusedPane.documentGeneration
+        proposal = .generatePassword
+        acceptProposal()
+    }
+
     /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ
     func fillCredential() {
         cancelPrompt()
@@ -1066,6 +1310,20 @@ final class BrowserWindowModel {
         if prompt != nil {
             return false
         }
+        // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)。アドレスバーや Web ページの入力中は横取りしない
+        // 一覧を開いている間は一覧のキー操作を優先する (Escape で一覧を閉じるつもりが提案の却下にならないように)
+        if proposal != nil, chooser == nil, !isAddressBarEditing, !currentWindow.focusedPane.isEditingText, keyStroke.modifiers.isEmpty {
+            switch keyStroke.key {
+            case "y":
+                acceptProposal()
+                return true
+            case "n", "Escape":
+                dismissProposal()
+                return true
+            default:
+                break
+            }
+        }
         if chooser != nil {
             // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
             if keyStroke.modifiers.contains(.command) {
@@ -1230,6 +1488,7 @@ final class BrowserWindowModel {
             addressText = navigatedURL.absoluteString
             focusedPaneStateVersion += 1
             scheduleSave()
+            evaluateNewPasswordProposal()
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
@@ -1239,6 +1498,12 @@ final class BrowserWindowModel {
         }
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
+        }
+        window.onLoginSubmit = { [weak self] pane, frameURL, username, password, currentPassword, isNewPassword in
+            self?.handleLoginSubmit(pane: pane, frameURL: frameURL, username: username, password: password, currentPassword: currentPassword, isNewPassword: isNewPassword)
+        }
+        window.onNewPasswordFormChange = { [weak self] pane, hasNewPasswordForm in
+            self?.handleNewPasswordForm(pane: pane, hasNewPasswordForm: hasNewPasswordForm)
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {

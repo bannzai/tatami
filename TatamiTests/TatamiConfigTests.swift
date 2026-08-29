@@ -298,6 +298,13 @@ struct TatamiConfigTests {
         #expect(TatamiConfigParser.resolvedIncludePath(path: "x.conf", baseDirectory: nil) == "x.conf")
     }
 
+    @Test func passwordGenerationSettings() {
+        var config = TatamiConfig()
+        let errors = TatamiConfigParser.apply(text: "set -g password-length 32\nset -g password-symbols off\nset -g password-length 3\nset -g password-symbols maybe\nset -g password-length 100000", config: &config)
+        #expect(config.passwordGenerator == PasswordGenerator(length: 32, includesSymbols: false))
+        #expect(errors.map(\.line) == [3, 4, 5])
+    }
+
     @Test func loaderOverlaysExplicitFileOnBaseConfig() throws {
         let fileURL = FileManager.default.temporaryDirectory.appending(path: "tatami-extras-\(UUID().uuidString).conf")
         try "set -g user-agent TatamiTest/1.0".write(to: fileURL, atomically: true, encoding: .utf8)
