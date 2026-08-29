@@ -983,6 +983,23 @@ final class BrowserWindowModel {
         switch proposal {
         case .save(let url, let username, let password):
             do {
+                // 別ウィンドウで同じアカウントを先に保存していることがあるため、保存の直前に同じオリジン・ユーザー名を再照合し、
+                // 既にあれば新規保存せず更新にする (同じ Keychain を複数ウィンドウが参照するため)
+                if let existing = try credentialStore.credentials(host: url.host()?.lowercased() ?? "").first(where: {
+                    $0.url.scheme?.lowercased() == url.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: url)
+                        && $0.username.unicodeScalars.elementsEqual(username.unicodeScalars)
+                }) {
+                    if existing.password != password {
+                        var updated = existing
+                        updated.password = password
+                        updated.updatedAt = Date()
+                        try credentialStore.save(credential: updated)
+                        statusMessage = "更新した: \(username)"
+                    } else {
+                        statusMessage = "変更なし: \(username)"
+                    }
+                    return
+                }
                 try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
                 statusMessage = "保存した: \(username)"
             } catch {
@@ -1279,7 +1296,8 @@ final class BrowserWindowModel {
             return false
         }
         // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)。アドレスバーや Web ページの入力中は横取りしない
-        if proposal != nil, !isAddressBarEditing, !currentWindow.focusedPane.isEditingText, keyStroke.modifiers.isEmpty {
+        // 一覧を開いている間は一覧のキー操作を優先する (Escape で一覧を閉じるつもりが提案の却下にならないように)
+        if proposal != nil, chooser == nil, !isAddressBarEditing, !currentWindow.focusedPane.isEditingText, keyStroke.modifiers.isEmpty {
             switch keyStroke.key {
             case "y":
                 acceptProposal()
