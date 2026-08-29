@@ -28,7 +28,10 @@ struct SessionSnapshotTests {
                     ],
                     renamedName: "docs"
                 ),
-                SessionSnapshot.Window(paneTree: PaneTree(), panes: [], renamedName: nil),
+                {
+                    let secondTree = PaneTree()
+                    return SessionSnapshot.Window(paneTree: secondTree, panes: [SessionSnapshot.Window.Pane(id: secondTree.focusedPaneID, url: URL(string: "about:blank")!)], renamedName: nil)
+                }(),
             ],
             currentWindowIndex: 1
         )
@@ -119,5 +122,39 @@ struct SessionSnapshotTests {
         #expect(throws: SessionStoreError.self) {
             try SessionStore.load(name: "0", directoryURL: directoryURL)
         }
+    }
+
+    @Test func loadRejectsWindowsWhosePanesMismatchTree() throws {
+        let directoryURL = FileManager.default.temporaryDirectory.appending(path: "tatami-session-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directoryURL)
+        }
+        let tree = PaneTree()
+        let id = try #require(tree.paneIDs.first)
+        let other = PaneID()
+        let url = URL(string: "https://example.com/")!
+        func write(panes: [SessionSnapshot.Window.Pane]) throws {
+            let snapshot = SessionSnapshot(name: "broken", windows: [SessionSnapshot.Window(paneTree: tree, panes: panes, renamedName: nil)], currentWindowIndex: 0)
+            try SessionStore.save(snapshot: snapshot, directoryURL: directoryURL)
+        }
+        // 欠け
+        try write(panes: [])
+        #expect(throws: SessionStoreError.self) {
+            try SessionStore.load(name: "broken", directoryURL: directoryURL)
+        }
+        // 余分
+        try write(panes: [SessionSnapshot.Window.Pane(id: id, url: url), SessionSnapshot.Window.Pane(id: other, url: url)])
+        #expect(throws: SessionStoreError.self) {
+            try SessionStore.load(name: "broken", directoryURL: directoryURL)
+        }
+        // 重複
+        try write(panes: [SessionSnapshot.Window.Pane(id: id, url: url), SessionSnapshot.Window.Pane(id: id, url: url)])
+        #expect(throws: SessionStoreError.self) {
+            try SessionStore.load(name: "broken", directoryURL: directoryURL)
+        }
+        // 一致
+        try write(panes: [SessionSnapshot.Window.Pane(id: id, url: url)])
+        #expect(try SessionStore.load(name: "broken", directoryURL: directoryURL) != nil)
     }
 }
