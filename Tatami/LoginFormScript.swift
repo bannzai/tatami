@@ -18,8 +18,8 @@ enum LoginFormScript {
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
-        // 充填できる欄 (new-password だけのフォームは対象外) があるフレームだけを充填先の候補として知らせる
-        const hasPassword = Array.from(document.querySelectorAll('input[type="password"]')).some((field) => !hasAutocomplete(field, 'new-password'));
+        // 実際に充填できる欄 (充填時と同じ条件: new-password でなく、可視で操作できる) があるフレームだけを充填先の候補として知らせる
+        const hasPassword = !!findFillablePasswordField();
         if (hasPassword === lastHasPassword) { return; }
         lastHasPassword = hasPassword;
         send({ hasPassword });
@@ -55,8 +55,9 @@ enum LoginFormScript {
       const hasAutocomplete = (field, token) => (field.autocomplete || field.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/).includes(token);
       // form 属性で関連付けられた (DOM 上はフォームの子孫でない) 欄も含めるため、フォームでは elements を使う
       const inputsIn = (scope) => Array.from(scope.elements ? scope.elements : scope.querySelectorAll('input')).filter((element) => element.tagName === 'INPUT');
-      const findUsernameField = (passwordField) => {
-        const form = passwordField.form || document;
+      // form の無い UI では、クリック処理が渡した区画 (scope) の中からユーザー名欄を探す (別区画のメール欄を拾わない)
+      const findUsernameField = (passwordField, scope) => {
+        const form = passwordField.form || scope || document;
         const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
           return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
