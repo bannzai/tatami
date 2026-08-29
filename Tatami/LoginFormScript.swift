@@ -172,7 +172,7 @@ enum LoginFormScript {
         if (!button) { return; }
         // フォーム所属の submitter (button / input[type=submit]) は native の submit イベントで捕捉するため、ここでは扱わない
         // (form 内の role=button の非送信ボタンを送信と誤認しない・submit との二重通知を避ける)
-        if (button.form) { return; }
+        if (button.form || (button.closest && button.closest('form'))) { return; }
         // form の無いボタン (role=button の AJAX ログインを含む) は、パスワード欄かユーザー名候補を持つログイン区画のものだけ捕捉する
         const container = loginScope(button);
         if (!container || !(usablePasswordFields(container).length || usernameCandidate(container))) { return; }
@@ -242,6 +242,15 @@ enum LoginFormScript {
       new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden', 'disabled', 'readonly', 'open'] });
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
+      // 生成対象の欄の最小 maxLength (Swift が長さを合わせて生成するため。0 は上限なし)
+      window.__tatamiNewPasswordMaxLength = () => {
+        const scope = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm))[0];
+        if (!scope) { return 0; }
+        const fields = renderedPasswordFields(scope);
+        const cur = unmarkedChangeFields(fields)?.current || null;
+        const limits = fields.filter((field) => field !== cur && !hasAutocomplete(field, 'current-password')).map((field) => field.maxLength).filter((n) => n > 0);
+        return limits.length ? Math.min(...limits) : 0;
+      };
       window.__tatamiFillNewPassword = (password) => {
         // 生成値は新規パスワードフォームと判定したフォーム (form 要素、または form に属さない欄の組) の欄にだけ入れる
         // (同じ文書に並ぶ通常のログインフォームの入力済みパスワードを上書きしない)。現在のパスワード欄は保持する
@@ -249,19 +258,20 @@ enum LoginFormScript {
         // 画面外の確認欄も充填するため rendered を使い、現在のパスワード欄は除外し続ける
         const scope = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm))[0];
         if (!scope) { return false; }
-        const current = unmarkedChangeFields(renderedPasswordFields(scope))?.current || null;
-        const targets = () => renderedPasswordFields(scope).filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
+        // 対象欄は毎回 DOM から取り直し、その時点の現在パスワード欄を判定して除外する
+        // (React 等が 3 欄すべてを置換しても、新しい現在欄を生成値で上書きしない)
+        const targets = () => {
+          const fields = renderedPasswordFields(scope);
+          const cur = unmarkedChangeFields(fields)?.current || null;
+          return fields.filter((field) => field !== cur && !hasAutocomplete(field, 'current-password'));
+        };
         if (targets().length === 0) { return false; }
-        // input / change でフォームを再生成するページでは、先に入れた欄のイベントで残りの欄が DOM から外れることがあるため、
-        // 1 欄ごとに接続状態を確かめ、外れていれば入れ直す対象を再探索する (現在の欄は毎回除外する)
-        // 対象欄の maxlength に合わせて切り詰める (上限より長い生成値は検証で弾かれるため。新規・確認で同じ値になるよう共通の長さにする)
-        const limits = targets().map((field) => field.maxLength).filter((n) => n > 0);
-        const value = limits.length ? password.slice(0, Math.min(...limits)) : password;
+        // 生成値は Swift 側で対象欄の maxLength に収めて作る (切り詰めると必須文字種が落ちるため)
         const filled = new Set();
         for (let i = 0; i < 8; i++) {
-          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== value);
+          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
           if (remaining.length === 0) { break; }
-          setValue(remaining[0], value);
+          setValue(remaining[0], password);
           filled.add(remaining[0]);
         }
         return filled.size > 0;
