@@ -87,6 +87,7 @@ struct BrowserWindowView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Text("[\(model.sessionName)]")
+                        .accessibilityIdentifier("sessionName")
                     ForEach(Array(model.windows.enumerated()), id: \.offset) { index, window in
                         Text("\(index):\(window.name)\(index == model.currentWindowIndex ? "*" : "")")
                             .id(index)
