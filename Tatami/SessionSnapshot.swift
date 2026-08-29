@@ -77,7 +77,12 @@ enum SessionStore {
         }
         let snapshot = try JSONDecoder().decode(SessionSnapshot.self, from: Data(contentsOf: url))
         // JSON として正しくても内部参照が壊れていると復元時にクラッシュして起動できなくなるため、ここで弾いて新規セッションにフォールバックさせる
+        // 各ウィンドウのペイン一覧はツリーの葉と過不足なく一致していること (欠け・重複・余分があると復元で別の状態になる)
         guard snapshot.windows.allSatisfy(\.paneTree.isConsistent),
+              snapshot.windows.allSatisfy({ window in
+                  let ids = window.panes.map(\.id)
+                  return Set(ids).count == ids.count && Set(ids) == Set(window.paneTree.paneIDs)
+              }),
               snapshot.windows.isEmpty || snapshot.windows.indices.contains(snapshot.currentWindowIndex) else {
             throw SessionStoreError.inconsistentSnapshot(name)
         }
