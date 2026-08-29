@@ -63,8 +63,11 @@ enum LoginFormScript {
         if (!passwordField) { return false; }
         const usernameField = findUsernameField(passwordField);
         if (usernameField && username) { setValue(usernameField, username); }
-        setValue(passwordField, password);
-        passwordField.focus();
+        // ユーザー名の input / change でフォームを再描画するページでは、保持していたパスワード欄が DOM から外れていることがあるため再探索する
+        const target = passwordField.isConnected ? passwordField : (usable.find((field) => field.isConnected) || null);
+        if (!target || !target.isConnected) { return false; }
+        setValue(target, password);
+        target.focus();
         return true;
       };
       post();

@@ -226,7 +226,9 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard !origin.host.isEmpty else {
             return nil
         }
-        return URL(string: "\(origin.protocol)://\(origin.host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
+        // IPv6 のホストは角括弧で囲まないと URL にならない
+        let host = origin.host.contains(":") ? "[\(origin.host)]" : origin.host
+        return URL(string: "\(origin.protocol)://\(host)\(origin.port == 0 ? "" : ":\(origin.port)")/")
     }
 
     /// 資格情報の充填先フレーム。トップレベルに欄があればそれ、無ければ資格情報と同じオリジンの iframe (別オリジンの iframe には渡さない)。
