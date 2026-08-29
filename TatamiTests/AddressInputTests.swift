@@ -33,4 +33,13 @@ struct AddressInputTests {
         #expect(AddressInput.resolve(text: "127.0.0.1:8080") == URL(string: "http://127.0.0.1:8080"))
         #expect(AddressInput.resolve(text: "[::1]:3000") == URL(string: "http://[::1]:3000"))
     }
+
+    @Test func searchURLKeepsConfiguredQueryParameters() {
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?p=&lang=ja")!) == URL(string: "https://search.example/?p=tmux&lang=ja"))
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?safe=1")!) == URL(string: "https://search.example/?safe=1&q=tmux"))
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?flag")!) == URL(string: "https://search.example/?flag&q=tmux"))
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?source=&q=")!) == URL(string: "https://search.example/?source=&q=tmux"))
+        // 値の入った q も検索語で置き換える (2 つ目の q を足さない)
+        #expect(AddressInput.resolve(text: "tmux", searchURL: URL(string: "https://search.example/?q=test&hl=ja")!) == URL(string: "https://search.example/?q=tmux&hl=ja"))
+    }
 }

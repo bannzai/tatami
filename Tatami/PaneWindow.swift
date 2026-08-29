@@ -22,20 +22,28 @@ final class PaneWindow {
     /// 画面上でペインを並べている領域の大きさ。ポップアップの分割方向を実際の縦横比で決めるために描画側から受け取る。
     /// 描画前は正方形とみなす
     var containerSize = CGSize(width: 1, height: 1)
+    /// 新しいペインを開く時の URL (tatami.conf の `set -g home`)。設定の再読込で差し替わる
+    private var homeURL: URL
+    /// 各ペインの WKWebView に設定する User-Agent (`set -g user-agent`)。nil は WebKit の既定
+    private var userAgent: String?
 
-    init() {
-        let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
+    init(homeURL: URL, userAgent: String?) {
+        self.homeURL = homeURL
+        self.userAgent = userAgent
+        let pane = makePane(id: paneTree.focusedPaneID, url: homeURL)
         panes[pane.id] = pane
         pane.loadInitialURL()
     }
 
-    /// 保存したセッションからの復元。ツリーの葉に対応する URL が無いペインは空ページで補う
-    init(snapshot: SessionSnapshot.Window) {
+    /// 保存したセッションからの復元。ツリーの葉に対応する URL が無いペインはホームページで補う
+    init(snapshot: SessionSnapshot.Window, homeURL: URL, userAgent: String?) {
+        self.homeURL = homeURL
+        self.userAgent = userAgent
         paneTree = snapshot.paneTree
         renamedName = snapshot.renamedName
         let urls = Dictionary(snapshot.panes.map { ($0.id, $0.url) }) { first, _ in first }
         for paneID in paneTree.paneIDs {
-            panes[paneID] = makePane(id: paneID, url: urls[paneID] ?? AddressInput.homeURL)
+            panes[paneID] = makePane(id: paneID, url: urls[paneID] ?? homeURL)
         }
     }
 
@@ -43,6 +51,15 @@ final class PaneWindow {
     func loadRestoredPanes() {
         for pane in panes.values {
             pane.loadInitialURL()
+        }
+    }
+
+    /// tatami.conf の再読込を反映する。開いているペインの User-Agent は次の読み込みから新しい値になり、以後に開くペインは新しいホームページで始まる
+    func apply(homeURL: URL, userAgent: String?) {
+        self.homeURL = homeURL
+        self.userAgent = userAgent
+        for pane in panes.values {
+            pane.webView.customUserAgent = userAgent
         }
     }
 
@@ -70,7 +87,7 @@ final class PaneWindow {
     /// フォーカス中のペインを分割し、新しいペインに空ページを開く
     func split(axis: SplitAxis) {
         let newPaneID = paneTree.split(axis: axis)
-        let pane = makePane(id: newPaneID, url: AddressInput.homeURL)
+        let pane = makePane(id: newPaneID, url: homeURL)
         panes[newPaneID] = pane
         pane.loadInitialURL()
         notifyFocusedURL()
@@ -83,7 +100,7 @@ final class PaneWindow {
         let sourceFrame = paneTree.frames(bounds: containerBounds)[sourcePaneID] ?? containerBounds
         paneTree.focus(paneID: sourcePaneID)
         let newPaneID = paneTree.split(axis: sourceFrame.width >= sourceFrame.height ? .horizontal : .vertical)
-        let pane = makePane(id: newPaneID, url: AddressInput.homeURL, configuration: configuration)
+        let pane = makePane(id: newPaneID, url: homeURL, configuration: configuration)
         panes[newPaneID] = pane
         notifyFocusedURL()
         return pane.webView
@@ -161,7 +178,7 @@ final class PaneWindow {
     }
 
     private func makePane(id: PaneID, url: URL, configuration: WKWebViewConfiguration? = nil) -> WebPane {
-        let pane = WebPane(id: id, url: url, configuration: configuration ?? WebPane.defaultConfiguration())
+        let pane = WebPane(id: id, url: url, userAgent: userAgent, configuration: configuration ?? WebPane.defaultConfiguration())
         pane.onNavigate = { [weak self] navigatedURL in
             guard let self else {
                 return

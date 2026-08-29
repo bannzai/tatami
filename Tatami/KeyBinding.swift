@@ -185,6 +185,9 @@ enum BrowserCommand: Hashable, Sendable {
     case detachClient
     case chooseSession
     case renameSession
+    /// tatami.conf を読み直して設定を差し替える。パスを省略すると既定のファイル (`~/.config/tatami/tatami.conf`) を読む。
+    /// 設定を書き換えるコマンドをキーに割り当てる意味が薄いため既定のバインドには入れず、コマンドプロンプトから呼ぶ
+    case sourceFile(String?)
 
     /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
     var tmuxName: String {
@@ -247,14 +250,34 @@ enum BrowserCommand: Hashable, Sendable {
             return "choose-session"
         case .renameSession:
             return "rename-session"
+        case .sourceFile(let path):
+            return path.map { "source-file \($0)" } ?? "source-file"
         }
     }
 
-    /// tmux のコマンド名からの変換。空白の連続は 1 つに正規化する。知らないコマンドは nil
+    /// tmux のコマンド名からの変換。コマンド名と引数の間の空白の連続は 1 つに正規化するが、`source-file` のパスは空白を保つ。知らないコマンドは nil
     init?(tmuxName: String) {
-        let normalized = tmuxName.split(separator: " ").joined(separator: " ")
+        let trimmed = tmuxName.trimmingCharacters(in: .whitespaces)
+        if trimmed == "source-file" {
+            self = .sourceFile(nil)
+            return
+        }
+        if trimmed.hasPrefix("source-file ") {
+            let path = trimmed.dropFirst("source-file ".count).trimmingCharacters(in: .whitespaces)
+            self = .sourceFile(path.isEmpty ? nil : path)
+            return
+        }
+        let normalized = trimmed.split(separator: " ").joined(separator: " ")
         if let match = normalized.wholeMatch(of: /select-window -t (\d+)/), let index = Int(match.1) {
             self = .selectWindow(index)
+            return
+        }
+        if let match = normalized.wholeMatch(of: /source-file (.+)/) {
+            self = .sourceFile(String(match.1))
+            return
+        }
+        if normalized == "source-file" {
+            self = .sourceFile(nil)
             return
         }
         guard let command = BrowserCommand.fixedCommands.first(where: { $0.tmuxName == normalized }) else {
