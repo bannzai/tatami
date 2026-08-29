@@ -99,10 +99,11 @@ struct KeyStroke: Hashable, Sendable {
               let character = characters.first, !character.isNewline else {
             return nil
         }
-        // Shift + 英字は charactersIgnoringModifiers が小文字のままのため大文字にして区別する。Caps Lock も印字の大小に反映する
-        // (Caps Lock 中の Shift + 英字は小文字)
-        if event.modifierFlags.contains(.shift) != event.modifierFlags.contains(.capsLock), character.isLetter {
-            self.key = String(character).uppercased()
+        // 英字の大小は実際に印字される文字に合わせる: charactersIgnoringModifiers は Shift だけを反映し Caps Lock を無視するため、
+        // 小文字に戻してから Shift と Caps Lock の排他的論理和で大文字にする (Caps Lock 中の Shift + 英字は小文字)
+        if character.isLetter {
+            let base = String(character).lowercased()
+            self.key = event.modifierFlags.contains(.shift) != event.modifierFlags.contains(.capsLock) ? base.uppercased() : base
         } else {
             self.key = String(character)
         }
