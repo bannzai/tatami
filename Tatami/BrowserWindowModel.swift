@@ -563,6 +563,8 @@ final class BrowserWindowModel {
         configuration.backwards = backwards
         // 末尾の一致から n (先頭から N) でページの反対側へ折り返す (ブラウザと vi の反復検索と同じ)
         configuration.wraps = true
+        // 前回の「見つからない」を残さない (今回の結果で置き換える)
+        statusMessage = nil
         findGeneration += 1
         let generation = findGeneration
         let text = lastFindText
@@ -758,6 +760,8 @@ final class BrowserWindowModel {
     func find(text: String) {
         let webView = currentWindow.focusedPane.webView
         // 空文字は検索の解除。保留中の検索の完了で古い結果を表示しないよう世代も進める
+        // 前回の「見つからない」を残さない (今回の結果で置き換える)
+        statusMessage = nil
         findGeneration += 1
         guard !text.isEmpty else {
             webView.evaluateJavaScript("window.getSelection().removeAllRanges()")

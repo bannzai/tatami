@@ -40,4 +40,12 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: "b")!] == .chooseBookmark)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "a")!] == .fillCredential)
     }
+
+    @Test func downloadFileNameIsConstrainedToOneComponent() {
+        #expect(DownloadManager.sanitizedFileName("report.pdf") == "report.pdf")
+        #expect(DownloadManager.sanitizedFileName("../outside-downloads") == "outside-downloads")
+        #expect(DownloadManager.sanitizedFileName("a/b/c.txt") == "c.txt")
+        #expect(DownloadManager.sanitizedFileName("..") == "download")
+        #expect(DownloadManager.sanitizedFileName("") == "download")
+    }
 }
