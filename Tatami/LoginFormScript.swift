@@ -18,8 +18,8 @@ enum LoginFormScript {
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
-        // 充填できる欄 (new-password だけのフォームは対象外) があるフレームだけを充填先の候補として知らせる
-        const hasPassword = Array.from(document.querySelectorAll('input[type="password"]')).some((field) => !hasAutocomplete(field, 'new-password'));
+        // 実際に充填できる欄 (充填時と同じ条件: new-password でなく、可視で操作できる) があるフレームだけを充填先の候補として知らせる
+        const hasPassword = !!findFillablePasswordField();
         if (hasPassword === lastHasPassword) { return; }
         lastHasPassword = hasPassword;
         send({ hasPassword });
