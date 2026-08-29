@@ -887,7 +887,8 @@ final class BrowserWindowModel {
         let byCurrentPassword = username.isEmpty && !currentPassword.isEmpty
             ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
             : []
-        let matched = existing.first(where: { $0.username == username }) ?? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
+        // ユーザー名も正規化形だけが違う値を別アカウントとして扱う (PasswordImporter.matchKey と同じ) ため、スカラー値で比較する
+        let matched = existing.first(where: { $0.username.unicodeScalars.elementsEqual(username.unicodeScalars) }) ?? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
         if username.isEmpty, byCurrentPassword.count > 1 {
             statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
             return

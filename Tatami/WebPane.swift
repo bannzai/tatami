@@ -289,6 +289,19 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         guard message.name == LoginFormScript.messageName, let body = message.body as? [String: Any] else {
             return
         }
+        if body["gone"] as? Bool == true {
+            // 破棄されるフレーム (pagehide) の状態を全て消す
+            let key = WebPane.frameKey(message: message)
+            loginFormFrames.removeValue(forKey: key)
+            hasLoginForm = !loginFormFrames.isEmpty
+            editingFrames.remove(key)
+            isEditingText = !editingFrames.isEmpty
+            if newPasswordFrames.removeValue(forKey: key) != nil, newPasswordFrames.isEmpty, hasNewPasswordForm {
+                hasNewPasswordForm = false
+                onNewPasswordFormChange?(false)
+            }
+            return
+        }
         if let hasPassword = body["hasPassword"] as? Bool {
             if hasPassword {
                 loginFormFrames[WebPane.frameKey(message: message)] = message.frameInfo
