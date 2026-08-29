@@ -1165,9 +1165,9 @@ final class BrowserWindowModel {
                 guard let self else {
                     return
                 }
-                // maxLength の取得を待つ間に別ペイン・ウィンドウへ移っていたら、見えていない元ペインへ入れない
+                // maxLength の取得を待つ間に別ペイン・ウィンドウ・ルート (History API) へ移っていたら、見えていない元ペインへ入れない
                 guard windows.contains(where: { $0.panes[pane.id] === pane }),
-                      pane === currentWindow.focusedPane, pane.documentGeneration == generation else {
+                      pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
                     statusMessage = "ページが変わったため提案を取り消した"
                     return
                 }

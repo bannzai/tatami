@@ -54,7 +54,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     private(set) var isEditingText = false
     /// 複数段階ログインの 1 段目で入力されたユーザー名と、そのオリジン。次の段で同じオリジンからパスワードだけが送信された時に関連付け、
     /// 別のサイトへ移った (オリジンが変わった) 時は使わない
-    private(set) var pendingUsername: (username: String, origin: String)?
+    private(set) var pendingUsername: (username: String, origin: String, frameKey: String)?
     /// 保留中のユーザー名を持ち越せる残りの文書遷移の回数。1 段目 → 2 段目のページ遷移 (1 回) だけを許し、
     /// それ以上の無関係な遷移では捨てる (別のパスワード専用フォームに古いユーザー名を付けない)
     private var pendingUsernameNavigationsRemaining = 0
@@ -361,6 +361,10 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             if newPasswordFrames.removeValue(forKey: key) != nil {
                 updateHasNewPasswordForm()
             }
+            // そのフレームで保留したユーザー名は、フレームが破棄されたら捨てる (別フレームの送信に誤って使わない)
+            if pendingUsername?.frameKey == key {
+                pendingUsername = nil
+            }
             return
         }
         if let hasPassword = body["hasPassword"] as? Bool {
@@ -392,7 +396,7 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             isEditingText = !editingFrames.isEmpty
         }
         if let usernameOnly = body["usernameOnly"] as? String, !usernameOnly.isEmpty, let frameURL = WebPane.frameURL(message: message) {
-            pendingUsername = (usernameOnly, WebPane.origin(url: frameURL))
+            pendingUsername = (usernameOnly, WebPane.origin(url: frameURL), WebPane.frameKey(message: message))
             pendingUsernameNavigationsRemaining = 1
         }
         if body["submitted"] as? Bool == true, let password = body["password"] as? String, !password.isEmpty {
