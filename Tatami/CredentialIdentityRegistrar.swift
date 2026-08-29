@@ -13,13 +13,16 @@ enum CredentialIdentityRegistrar {
 
     /// 資格情報を OS に登録する識別子。オリジンをそのまま URL 型で持たせ、http と https・別ポートを OS 側でも区別させる。
     /// ホストは IDNA の ASCII 形 (`encodedHost`) と IPv6 の角括弧を保つため、文字列の連結ではなく URLComponents で組み立てる
-    static func serviceIdentifier(credential: Credential) -> ASCredentialServiceIdentifier? {
+    static func serviceIdentifier(credential: Credential, scheme overrideScheme: String? = nil) -> ASCredentialServiceIdentifier? {
         guard var components = URLComponents(url: credential.url, resolvingAgainstBaseURL: false),
-              let scheme = components.scheme?.lowercased(), let host = components.encodedHost, !host.isEmpty else {
+              let originalScheme = components.scheme?.lowercased(),
+              // ホストは照合時と同じ正規化 (IPv6 の標準形・末尾ドット除去・IDNA の A-label) を使う
+              let host = CredentialMatcher.host(url: credential.url), !host.isEmpty else {
             return nil
         }
+        let scheme = overrideScheme ?? originalScheme
         components.scheme = scheme
-        components.encodedHost = host.lowercased()
+        components.encodedHost = host.contains(":") ? "[\(host)]" : host
         components.user = nil
         components.password = nil
         components.path = "/"
@@ -34,6 +37,15 @@ enum CredentialIdentityRegistrar {
             return nil
         }
         return ASCredentialServiceIdentifier(identifier: identifier, type: .URL)
+    }
+
+    /// 1 つの資格情報が対応するサービス識別子。http で保存した項目は、CredentialMatcher が http→https の昇格を許すため https 用も登録する
+    static func serviceIdentifiers(credential: Credential) -> [ASCredentialServiceIdentifier] {
+        var identifiers = [serviceIdentifier(credential: credential)].compactMap { $0 }
+        if credential.url.scheme?.lowercased() == "http", let https = serviceIdentifier(credential: credential, scheme: "https") {
+            identifiers.append(https)
+        }
+        return identifiers
     }
 
     /// ストアの全件で OS 側の一覧を置き換える。同じ内容で何度呼んでも同じ状態になる (追加ではなく置換)。
@@ -73,11 +85,10 @@ enum CredentialIdentityRegistrar {
                   let credentials = load() else {
                 return false
             }
-            let identities = credentials.compactMap { credential -> ASPasswordCredentialIdentity? in
-                guard let serviceIdentifier = serviceIdentifier(credential: credential) else {
-                    return nil
+            let identities = credentials.flatMap { credential in
+                serviceIdentifiers(credential: credential).map {
+                    ASPasswordCredentialIdentity(serviceIdentifier: $0, user: credential.username, recordIdentifier: credential.id.uuidString)
                 }
-                return ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier, user: credential.username, recordIdentifier: credential.id.uuidString)
             }
             do {
                 try await ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities)
