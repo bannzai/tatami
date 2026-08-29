@@ -18,7 +18,8 @@ enum LoginFormScript {
       // DOM の変化のたびに送るとチャット等で IPC が続くため、有無が変わった時だけ送る
       let lastHasPassword = null;
       const post = () => {
-        const hasPassword = !!document.querySelector('input[type="password"]');
+        // 充填できる欄 (new-password だけのフォームは対象外) があるフレームだけを充填先の候補として知らせる
+        const hasPassword = Array.from(document.querySelectorAll('input[type="password"]')).some((field) => !hasAutocomplete(field, 'new-password'));
         if (hasPassword === lastHasPassword) { return; }
         lastHasPassword = hasPassword;
         send({ hasPassword });
@@ -106,8 +107,9 @@ enum LoginFormScript {
           return;
         }
         const usernameField = findUsernameField(passwordField);
+        // form 属性で関連付けた欄も数えるため、フォームでは elements から列挙する (画面外でも数える)
         const isNewPassword = hasAutocomplete(passwordField, 'new-password')
-          || (passwordField.form ? Array.from(passwordField.form.querySelectorAll('input[type="password"]')).filter(isVisible).length : 0) >= 2;
+          || (passwordField.form ? renderedPasswordFields(passwordField.form).length : 0) >= 2;
         try {
           send({
             submitted: true,
@@ -164,24 +166,41 @@ enum LoginFormScript {
         send({ hasNewPassword });
       };
       // SPA が既存の input の type / autocomplete を後から変える場合も検出する
-      new MutationObserver(postNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden'] });
+      // class / style の変更はアニメーション等で頻発するため、連続する変更を 1 回の再評価にまとめる (レイアウト計算を毎回走らせない)
+      let newPasswordTimer = null;
+      const scheduleNewPassword = () => {
+        if (newPasswordTimer !== null) { return; }
+        newPasswordTimer = setTimeout(() => { newPasswordTimer = null; postNewPassword(); }, 100);
+      };
+      new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden'] });
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
         // 生成値は新規パスワードフォームと判定したフォーム (form 要素、または form に属さない欄の組) の欄にだけ入れる
         // (同じ文書に並ぶ通常のログインフォームの入力済みパスワードを上書きしない)。現在のパスワード欄は保持する
-        const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm);
-        const formless = { querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) };
-        if (isNewPasswordForm(formless)) { scopes.push(formless); }
-        const fields = scopes.flatMap((scope) => {
-          const usable = usablePasswordFields(scope);
-          // autocomplete の無い「現在・新規・確認」のフォームでは現在の欄 (末尾から 3 つ目) を保持する
-          const current = isUnmarkedChangeForm(usable) ? usable[usable.length - 3] : null;
-          return usable.filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
-        });
+        const collect = () => {
+          const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm);
+          const formless = { querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) };
+          if (isNewPasswordForm(formless)) { scopes.push(formless); }
+          return scopes.flatMap((scope) => {
+            const usable = usablePasswordFields(scope);
+            // autocomplete の無い「現在・新規・確認」のフォームでは現在の欄 (末尾から 3 つ目) を保持する
+            const current = isUnmarkedChangeForm(usable) ? usable[usable.length - 3] : null;
+            return usable.filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
+          });
+        };
+        const fields = collect();
         if (fields.length === 0) { return false; }
-        fields.forEach((field) => setValue(field, password));
-        return true;
+        // input / change でフォームを再生成するページでは、先に入れた欄のイベントで残りの欄が DOM から外れることがあるため、
+        // 1 欄ごとに接続状態を確かめ、外れていれば入れ直す対象を再探索する
+        const filled = new Set();
+        for (let i = 0; i < 8; i++) {
+          const remaining = collect().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
+          if (remaining.length === 0) { break; }
+          setValue(remaining[0], password);
+          filled.add(remaining[0]);
+        }
+        return filled.size > 0;
       };
       window.__tatamiFill = (username, password) => {
         // 登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れない。current-password を優先する
