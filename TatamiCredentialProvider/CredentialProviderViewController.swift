@@ -22,7 +22,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     override func loadView() {
         let hosting = NSHostingView(rootView: CredentialProviderView(model: model, onSelect: { [weak self] credential in
-            self?.complete(credential: credential)
+            self?.select(credential: credential)
         }, onCancel: { [weak self] in
             self?.cancel(code: .userCanceled)
         }, onFinishConfiguration: { [weak self] in
@@ -107,6 +107,24 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 return
             }
             extensionContext.completeExtensionConfigurationRequest()
+        }
+    }
+
+    /// 候補の選択。一覧を開いたまま自動ロックの期限を過ぎていることがあるため、返す直前にも本人確認する (アンロック中なら即時)
+    private func select(credential: Credential) {
+        let generation = requestGeneration
+        Task {
+            do {
+                try await CredentialLock.shared.ensureUnlocked(reason: "\(credential.username) を自動入力する")
+                guard generation == requestGeneration else {
+                    return
+                }
+                complete(credential: credential)
+            } catch {
+                if generation == requestGeneration {
+                    model.message = "\(error)"
+                }
+            }
         }
     }
 

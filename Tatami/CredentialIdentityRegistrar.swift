@@ -6,49 +6,78 @@ import Foundation
 /// (充填時に拡張が Keychain から読む)
 enum CredentialIdentityRegistrar {
     /// 直列化のための世代。sync は非同期 (state の取得と置換で中断する) なので、古いスナップショットが後から置換して
-    /// 新しい保存を消さないよう、最新の呼び出しだけが置換する
+    /// 新しい保存を消さないよう、置換は 1 つずつ順に行い、実行時点で最新の呼び出しだけが置換する
     private static var generation = 0
+    /// 直前の同期。次の同期はこれの完了を待ってから置換する (置換の完了順を呼び出し順に揃える)
+    private static var previous: Task<Void, Never>?
 
-    /// 資格情報を OS に登録する識別子。オリジンをそのまま URL 型で持たせ、http と https・別ポートを OS 側でも区別させる
+    /// 資格情報を OS に登録する識別子。オリジンをそのまま URL 型で持たせ、http と https・別ポートを OS 側でも区別させる。
+    /// ホストは IDNA の ASCII 形 (`encodedHost`) と IPv6 の角括弧を保つため、文字列の連結ではなく URLComponents で組み立てる
     static func serviceIdentifier(credential: Credential) -> ASCredentialServiceIdentifier? {
-        guard let scheme = credential.url.scheme?.lowercased(), !credential.host.isEmpty else {
+        guard var components = URLComponents(url: credential.url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(), let host = components.encodedHost, !host.isEmpty else {
             return nil
         }
-        let port = credential.url.port.map { ":\($0)" } ?? ""
-        return ASCredentialServiceIdentifier(identifier: "\(scheme)://\(credential.host)\(port)/", type: .URL)
+        components.scheme = scheme
+        components.encodedHost = host.lowercased()
+        components.user = nil
+        components.password = nil
+        components.path = "/"
+        components.query = nil
+        components.fragment = nil
+        guard let identifier = components.string else {
+            return nil
+        }
+        return ASCredentialServiceIdentifier(identifier: identifier, type: .URL)
     }
 
     /// ストアの全件で OS 側の一覧を置き換える。同じ内容で何度呼んでも同じ状態になる (追加ではなく置換)。
     /// システム設定で Tatami が自動入力プロバイダに選ばれていない間は何もしない (状態が無効の時の登録は捨てられる)
     static func sync(credentials: [Credential]) async {
-        generation += 1
-        let mine = generation
-        guard await ASCredentialIdentityStore.shared.state().isEnabled, mine == generation else {
-            return
-        }
-        let identities = credentials.compactMap { credential -> ASPasswordCredentialIdentity? in
-            guard let serviceIdentifier = serviceIdentifier(credential: credential) else {
+        await sync(generation: nextGeneration()) { credentials }
+    }
+
+    /// ストアを読んで sync する。プロバイダが無効なら Keychain を読まずに終える (ウィンドウごとのアクティブ化通知で全件走査を繰り返さない)。
+    /// 読めなかった時は OS 側の候補を消さずに (空で置換せずに) 中止する
+    static func sync(store: any CredentialStore) async {
+        await sync(generation: nextGeneration()) {
+            do {
+                return try store.all()
+            } catch {
+                NSLog("自動入力候補の同期を中止 (資格情報を読めない): %@", "\(error)")
                 return nil
             }
-            return ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier, user: credential.username, recordIdentifier: credential.id.uuidString)
-        }
-        do {
-            try await ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities)
-        } catch {
-            // 候補の登録は補助機能で、失敗しても Tatami 内の充填には影響しない。次の保存で再登録される
-            NSLog("自動入力候補の登録に失敗: %@", "\(error)")
         }
     }
 
-    /// ストアを読んで sync する。読めなかった時は OS 側の候補を消さずに (空で置換せずに) 中止する
-    static func sync(store: any CredentialStore) async {
-        let credentials: [Credential]
-        do {
-            credentials = try store.all()
-        } catch {
-            NSLog("自動入力候補の同期を中止 (資格情報を読めない): %@", "\(error)")
-            return
+    private static func nextGeneration() -> Int {
+        generation += 1
+        return generation
+    }
+
+    /// 同期の本体。直前の同期の完了を待ち、有効状態の確認 → 読み取り → 置換の各段階で最新の呼び出しでなければ中止する
+    private static func sync(generation mine: Int, load: @escaping @MainActor () -> [Credential]?) async {
+        let waitFor = previous
+        let task = Task {
+            await waitFor?.value
+            guard mine == generation, await ASCredentialIdentityStore.shared.state().isEnabled, mine == generation,
+                  let credentials = load() else {
+                return
+            }
+            let identities = credentials.compactMap { credential -> ASPasswordCredentialIdentity? in
+                guard let serviceIdentifier = serviceIdentifier(credential: credential) else {
+                    return nil
+                }
+                return ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier, user: credential.username, recordIdentifier: credential.id.uuidString)
+            }
+            do {
+                try await ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities)
+            } catch {
+                // 候補の登録は補助機能で、失敗しても Tatami 内の充填には影響しない。次の保存で再登録される
+                NSLog("自動入力候補の登録に失敗: %@", "\(error)")
+            }
         }
-        await sync(credentials: credentials)
+        previous = task
+        await task.value
     }
 }
