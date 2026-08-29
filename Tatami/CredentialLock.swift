@@ -92,11 +92,15 @@ final class CredentialLock {
     func ensureUnlocked(reason: String) async throws {
         let generation = lockGeneration
         if policy.isLocked(now: .now) {
-            // 同時に複数の要求 (prefix + a の連打・別ウィンドウのエクスポート) が来ても本人確認は 1 回にまとめ、全員が同じ結果を待つ
-            let task = pendingAuthentication ?? Task { [authenticate] in
+            // 同時に複数の要求 (prefix + a の連打・別ウィンドウのエクスポート) が来ても本人確認は 1 回にまとめ、全員が同じ結果を待つ。
+            // lock-timeout 0 (操作のたびに確認する設定) では共有せず、要求ごとに確認する
+            let shared = policy.lockTimeout > 0
+            let task = (shared ? pendingAuthentication : nil) ?? Task { [authenticate] in
                 try await authenticate(reason)
             }
-            pendingAuthentication = task
+            if shared {
+                pendingAuthentication = task
+            }
             defer {
                 if pendingAuthentication == task {
                     pendingAuthentication = nil
