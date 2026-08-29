@@ -957,6 +957,10 @@ final class BrowserWindowModel {
     /// (バックグラウンドで読み込まれたページは検出時の通知が捨てられているため)
     private func evaluateNewPasswordProposal() {
         let pane = currentWindow.focusedPane
+        // 対象ペインが遷移していたら、前の文書の生成提案は捨ててから評価し直す (status line に古い提案を残さない)
+        if proposal == .generatePassword, proposalPane === pane, (pane.url != proposalURL || pane.documentGeneration != proposalGeneration) {
+            dismissProposal()
+        }
         guard pane.hasNewPasswordForm, proposal == nil else {
             return
         }
