@@ -157,6 +157,7 @@ enum BrowserCommand: Hashable, Sendable {
     case splitWindowVertical
     case killPane
     case selectPaneNext
+    case selectPanePrevious
     case selectPaneLast
     case selectPaneLeft
     case selectPaneDown
@@ -180,6 +181,10 @@ enum BrowserCommand: Hashable, Sendable {
     case goBack
     case goForward
     case reload
+    /// セッションを保存したままウィンドウを閉じる (prefix + d)
+    case detachClient
+    case chooseSession
+    case renameSession
 
     /// tmux のコマンド名。tatami.conf の表記と status line の表示に使う
     var tmuxName: String {
@@ -192,6 +197,8 @@ enum BrowserCommand: Hashable, Sendable {
             return "kill-pane"
         case .selectPaneNext:
             return "select-pane -t :.+"
+        case .selectPanePrevious:
+            return "select-pane -t :.-"
         case .selectPaneLast:
             return "last-pane"
         case .selectPaneLeft:
@@ -234,6 +241,12 @@ enum BrowserCommand: Hashable, Sendable {
             return "forward"
         case .reload:
             return "reload"
+        case .detachClient:
+            return "detach-client"
+        case .chooseSession:
+            return "choose-session"
+        case .renameSession:
+            return "rename-session"
         }
     }
 
@@ -252,10 +265,11 @@ enum BrowserCommand: Hashable, Sendable {
 
     /// 引数を持たないコマンドの一覧 (tmuxName からの逆引き用)
     private static let fixedCommands: [BrowserCommand] = [
-        .splitWindowHorizontal, .splitWindowVertical, .killPane, .selectPaneNext, .selectPaneLast,
+        .splitWindowHorizontal, .splitWindowVertical, .killPane, .selectPaneNext, .selectPanePrevious, .selectPaneLast,
         .selectPaneLeft, .selectPaneDown, .selectPaneUp, .selectPaneRight, .resizePaneZoom,
         .swapPaneUp, .swapPaneDown, .nextLayout, .newWindow, .nextWindow, .previousWindow, .lastWindow,
         .renameWindow, .killWindow, .chooseWindow, .omnibox, .goBack, .goForward, .reload,
+        .detachClient, .chooseSession, .renameSession,
     ]
 }
 
@@ -294,6 +308,9 @@ struct KeyBindingTable: Equatable, Sendable {
             ("&", .killWindow),
             ("w", .chooseWindow),
             ("/", .omnibox),
+            ("d", .detachClient),
+            ("s", .chooseSession),
+            ("$", .renameSession),
         ].map { (KeyStroke(tmuxKeyName: $0.0)!, $0.1) } + (0...9).map { (KeyStroke(tmuxKeyName: String($0))!, BrowserCommand.selectWindow($0)) })
     )
 }

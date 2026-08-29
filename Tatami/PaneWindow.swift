@@ -14,6 +14,8 @@ final class PaneWindow {
     var renamedName: String?
     /// フォーカス中のペインの URL が変わった時の通知先 (アドレスバーと status line の追随に使う)
     var onFocusedURLChange: ((URL) -> Void)?
+    /// フォーカスの有無を問わず、どのペインの URL が変わった時も、WebKit 起点でペインが閉じた時も呼ぶ通知先 (セッションの保存に使う)
+    var onContentChange: (() -> Void)?
 
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
     var onFocusedPaneStateChange: (() -> Void)?
@@ -25,6 +27,34 @@ final class PaneWindow {
         let pane = makePane(id: paneTree.focusedPaneID, url: AddressInput.homeURL)
         panes[pane.id] = pane
         pane.loadInitialURL()
+    }
+
+    /// 保存したセッションからの復元。ツリーの葉に対応する URL が無いペインは空ページで補う
+    init(snapshot: SessionSnapshot.Window) {
+        paneTree = snapshot.paneTree
+        renamedName = snapshot.renamedName
+        let urls = Dictionary(snapshot.panes.map { ($0.id, $0.url) }) { first, _ in first }
+        for paneID in paneTree.paneIDs {
+            panes[paneID] = makePane(id: paneID, url: urls[paneID] ?? AddressInput.homeURL)
+        }
+    }
+
+    /// 復元したペインの URL を読み込む。復元の init では読み込まず、セッションの所有権が確定した後に呼ぶ
+    func loadRestoredPanes() {
+        for pane in panes.values {
+            pane.loadInitialURL()
+        }
+    }
+
+    /// 保存用の内容
+    var snapshot: SessionSnapshot.Window {
+        SessionSnapshot.Window(
+            paneTree: paneTree,
+            panes: paneTree.paneIDs.compactMap { paneID in
+                panes[paneID].map { SessionSnapshot.Window.Pane(id: paneID, url: $0.url) }
+            },
+            renamedName: renamedName
+        )
     }
 
     /// フォーカス中のペインの実体
@@ -74,6 +104,7 @@ final class PaneWindow {
         }
         panes[paneID] = nil
         notifyFocusedURLIfFocusChanged(previousFocusedPaneID: previousFocusedPaneID)
+        onContentChange?()
         return true
     }
 
@@ -132,7 +163,11 @@ final class PaneWindow {
     private func makePane(id: PaneID, url: URL, configuration: WKWebViewConfiguration? = nil) -> WebPane {
         let pane = WebPane(id: id, url: url, configuration: configuration ?? WebPane.defaultConfiguration())
         pane.onNavigate = { [weak self] navigatedURL in
-            guard let self, paneTree.focusedPaneID == id else {
+            guard let self else {
+                return
+            }
+            onContentChange?()
+            guard paneTree.focusedPaneID == id else {
                 return
             }
             onFocusedURLChange?(navigatedURL)

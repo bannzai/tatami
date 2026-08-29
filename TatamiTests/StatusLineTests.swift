@@ -28,5 +28,8 @@ struct StatusLineTests {
         #expect(table.bindings[KeyStroke(tmuxKeyName: "&")!] == .killWindow)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "w")!] == .chooseWindow)
         #expect(table.bindings[KeyStroke(tmuxKeyName: "/")!] == .omnibox)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "d")!] == .detachClient)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "s")!] == .chooseSession)
+        #expect(table.bindings[KeyStroke(tmuxKeyName: "$")!] == .renameSession)
     }
 }

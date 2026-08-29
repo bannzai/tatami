@@ -47,7 +47,7 @@ struct PaneCommands: Commands {
             Button("Next Pane") { model?.perform(command: .selectPaneNext) }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-select-pane-next")
-            Button("Previous Pane") { model?.currentWindow.focusPrevious() }
+            Button("Previous Pane") { model?.perform(command: .selectPanePrevious) }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-select-pane-previous")
             Button("Last Pane") { model?.perform(command: .selectPaneLast) }
@@ -83,6 +83,13 @@ struct PaneCommands: Commands {
             Button("Close Window") { model?.perform(command: .killWindow) }
                 .keyboardShortcut("w", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-kill-window")
+            Divider()
+            Button("Detach Session") { model?.perform(command: .detachClient) }
+                .accessibilityIdentifier("menu-detach-client")
+            Button("Choose Session…") { model?.perform(command: .chooseSession) }
+                .accessibilityIdentifier("menu-choose-session")
+            Button("Rename Session…") { model?.perform(command: .renameSession) }
+                .accessibilityIdentifier("menu-rename-session")
         }
     }
 }
