@@ -97,6 +97,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 Task { @MainActor in
                     self.url = changedURL
                     self.onNavigate?(changedURL)
+                    // History API の遷移でも保留中のユーザー名の持ち越し回数を減らす (同一文書の別ルートへ無期限に残さない)
+                    self.consumePendingUsernameNavigation()
                     // History API (pushState / replaceState) の遷移は didFinish が来ないため、読み込み中でなければここで訪問として記録する。
                     // 同じターンで pushState が続くと後の KVO で webView.url が進んでいるため、捕捉した changedURL を記録する
                     if !self.webView.isLoading, !self.isSuppressingRestoredVisits {
@@ -375,16 +377,21 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 生成したパスワードを、新規パスワード欄を検出したフレームの全てのパスワード欄 (新規と確認) に入れる。
     /// 新規パスワード欄を検出していなければ何もしない (通常のログイン欄へ生成値を入れて入力済みの値を上書きしない)
     func fillNewPassword(_ password: String) async throws -> Bool {
-        guard let frame = newPasswordFrames.values.first(where: \.isMainFrame) ?? newPasswordFrames.values.first else {
-            return false
+        // 検出済みのフレームを順に試し (トップレベル優先)、最初に充填できたフレームで成功とする
+        // (トップレベルの登録フォームが画面外で充填できない時に、表示中の iframe の登録フォームを使えるように)
+        let frames = newPasswordFrames.values.sorted { $0.isMainFrame && !$1.isMainFrame }
+        for frame in frames {
+            let result = try await webView.callAsyncJavaScript(
+                "return window.__tatamiFillNewPassword(password);",
+                arguments: ["password": password],
+                in: frame,
+                contentWorld: LoginFormScript.contentWorld
+            )
+            if result as? Bool == true {
+                return true
+            }
         }
-        let result = try await webView.callAsyncJavaScript(
-            "return window.__tatamiFillNewPassword(password);",
-            arguments: ["password": password],
-            in: frame,
-            contentWorld: LoginFormScript.contentWorld
-        )
-        return result as? Bool ?? false
+        return false
     }
 
     /// 資格情報を表示中のページのログインフォームへ充填する。パスワード欄が無ければ false。
@@ -496,14 +503,20 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         certificateWarningNavigation = nil
     }
 
+    /// 文書遷移 (commit) または History API の遷移を 1 回として数え、許した回数を超えたら保留中のユーザー名を捨てる
+    private func consumePendingUsernameNavigation() {
+        guard pendingUsername != nil else {
+            return
+        }
+        pendingUsernameNavigationsRemaining -= 1
+        if pendingUsernameNavigationsRemaining < 0 {
+            pendingUsername = nil
+        }
+    }
+
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         documentGeneration += 1
-        if pendingUsername != nil {
-            pendingUsernameNavigationsRemaining -= 1
-            if pendingUsernameNavigationsRemaining < 0 {
-                pendingUsername = nil
-            }
-        }
+        consumePendingUsernameNavigation()
         // 旧文書が破棄される時点 (commit) で、そのフレーム情報 (false 通知は届かない) と新規パスワード欄・編集中の状態を捨てる。
         // provisional で失敗したナビゲーション (DNS エラー等) では旧文書が残るため、開始時点では捨てない (ユーザー名はオリジンで照合するため残す)
         loginFormFrames.removeAll()

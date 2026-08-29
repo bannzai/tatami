@@ -111,8 +111,9 @@ enum LoginFormScript {
         }
         const usernameField = findUsernameField(passwordField);
         // form 属性で関連付けた欄も数えるため、フォームでは elements から列挙する (画面外でも数える)
+        // form の無い SPA (capture(document)) では渡された scope の欄数で判定する
         const isNewPassword = hasAutocomplete(passwordField, 'new-password')
-          || (passwordField.form ? renderedPasswordFields(passwordField.form).length : 0) >= 2;
+          || renderedPasswordFields(passwordField.form || scope).length >= 2;
         try {
           send({
             submitted: true,
@@ -136,7 +137,15 @@ enum LoginFormScript {
         if (!button) { return; }
         const form = button.form || button.closest('form');
         if (!passesValidation(form, button)) { return; }
-        capture(form || document);
+        if (!form) {
+          // form の無いボタンは HTML 上は送信しない。SPA のログイン UI を補助する目的で、パスワード欄と同じ区画 (dialog / section / main 等) にある
+          // ボタンだけを送信とみなし、ヘルプやモーダルを開く無関係なボタンでは通知しない
+          const container = button.closest('dialog, [role="dialog"], form, section, article, main, aside, nav, fieldset') || null;
+          if (!container || !container.querySelector('input[type="password"]')) { return; }
+          capture(container);
+          return;
+        }
+        capture(form);
       }, true);
       // Web ページ内のテキスト入力中かをネイティブへ知らせる (入力中は提案の y / n を横取りしない)
       const isTextTarget = (element) => !!element && (element.isContentEditable || ['INPUT', 'TEXTAREA'].includes(element.tagName));
