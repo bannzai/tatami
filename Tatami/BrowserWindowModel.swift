@@ -1012,7 +1012,8 @@ final class BrowserWindowModel {
                 return
             }
             // 提案を出した後に別のページや同じ URL の別文書へ移っていたり、対象のペインが閉じられていたら、そのフォームへは入れない
-            guard windows.contains(where: { $0.panes[pane.id] === pane }), pane.url == url, pane.documentGeneration == generation else {
+            // 別のペイン・ウィンドウへフォーカスを移した後の y で、見えていない元のペインへ入れない
+            guard pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
                 statusMessage = "ページが変わったため提案を取り消した"
                 return
             }
