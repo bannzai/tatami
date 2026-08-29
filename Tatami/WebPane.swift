@@ -224,7 +224,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
-        (navigationAction.shouldPerformDownload ? .download : .allow, preferences)
+        // ダウンロードへの変換はトップレベルの操作に限る (隠し iframe からスクリプトで download 属性のリンクを起動して
+        // Downloads へ大量保存させない。response 側の制限と同じ理由)
+        if navigationAction.shouldPerformDownload {
+            return (navigationAction.targetFrame?.isMainFrame == true ? .download : .cancel, preferences)
+        }
+        return (.allow, preferences)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
