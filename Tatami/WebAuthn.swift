@@ -309,8 +309,11 @@ final class PasskeyAuthenticator {
         let existing = try store.all().filter { $0.rpId == rpId }
         let key = try makeKey()
         var credentialID = Data(count: 32)
-        credentialID.withUnsafeMutableBytes { buffer in
-            _ = SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
+        let randomStatus = credentialID.withUnsafeMutableBytes { buffer in
+            SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
+        }
+        guard randomStatus == errSecSuccess else {
+            throw WebAuthnError(name: "UnknownError", description: "乱数の生成に失敗: \(randomStatus)")
         }
         let passkey = Passkey(
             id: UUID(), rpId: rpId, credentialID: credentialID, userHandle: request.userID, userName: request.userName,
@@ -318,8 +321,9 @@ final class PasskeyAuthenticator {
             publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date()
         )
         try store.save(passkey: passkey)
+        // 旧項目の削除の失敗は登録の失敗にしない (新項目は RP に登録される。旧項目は次の登録時にまた削除を試みる)
         for old in existing where old.userHandle == request.userID {
-            try store.delete(id: old.id)
+            try? store.delete(id: old.id)
         }
         let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified)
         return CreateResponse(
@@ -357,7 +361,9 @@ final class PasskeyAuthenticator {
         let scheme = url.scheme?.lowercased() ?? ""
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map { ":\($0)" } ?? ""
-        return "\(scheme)://\(url.host()?.lowercased() ?? "")\(port)"
+        let host = url.host()?.lowercased() ?? ""
+        // IPv6 は角括弧付きが正規の serialized origin
+        return "\(scheme)://\(host.contains(":") ? "[\(host)]" : host)\(port)"
     }
 
     private struct GeneratedKey {
