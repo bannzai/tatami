@@ -40,4 +40,15 @@ struct PasswordGeneratorTests {
         let generator = PasswordGenerator()
         #expect(generator.generate() != generator.generate())
     }
+
+    @Test func respectsMaxLength() {
+        let generator = PasswordGenerator(length: 20, includesSymbols: true)
+        #expect(generator.generate(maxLength: 12).count == 12)
+        #expect(generator.generate(maxLength: 0).count == 20)
+        #expect(generator.generate(maxLength: 100).count == 20)
+        // 上限が設定長より短くても各文字種を含む (上限が文字種数以上の場合)
+        let short = generator.generate(maxLength: 8)
+        #expect(short.count == 8)
+        #expect(short.contains(where: \.isLowercase) && short.contains(where: \.isUppercase) && short.contains(where: \.isNumber))
+    }
 }
