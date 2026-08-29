@@ -329,8 +329,10 @@ enum TatamiConfigLoader {
 
     /// 設定ファイルを読んで適用する。既定ファイルが無いのは「設定していない」だけなのでエラーにしないが、
     /// `source-file <path>` のように明示したファイルが無いのは書き間違いのため requireFile でエラーにする
-    static func load(fileURL: URL = defaultFileURL, requireFile: Bool = false) -> LoadResult {
-        var config = TatamiConfig()
+    /// base は解釈の起点になる設定。既定ファイルの再読込は nil (既定値から作り直す)、設定内・コマンドの `source-file <path>` は
+    /// 現在の設定 (明示した補助ファイルを現在の設定へ重ね、書かれていない項目を既定値へ戻さない)
+    static func load(fileURL: URL = defaultFileURL, requireFile: Bool = false, base: TatamiConfig? = nil) -> LoadResult {
+        var config = base ?? TatamiConfig()
         guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             let errors = requireFile ? [TatamiConfigError(fileName: fileURL.lastPathComponent, line: 1, message: "設定ファイルが無い: \(fileURL.path(percentEncoded: false))")] : []
             return LoadResult(config: config, errors: errors, fileExists: false, parsed: false)
