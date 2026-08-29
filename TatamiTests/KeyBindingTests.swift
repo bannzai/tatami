@@ -94,13 +94,14 @@ struct KeyBindingTests {
     }
 
     @Test @MainActor func capsLockUppercasesLetterKeys() throws {
-        func stroke(flags: NSEvent.ModifierFlags, characters: String) throws -> KeyStroke {
-            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: "x", isARepeat: false, keyCode: 7))
+        // charactersIgnoringModifiers は Shift を反映し Caps Lock を無視する (実際の NSEvent の挙動)
+        func stroke(flags: NSEvent.ModifierFlags, characters: String, ignoringModifiers: String) throws -> KeyStroke {
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: ignoringModifiers, isARepeat: false, keyCode: 7))
             return try #require(KeyStroke.candidates(event: event).first)
         }
-        #expect(try stroke(flags: [], characters: "x").key == "x")
-        #expect(try stroke(flags: [.shift], characters: "X").key == "X")
-        #expect(try stroke(flags: [.capsLock], characters: "X").key == "X")
-        #expect(try stroke(flags: [.capsLock, .shift], characters: "x").key == "x")
+        #expect(try stroke(flags: [], characters: "x", ignoringModifiers: "x").key == "x")
+        #expect(try stroke(flags: [.shift], characters: "X", ignoringModifiers: "X").key == "X")
+        #expect(try stroke(flags: [.capsLock], characters: "X", ignoringModifiers: "x").key == "X")
+        #expect(try stroke(flags: [.capsLock, .shift], characters: "x", ignoringModifiers: "X").key == "x")
     }
 }
