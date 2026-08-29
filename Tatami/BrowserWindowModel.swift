@@ -652,8 +652,12 @@ final class BrowserWindowModel {
         if commandHistory.count > BrowserWindowModel.commandHistoryLimit {
             commandHistory.removeFirst(commandHistory.count - BrowserWindowModel.commandHistoryLimit)
         }
-        guard let tokens = TatamiConfigParser.tokens(line: line), let name = tokens.first else {
+        guard let tokens = TatamiConfigParser.tokens(line: line) else {
             statusMessage = "command-prompt: クオートが閉じていない"
+            return
+        }
+        guard let name = tokens.first else {
+            // コメントや空白だけの入力 (トークン 0 個) は何も実行しない
             return
         }
         let arguments = Array(tokens.dropFirst())
