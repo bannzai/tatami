@@ -203,6 +203,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
         field.setAccessibilityIdentifier("jsPromptField")
         alert.accessoryView = field
+        // シートを開いた直後にそのまま入力できるよう、入力欄を initial first responder にする
+        alert.window.initialFirstResponder = field
         WebPane.identify(alert: alert, prefix: "jsPrompt")
         return await run(alert: alert) == .alertFirstButtonReturn ? field.stringValue : nil
     }
