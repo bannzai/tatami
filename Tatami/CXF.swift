@@ -108,6 +108,9 @@ enum CXF {
         guard let header = try JSONSerialization.jsonObject(with: data) as? [String: Any], let accounts = header["accounts"] as? [[String: Any]] else {
             throw CXFError(description: "CXF の形式でない (accounts が無い)")
         }
+        guard let fileVersion = header["version"] as? Int, fileVersion == version else {
+            throw CXFError(description: "対応しない CXF の版: \(header["version"] ?? "無し") (対応: \(version))")
+        }
         var result = ImportResult(credentials: [], passkeys: [], skipped: 0)
         for account in accounts {
             for item in account["items"] as? [[String: Any]] ?? [] {
@@ -115,16 +118,14 @@ enum CXF {
                 for credential in item["credentials"] as? [[String: Any]] ?? [] {
                     switch credential["type"] as? String {
                     case "basic-auth":
-                        guard let url = (credential["urls"] as? [String])?.compactMap(URL.init(string:)).first ?? URL(string: "https://\(title)/"), url.host() != nil else {
+                        // urls の中からホストを持つ最初の URL を使い、無ければ title をホストとみなす
+                        let urls = (credential["urls"] as? [String] ?? []).compactMap(URL.init(string:)).filter { $0.host().map { !$0.isEmpty } ?? false }
+                        guard let url = urls.first ?? URL(string: "https://\(title)/"), url.host().map({ !$0.isEmpty }) ?? false,
+                              let username = editableValue(credential["username"]), let password = editableValue(credential["password"]) else {
                             result.skipped += 1
                             continue
                         }
-                        result.credentials.append(Credential(
-                            id: UUID(), url: url,
-                            username: editableValue(credential["username"]),
-                            password: editableValue(credential["password"]),
-                            note: "", updatedAt: now
-                        ))
+                        result.credentials.append(Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: now))
                     case "passkey":
                         guard let rpId = credential["rpId"] as? String, !rpId.isEmpty,
                               let credentialID = (credential["credentialId"] as? String).flatMap(WebAuthn.data(base64url:)),
@@ -149,12 +150,12 @@ enum CXF {
         return result
     }
 
-    /// EditableField (`{fieldType, value}`) か、素の文字列
-    private static func editableValue(_ value: Any?) -> String {
+    /// EditableField (`{fieldType, value}`) か、素の文字列。欠落や読めない形は nil (その項目は読み飛ばす)
+    private static func editableValue(_ value: Any?) -> String? {
         if let field = value as? [String: Any] {
-            return field["value"] as? String ?? ""
+            return field["value"] as? String
         }
-        return value as? String ?? ""
+        return value as? String
     }
 }
 
@@ -217,40 +218,55 @@ enum ZIPArchive {
         guard data.count >= 22, let eocd = data.lastRange(of: Data([0x50, 0x4b, 0x05, 0x06]))?.lowerBound else {
             throw CXFError(description: "ZIP の終端レコードが無い")
         }
-        let count = Int(read16(data, eocd + 10))
-        var offset = Int(read32(data, eocd + 16))
+        // 途中で切れた・細工された ZIP で範囲外アクセス (トラップ) にならないよう、各ヘッダの読み取り前に範囲を確かめる
+        let eocdOffset = eocd - data.startIndex
+        guard eocdOffset + 22 <= data.count else {
+            throw CXFError(description: "ZIP の終端レコードが途中で切れている")
+        }
+        let count = Int(read16(data, eocdOffset + 10))
+        var offset = Int(read32(data, eocdOffset + 16))
         var result: [Entry] = []
         for _ in 0..<count {
-            guard read32(data, offset) == 0x02014b50 else {
+            guard offset + 46 <= data.count, read32(data, offset) == 0x02014b50 else {
                 throw CXFError(description: "ZIP の中央ディレクトリが壊れている")
             }
             let method = read16(data, offset + 10)
+            let crc = read32(data, offset + 16)
             let compressed = Int(read32(data, offset + 20))
             let uncompressed = Int(read32(data, offset + 24))
             let nameLength = Int(read16(data, offset + 28))
             let extraLength = Int(read16(data, offset + 30))
             let commentLength = Int(read16(data, offset + 32))
             let localOffset = Int(read32(data, offset + 42))
-            let name = String(decoding: data[(offset + 46)..<(offset + 46 + nameLength)], as: UTF8.self)
+            guard offset + 46 + nameLength + extraLength + commentLength <= data.count else {
+                throw CXFError(description: "ZIP の中央ディレクトリが途中で切れている")
+            }
+            let name = String(decoding: data[(data.startIndex + offset + 46)..<(data.startIndex + offset + 46 + nameLength)], as: UTF8.self)
             offset += 46 + nameLength + extraLength + commentLength
-            guard read32(data, localOffset) == 0x04034b50 else {
+            guard localOffset + 30 <= data.count, read32(data, localOffset) == 0x04034b50 else {
                 throw CXFError(description: "ZIP のローカルヘッダが壊れている")
             }
             let localNameLength = Int(read16(data, localOffset + 26))
             let localExtraLength = Int(read16(data, localOffset + 28))
             let start = localOffset + 30 + localNameLength + localExtraLength
-            guard start + compressed <= data.count else {
+            guard start <= data.count, compressed <= data.count - start else {
                 throw CXFError(description: "ZIP のデータが途中で切れている")
             }
-            let raw = data.subdata(in: start..<(start + compressed))
+            let raw = data.subdata(in: (data.startIndex + start)..<(data.startIndex + start + compressed))
+            let content: Data
             switch method {
             case 0:
-                result.append(Entry(name: name, data: raw))
+                content = raw
             case 8:
-                result.append(Entry(name: name, data: try inflate(raw, expected: uncompressed)))
+                content = try inflate(raw, expected: uncompressed)
             default:
                 throw CXFError(description: "対応しない ZIP の圧縮方式: \(method)")
             }
+            // 転送・保存中の破損で壊れた値を資格情報として取り込まないよう、展開後のデータを中央ディレクトリの CRC-32 と照合する
+            guard crc32(content) == crc else {
+                throw CXFError(description: "ZIP のエントリ \(name) の CRC が一致しない")
+            }
+            result.append(Entry(name: name, data: content))
         }
         return result
     }

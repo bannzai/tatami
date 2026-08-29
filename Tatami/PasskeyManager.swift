@@ -106,9 +106,10 @@ enum PasskeyManager {
         for passkey in candidates {
             popup.addItem(withTitle: passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
         }
+        popup.setAccessibilityIdentifier("passkeyChooserPopup")
         alert.accessoryView = popup
-        alert.addButton(withTitle: "選ぶ")
-        alert.addButton(withTitle: "キャンセル")
+        alert.addButton(withTitle: "選ぶ").setAccessibilityIdentifier("passkeyChooseButton")
+        alert.addButton(withTitle: "キャンセル").setAccessibilityIdentifier("passkeyChooserCancelButton")
         guard alert.runModal() == .alertFirstButtonReturn else {
             throw WebAuthnError(name: "NotAllowedError", description: "利用者がキャンセルした")
         }

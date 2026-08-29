@@ -749,8 +749,14 @@ final class BrowserWindowModel {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
             let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            try handle.write(contentsOf: exported.data)
-            try handle.close()
+            do {
+                try handle.write(contentsOf: exported.data)
+                try handle.close()
+            } catch {
+                // 書きかけの平文ファイルを残さない (残すと次回の書き出しも「すでにファイルがある」で止まる)
+                try? FileManager.default.removeItem(at: fileURL)
+                throw error
+            }
             let skipped = exported.result.skippedSecureEnclavePasskeys > 0 ? "・Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : ""
             statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(skipped): \(filePath)"
         } catch {
@@ -760,29 +766,35 @@ final class BrowserWindowModel {
 
     /// CXF を読み、資格情報 (CSV と同じ突き合わせ) と Passkey (同じ rpId・credentialId が無ければ追加) を取り込む
     private func importCXF(path: String) {
+        var savedCredentials = 0
+        var savedPasskeys = 0
+        // 途中で失敗しても確定済みの資格情報は OS の自動入力候補に反映する
+        defer {
+            if savedCredentials > 0 {
+                syncCredentialIdentities()
+            }
+        }
         do {
             let imported = try CXF.importArchive(data: try Data(contentsOf: BrowserWindowModel.commandFileURL(path: path)), now: Date())
             let existing = try credentialStore.all()
-            let merged = PasswordImporter.merge(rows: PasswordImporter.rows(credentials: imported.credentials), existing: existing, now: Date())
+            // CXF にメモは無いため note を nil (既存のメモを保つ) にして CSV と同じ突き合わせにかける
+            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: nil) }
+            let merged = PasswordImporter.merge(rows: rows, existing: existing, now: Date())
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             var seenIDs = Set<UUID>()
-            var savedCredentials = 0
             for credential in merged.credentials where seenIDs.insert(credential.id).inserted && existingByID[credential.id] != credential {
                 try credentialStore.save(credential: credential)
                 savedCredentials += 1
             }
-            let existingPasskeys = try PasskeyManager.store.all()
-            var savedPasskeys = 0
-            for passkey in imported.passkeys where !existingPasskeys.contains(where: { $0.rpId == passkey.rpId && $0.credentialID == passkey.credentialID }) {
+            // 同じアーカイブ内の重複も 1 件だけにする
+            var knownPasskeys = Set(try PasskeyManager.store.all().map { "\($0.rpId)\n\(WebAuthn.base64url($0.credentialID))" })
+            for passkey in imported.passkeys where knownPasskeys.insert("\(passkey.rpId)\n\(WebAuthn.base64url(passkey.credentialID))").inserted {
                 try PasskeyManager.store.save(passkey: passkey)
                 savedPasskeys += 1
             }
-            if savedCredentials > 0 {
-                syncCredentialIdentities()
-            }
             statusMessage = "CXF を取り込んだ: 資格情報 追加 \(merged.added)・更新 \(merged.updated)・変更なし \(merged.unchanged)・Passkey 追加 \(savedPasskeys)・読み飛ばし \(imported.skipped + merged.skipped)"
         } catch {
-            statusMessage = "インポートに失敗: \(error)"
+            statusMessage = "インポートに失敗 (資格情報 \(savedCredentials) 件・Passkey \(savedPasskeys) 件は保存済み): \(error)"
         }
     }
 
@@ -1223,8 +1235,8 @@ final class BrowserWindowModel {
         let passkeys: [Passkey]
         do {
             candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
-            // 同じ RP (rpId がホストかその親) の Passkey も並べる
-            passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) }
+            // 同じ RP (rpId がホストかその親) の Passkey も並べる。WebAuthn を拒む (https でない) ページでは使えないため出さない
+            passkeys = WebAuthn.isTrustworthyOrigin(pane.url) ? try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) } : []
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
             return

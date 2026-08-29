@@ -57,5 +57,27 @@ struct CXFTests {
         #expect(throws: CXFError.self) {
             try CXF.importArchive(data: Data("{}".utf8), now: now)
         }
+        // 版が違う・欠けている、パスワードが欠けている
+        #expect(throws: CXFError.self) {
+            try CXF.importArchive(data: Data(json.replacingOccurrences(of: "\"version\":0", with: "\"version\":7").utf8), now: now)
+        }
+        let missingPassword = json.replacingOccurrences(of: ",\"password\":{\"fieldType\":\"concealed-string\",\"value\":\"dummy-carol\"}", with: "")
+        let skipped = try CXF.importArchive(data: Data(missingPassword.utf8), now: now)
+        #expect(skipped.credentials.isEmpty)
+        #expect(skipped.skipped == 2)
+    }
+
+    @Test func corruptedArchivesFailWithoutTrapping() throws {
+        let archive = ZIPArchive.make(entries: [("index.json", Data("{\"version\":0,\"accounts\":[]}".utf8))])
+        // 途中で切れた ZIP
+        #expect(throws: CXFError.self) {
+            try ZIPArchive.entries(data: archive.prefix(archive.count - 30))
+        }
+        // データが書き換わった ZIP (CRC 不一致)
+        var tampered = archive
+        tampered[40] ^= 0x01
+        #expect(throws: CXFError.self) {
+            try ZIPArchive.entries(data: tampered)
+        }
     }
 }
