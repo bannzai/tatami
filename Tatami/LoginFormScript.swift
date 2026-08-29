@@ -95,8 +95,16 @@ enum LoginFormScript {
           || fields.find((field) => field !== reported && !hasAutocomplete(field, 'new-password'));
         return current && current !== reported ? current.value : '';
       };
+      // 同じ送信をクリック / Enter と submit の両方で通知しない (2 回目の通知で保留ユーザー名を失い、空ユーザー名の提案で上書きしないため)
+      let lastCapture = { key: null, at: 0 };
       const capture = (scope) => {
         const passwordField = passwordFieldToReport(scope);
+        if (passwordField && passwordField.value) {
+          const key = `${passwordField.value.length}:${passwordField.value}`;
+          const now = Date.now();
+          if (lastCapture.key === key && now - lastCapture.at < 1000) { return; }
+          lastCapture = { key, at: now };
+        }
         if (!passwordField || !passwordField.value) {
           // ユーザー名だけのページ (複数段階ログインの 1 段目) はユーザー名を覚えておく
           // hidden の内部 ID (account_id 等) を拾わないよう、通常のユーザー名検出と同じく可視で操作できる text / email 系の欄に限る
@@ -132,6 +140,8 @@ enum LoginFormScript {
       }, true);
       // 制約検証 (required / pattern 等) で送信されないクリック・Enter は通知しない (通常のフォームは submit イベント側で捕捉する)
       const passesValidation = (form, button) => !form || form.noValidate || (button && button.formNoValidate) || typeof form.checkValidity !== 'function' || form.checkValidity();
+      // form の無い UI で、要素が属するログイン UI の区画 (dialog / section / main / fieldset 等)
+      const loginScope = (element) => element.closest('dialog, [role="dialog"], form, section, article, main, aside, nav, fieldset') || null;
       // 送信になりうるボタンだけを対象にする (type=button のパスワード表示切替などで入力途中の値を送らない)
       document.addEventListener('click', (event) => {
         const button = event.target && event.target.closest ? event.target.closest('button:not([type="button"]):not([type="reset"]), input[type="submit"]') : null;
@@ -141,7 +151,7 @@ enum LoginFormScript {
         if (!form) {
           // form の無いボタンは HTML 上は送信しない。SPA のログイン UI を補助する目的で、パスワード欄と同じ区画 (dialog / section / main 等) にある
           // ボタンだけを送信とみなし、ヘルプやモーダルを開く無関係なボタンでは通知しない
-          const container = button.closest('dialog, [role="dialog"], form, section, article, main, aside, nav, fieldset') || null;
+          const container = loginScope(button);
           if (!container || !container.querySelector('input[type="password"]')) { return; }
           capture(container);
           return;
@@ -159,7 +169,10 @@ enum LoginFormScript {
       document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
       postEditing();
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && event.target && event.target.type === 'password' && passesValidation(event.target.form, null)) { capture(event.target.form || document); }
+        if (event.key === 'Enter' && event.target && event.target.type === 'password' && passesValidation(event.target.form, null)) {
+          // form の無い UI では、押した欄の属する区画に限定する (別区画のメール欄やパスワード欄を拾わない)
+          capture(event.target.form || loginScope(event.target) || document);
+        }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
       // 複数欄の判定は同じ (可視の) フォーム内の組で行う (デスクトップ用・モバイル用に独立したログインフォームが並ぶページを誤検出しない)。
@@ -169,11 +182,21 @@ enum LoginFormScript {
         const fields = renderedPasswordFields(scope);
         return fields.some((field) => hasAutocomplete(field, 'new-password')) || fields.length >= 2;
       };
+      // form に属さないパスワード欄は、属する区画 (dialog / section 等) ごとに 1 組として扱う (独立したログイン UI が 2 つ並ぶページを
+      // 登録フォームと誤判定しない)。区画が無い欄は文書全体で 1 組
+      const formlessScopes = () => {
+        const groups = new Map();
+        for (const field of Array.from(document.querySelectorAll('input[type="password"]')).filter((field) => !field.form)) {
+          const container = loginScope(field) || document;
+          if (!groups.has(container)) { groups.set(container, []); }
+          groups.get(container).push(field);
+        }
+        return Array.from(groups.values()).map((fields) => ({ querySelectorAll: () => fields, elements: null }));
+      };
       let lastHasNewPassword = null;
       const postNewPassword = () => {
         const scopes = Array.from(document.querySelectorAll('form'));
-        const hasNewPassword = scopes.some(isNewPasswordForm)
-          || isNewPasswordForm({ querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) });
+        const hasNewPassword = scopes.some(isNewPasswordForm) || formlessScopes().some(isNewPasswordForm);
         if (hasNewPassword === lastHasNewPassword) { return; }
         lastHasNewPassword = hasNewPassword;
         send({ hasNewPassword });
@@ -185,16 +208,14 @@ enum LoginFormScript {
         if (newPasswordTimer !== null) { return; }
         newPasswordTimer = setTimeout(() => { newPasswordTimer = null; postNewPassword(); }, 100);
       };
-      new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden'] });
+      new MutationObserver(scheduleNewPassword).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['type', 'autocomplete', 'class', 'style', 'hidden', 'disabled', 'readonly'] });
       postNewPassword();
       // 生成したパスワードは新規 (autocomplete=new-password) と確認の欄だけに入れ、現在のパスワード欄 (current-password) は保持する
       window.__tatamiFillNewPassword = (password) => {
         // 生成値は新規パスワードフォームと判定したフォーム (form 要素、または form に属さない欄の組) の欄にだけ入れる
         // (同じ文書に並ぶ通常のログインフォームの入力済みパスワードを上書きしない)。現在のパスワード欄は保持する
         const collect = () => {
-          const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm);
-          const formless = { querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) };
-          if (isNewPasswordForm(formless)) { scopes.push(formless); }
+          const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm));
           return scopes.flatMap((scope) => {
             const usable = usablePasswordFields(scope);
             // autocomplete の無い「現在・新規・確認」のフォームでは現在の欄 (末尾から 3 つ目) を保持する
