@@ -228,7 +228,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-        navigationResponse.canShowMIMEType ? .allow : .download
+        if navigationResponse.canShowMIMEType {
+            return .allow
+        }
+        // 表示できない応答をダウンロードへ変えるのはトップレベル (利用者の操作で開いたもの) だけ。
+        // 隠し iframe を量産して勝手に Downloads へ保存させる攻撃を防ぐため、サブフレームは中止する
+        return navigationResponse.isForMainFrame ? .download : .cancel
     }
 
     /// 証明書エラー (信頼できない・期限切れ・ホスト名不一致等) は WebKit が既定で通さない。その時は白紙ではなく警告ページを出す。

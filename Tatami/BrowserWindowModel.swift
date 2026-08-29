@@ -775,8 +775,10 @@ final class BrowserWindowModel {
             handleChooserKey(keyStroke: keyStroke)
             return true
         }
-        // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う
-        if isFindModeActive, prompt == nil, !isAddressBarEditing, prefixKeyState == .idle, keyStroke.modifiers.isEmpty {
+        // find モード: n / N で次 / 前へ、Escape で抜ける。それ以外のキー (prefix を含む) は通常どおり扱う。
+        // prefix を n / N に変えた設定では prefix の開始を優先する
+        if isFindModeActive, prompt == nil, !isAddressBarEditing, prefixKeyState == .idle, keyStroke.modifiers.isEmpty,
+           !keyStrokes.contains(keyBindings.prefix) {
             switch keyStroke.key {
             case "n":
                 findNext(backwards: false)
