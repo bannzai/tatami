@@ -56,11 +56,13 @@ enum LoginFormScript {
       // form 属性で関連付けられた (DOM 上はフォームの子孫でない) 欄も含めるため、フォームでは elements を使う
       const inputsIn = (scope) => Array.from(scope.elements ? scope.elements : scope.querySelectorAll('input')).filter((element) => element.tagName === 'INPUT');
       // form の無い UI では、クリック処理が渡した区画 (scope) の中からユーザー名欄を探す (別区画のメール欄を拾わない)
-      const findUsernameField = (passwordField, scope) => {
+      // requireViewport=false は送信時の値の読み取り用 (画面外へスクロールした欄も含める)。true は充填先の選定用 (honeypot を避ける)
+      const findUsernameField = (passwordField, scope, requireViewport) => {
         const form = passwordField.form || scope || document;
+        const shown = requireViewport ? isVisible : isRendered;
         const candidates = inputsIn(form).filter((input) => {
           const type = (input.getAttribute('type') || 'text').toLowerCase();
-          return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && isVisible(input);
+          return ['text', 'email', 'tel', 'username'].includes(type) && !input.matches(':disabled') && !input.readOnly && shown(input);
         });
         // autocomplete=username / email の明示を最優先し、次に名前・id の語で探す (`id` は tenant-id 等に部分一致しないよう語として扱う)
         const marked = candidates.find((input) => hasAutocomplete(input, 'username') || hasAutocomplete(input, 'email'));
@@ -105,14 +107,15 @@ enum LoginFormScript {
         return null;
       };
       const passwordFieldToReport = (scope) => {
-        const fields = usablePasswordFields(scope);
+        // 送信値の読み取りは画面外へスクロールした欄も含める (充填時の honeypot 対策のビューポート判定は使わない)
+        const fields = renderedPasswordFields(scope);
         const change = unmarkedChangeFields(fields);
         if (change) { return change.new; }
         return fields.find((field) => hasAutocomplete(field, 'new-password')) || fields[0] || null;
       };
       // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、名前で見分けた現在の欄、または新規の欄より前の欄)
       const currentPasswordValue = (scope, reported) => {
-        const fields = usablePasswordFields(scope);
+        const fields = renderedPasswordFields(scope);
         const change = unmarkedChangeFields(fields);
         if (change) { return change.current.value; }
         const current = fields.find((field) => hasAutocomplete(field, 'current-password'))
@@ -128,7 +131,7 @@ enum LoginFormScript {
           const usernameOnly = usernameCandidate(scope);
           return usernameOnly ? { usernameOnly: usernameOnly.value } : null;
         }
-        const usernameField = findUsernameField(passwordField, scope);
+        const usernameField = findUsernameField(passwordField, scope, false);
         const isNewPassword = hasAutocomplete(passwordField, 'new-password')
           || renderedPasswordFields(passwordField.form || scope).length >= 2;
         return {
@@ -186,9 +189,13 @@ enum LoginFormScript {
       document.addEventListener('focusout', () => setTimeout(postEditing, 0), true);
       postEditing();
       document.addEventListener('keydown', (event) => {
-        // form 内の Enter は native の submit を発生させ submit イベントで捕捉するため、ここでは form の無い欄だけを扱う
-        if (event.key === 'Enter' && event.target && isPasswordField(event.target) && !event.target.form) {
-          capture(loginScope(event.target) || document);
+        // form 内の Enter は native の submit を発生させ submit イベントで捕捉するため、ここでは form の無い欄だけを扱う。
+        // パスワード欄に加え、複数段階ログインの 1 段目 (ユーザー名だけの text / email 欄) からの Enter も捕捉する
+        const target = event.target;
+        if (event.key !== 'Enter' || !target || target.form) { return; }
+        const type = (target.getAttribute && (target.getAttribute('type') || 'text').toLowerCase()) || '';
+        if (isPasswordField(target) || ['text', 'email', 'tel', 'username'].includes(type)) {
+          capture(loginScope(target) || document);
         }
       }, true);
       // サインアップ / パスワード変更フォーム (autocomplete=new-password か、パスワード欄が 2 つ以上) を検出して知らせる
@@ -231,22 +238,18 @@ enum LoginFormScript {
       window.__tatamiFillNewPassword = (password) => {
         // 生成値は新規パスワードフォームと判定したフォーム (form 要素、または form に属さない欄の組) の欄にだけ入れる
         // (同じ文書に並ぶ通常のログインフォームの入力済みパスワードを上書きしない)。現在のパスワード欄は保持する
-        const collect = () => {
-          const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm));
-          return scopes.flatMap((scope) => {
-            const usable = usablePasswordFields(scope);
-            // autocomplete の無い変更フォームでは現在のパスワード欄を保持する (生成値は新規・確認だけに入れる)
-            const current = unmarkedChangeFields(usable)?.current || null;
-            return usable.filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
-          });
-        };
-        const fields = collect();
-        if (fields.length === 0) { return false; }
+        // 生成値を入れる対象は最初に見つかった 1 つの新規パスワードフォームだけ (別フォームの入力済み値を上書きしない)。
+        // 画面外の確認欄も充填するため rendered を使い、現在のパスワード欄は除外し続ける
+        const scope = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm).concat(formlessScopes().filter(isNewPasswordForm))[0];
+        if (!scope) { return false; }
+        const current = unmarkedChangeFields(renderedPasswordFields(scope))?.current || null;
+        const targets = () => renderedPasswordFields(scope).filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
+        if (targets().length === 0) { return false; }
         // input / change でフォームを再生成するページでは、先に入れた欄のイベントで残りの欄が DOM から外れることがあるため、
-        // 1 欄ごとに接続状態を確かめ、外れていれば入れ直す対象を再探索する
+        // 1 欄ごとに接続状態を確かめ、外れていれば入れ直す対象を再探索する (現在の欄は毎回除外する)
         const filled = new Set();
         for (let i = 0; i < 8; i++) {
-          const remaining = collect().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
+          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
           if (remaining.length === 0) { break; }
           setValue(remaining[0], password);
           filled.add(remaining[0]);
@@ -263,7 +266,7 @@ enum LoginFormScript {
       window.__tatamiFill = (username, password) => {
         const passwordField = findFillablePasswordField();
         if (!passwordField) { return false; }
-        const usernameField = findUsernameField(passwordField);
+        const usernameField = findUsernameField(passwordField, null, true);
         if (usernameField && username) { setValue(usernameField, username); }
         // ユーザー名の input / change でフォームを再描画するページでは、保持していたパスワード欄が DOM から外れていることがあるため、
         // 現在の DOM から操作できる欄を探し直す
