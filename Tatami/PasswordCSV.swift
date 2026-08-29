@@ -285,8 +285,9 @@ enum PasswordImporter {
         // ユーザー名は正規化形だけが違う値を別アカウントとして扱えるよう、String の等価 (正規化を無視する) ではなくスカラー値の列で表す。
         // オリジンの各要素に改行は現れないため、区切りに使ってもユーザー名との境界が曖昧にならない
         let usernameKey = username.unicodeScalars.map { String($0.value, radix: 16) }.joined(separator: " ")
-        // Chrome の Android アプリ用の行 (`android://<証明書ハッシュ>@<package>/`) は userinfo の証明書ハッシュがアプリの識別情報なのでキーに含める
-        let userInfo = url.user(percentEncoded: false) ?? ""
+        // Chrome の Android アプリ用の行 (`android://<証明書ハッシュ>@<package>/`) は userinfo の証明書ハッシュがアプリの識別情報なのでキーに含める。
+        // http(s) の userinfo はオリジンの一部ではないため無視する (`https://user@example.com/` と `https://example.com/` は同じサイト)
+        let userInfo = scheme == "android" ? (url.user(percentEncoded: false) ?? "") : ""
         return "\(scheme)\n\(userInfo)\n\(host)\n\(port)\n\(usernameKey)"
     }
 }
