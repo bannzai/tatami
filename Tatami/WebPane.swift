@@ -408,8 +408,11 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// 新規パスワード欄を検出していなければ何もしない (通常のログイン欄へ生成値を入れて入力済みの値を上書きしない)
     func fillNewPassword(_ password: String) async throws -> Bool {
         // 検出済みのフレームを順に試し (トップレベル優先)、最初に充填できたフレームで成功とする
-        // (トップレベルの登録フォームが画面外で充填できない時に、表示中の iframe の登録フォームを使えるように)
-        let frames = newPasswordFrames.values.sorted { $0.isMainFrame && !$1.isMainFrame }
+        // (トップレベルの登録フォームが画面外で充填できない時に、表示中の iframe の登録フォームを使えるように)。
+        // 生成した値を別オリジンの iframe へ渡さないよう、iframe はトップレベルと同じオリジンのものだけを対象にする
+        let frames = newPasswordFrames.values
+            .filter { frame in frame.isMainFrame || WebPane.originURL(frame: frame).flatMap { origin in webView.url.map { CredentialMatcher.sameOrigin(credentialURL: origin, pageURL: $0) } } == true }
+            .sorted { $0.isMainFrame && !$1.isMainFrame }
         for frame in frames {
             let result = try await webView.callAsyncJavaScript(
                 "return window.__tatamiFillNewPassword(password);",
