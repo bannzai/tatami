@@ -31,10 +31,19 @@ enum LoginFormScript {
         element.dispatchEvent(new Event('change', { bubbles: true }));
       };
       // 祖先を含む実際の表示状態で判定する (opacity: 0 や visibility: hidden の honeypot に平文を入れない)
-      const isVisible = (element) => {
+      // 描画されているか (検出用。スクロールで画面外にあっても数える)
+      const isRendered = (element) => {
         const rect = element.getBoundingClientRect();
         if (!(rect.width > 0 && rect.height > 0)) { return false; }
-        // 画面外 (left: -10000px 等) の honeypot に平文を入れないよう、ビューポートと交差していることも要求する
+        if (typeof element.checkVisibility === 'function') {
+          return element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+        }
+        return getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).opacity !== '0';
+      };
+      // 充填してよいか (描画されていて、かつビューポートと交差している。画面外に配置した honeypot に平文を入れない)
+      const isVisible = (element) => {
+        if (!isRendered(element)) { return false; }
+        const rect = element.getBoundingClientRect();
         if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) { return false; }
         if (typeof element.checkVisibility === 'function') {
           return element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
@@ -61,7 +70,10 @@ enum LoginFormScript {
       // 送信時に報告するパスワード欄。変更フォーム (現在・新規・確認) では新しいパスワード (autocomplete=new-password) を優先する
       // 可視で操作できる欄だけを対象にする (非表示の honeypot や無効化された欄を送信値として扱わない)
       const usablePasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
-        .filter((field) => isVisible(field) && !field.disabled && !field.readOnly);
+        .filter((field) => isVisible(field) && !field.matches(':disabled') && !field.readOnly);
+      // 検出用 (画面外でも数える)
+      const renderedPasswordFields = (scope) => inputsIn(scope).filter((field) => (field.getAttribute('type') || '').toLowerCase() === 'password')
+        .filter((field) => isRendered(field) && !field.matches(':disabled') && !field.readOnly);
       // autocomplete の無い「現在・新規・確認」の 3 欄の変更フォームでは、末尾 2 欄の値が一致すればその前の欄を現在、2 番目を新規とみなす
       const isUnmarkedChangeForm = (fields) => fields.length >= 3 && !fields.some((field) => hasAutocomplete(field, 'new-password') || hasAutocomplete(field, 'current-password'))
         && fields[fields.length - 2].value === fields[fields.length - 1].value;
@@ -138,8 +150,8 @@ enum LoginFormScript {
       // 複数欄の判定は同じ (可視の) フォーム内の組で行う (デスクトップ用・モバイル用に独立したログインフォームが並ぶページを誤検出しない)。
       // 状態が変わった時だけ送る
       const isNewPasswordForm = (scope) => {
-        // 送信・充填側と同じく操作できる欄だけで判定する (表示用の disabled / readOnly の欄を 2 つ目と数えない)
-        const fields = usablePasswordFields(scope);
+        // 送信・充填側と同じく操作できる欄だけで判定する (表示用の disabled / readOnly の欄を 2 つ目と数えない)。画面外でも検出する
+        const fields = renderedPasswordFields(scope);
         return fields.some((field) => hasAutocomplete(field, 'new-password')) || fields.length >= 2;
       };
       let lastHasNewPassword = null;
@@ -161,7 +173,12 @@ enum LoginFormScript {
         const scopes = Array.from(document.querySelectorAll('form')).filter(isNewPasswordForm);
         const formless = { querySelectorAll: (selector) => Array.from(document.querySelectorAll(selector)).filter((field) => !field.form) };
         if (isNewPasswordForm(formless)) { scopes.push(formless); }
-        const fields = scopes.flatMap((scope) => usablePasswordFields(scope).filter((field) => !hasAutocomplete(field, 'current-password')));
+        const fields = scopes.flatMap((scope) => {
+          const usable = usablePasswordFields(scope);
+          // autocomplete の無い「現在・新規・確認」のフォームでは現在の欄 (末尾から 3 つ目) を保持する
+          const current = isUnmarkedChangeForm(usable) ? usable[usable.length - 3] : null;
+          return usable.filter((field) => field !== current && !hasAutocomplete(field, 'current-password'));
+        });
         if (fields.length === 0) { return false; }
         fields.forEach((field) => setValue(field, password));
         return true;
