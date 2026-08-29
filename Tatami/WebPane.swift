@@ -510,6 +510,12 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
         hasLoginForm = false
         newPasswordFrames.removeAll()
         editingFrames.removeAll()
+        isEditingText = false
+        // 集約フラグも戻し、新文書の true が「変化なし」として捨てられないようにする
+        if hasNewPasswordForm {
+            hasNewPasswordForm = false
+            onNewPasswordFormChange?(false)
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

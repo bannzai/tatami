@@ -914,9 +914,11 @@ final class BrowserWindowModel {
             ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
             : []
         // ユーザー名も正規化形だけが違う値を別アカウントとして扱う (PasswordImporter.matchKey と同じ) ため、スカラー値で比較する
-        // ユーザー名が空の送信では、ユーザー名の無い項目を先に選ばず、現在のパスワードが一意に一致する項目だけを使う
+        // ユーザー名が空の送信では、変更フォーム (isNewPassword) なら現在のパスワードが一意に一致する項目だけを使い、
+        // 通常のパスワード専用ログインならユーザー名の無い項目が 1 件だけあればそれを照合する (正しいパスワードの再送信で重複保存しない)
+        let unnamed = existing.filter(\.username.isEmpty)
         let matched = username.isEmpty
-            ? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil)
+            ? (isNewPassword ? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil) : (unnamed.count == 1 ? unnamed[0] : nil))
             : existing.first(where: { $0.username.unicodeScalars.elementsEqual(username.unicodeScalars) })
         if username.isEmpty, byCurrentPassword.count > 1 {
             statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
