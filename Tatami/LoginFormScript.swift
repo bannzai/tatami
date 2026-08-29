@@ -111,7 +111,9 @@ enum LoginFormScript {
         const fields = renderedPasswordFields(scope);
         const change = unmarkedChangeFields(fields);
         if (change) { return change.new; }
-        return fields.find((field) => hasAutocomplete(field, 'new-password')) || fields[0] || null;
+        // 明示された current-password は送信パスワードにしない (現在のパスワードを新規値として報告しない)
+        const notCurrent = fields.filter((field) => !hasAutocomplete(field, 'current-password'));
+        return fields.find((field) => hasAutocomplete(field, 'new-password')) || notCurrent[0] || null;
       };
       // 変更フォームで既存の項目を特定するための現在のパスワード (autocomplete=current-password か、名前で見分けた現在の欄、または新規の欄より前の欄)
       const currentPasswordValue = (scope, reported) => {
@@ -271,16 +273,20 @@ enum LoginFormScript {
           const cur = unmarkedChangeFields(fields)?.current || null;
           return fields.filter((field) => field !== cur && !hasAutocomplete(field, 'current-password'));
         };
-        if (targets().length === 0) { return false; }
-        // 生成値は Swift 側で対象欄の maxLength に収めて作る (切り詰めると必須文字種が落ちるため)
-        const filled = new Set();
-        for (let i = 0; i < 8; i++) {
-          const remaining = targets().filter((field) => field.isConnected && !filled.has(field) && field.value !== password);
-          if (remaining.length === 0) { break; }
-          setValue(remaining[0], password);
-          filled.add(remaining[0]);
+        const count = targets().length;
+        if (count === 0) { return false; }
+        // 生成値は Swift 側で対象欄の maxLength に収めて作る (切り詰めると必須文字種が落ちるため)。
+        // 欄を位置 (index) で順に充填する。入力イベントで欄が別要素へ置換されても、その位置の現在の欄に入れて次の位置へ進む
+        // (同じ欄を繰り返し充填して確認欄に到達しない事態を防ぐ)
+        let filled = 0;
+        for (let i = 0; i < count; i++) {
+          const current = targets();
+          if (i < current.length && current[i].isConnected && current[i].value !== password) {
+            setValue(current[i], password);
+            filled += 1;
+          }
         }
-        return filled.size > 0;
+        return filled > 0;
       };
       // 充填できるパスワード欄 (現在の DOM から)。登録・変更フォームの新規パスワード欄 (autocomplete=new-password) には既存のパスワードを入れず、
       // current-password を優先する。可視で操作できる欄だけを対象にする (非表示の honeypot に平文を渡さない)
