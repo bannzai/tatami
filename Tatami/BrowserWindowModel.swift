@@ -838,6 +838,8 @@ final class BrowserWindowModel {
     func fillCredential() {
         cancelPrompt()
         cancelPrefix()
+        // 前の候補一覧が残っていると、別ペインの充填後に古い一覧から更に充填できてしまうため閉じる
+        chooser = nil
         let pane = currentWindow.focusedPane
         let host = pane.url.host()?.lowercased() ?? ""
         guard !host.isEmpty else {
