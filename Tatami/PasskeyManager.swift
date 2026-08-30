@@ -30,7 +30,7 @@ enum PasskeyManager {
                     userID: try data(body, "userId"),
                     userName: body["userName"] as? String ?? "",
                     userDisplayName: body["userDisplayName"] as? String ?? "",
-                    challenge: try string(body, "challenge"),
+                    challenge: try base64urlString(body, "challenge"),
                     algorithms: (body["algorithms"] as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.intValue },
                     excludeCredentialIDs: (body["excludeCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:)),
                     authenticatorAttachment: body["authenticatorAttachment"] as? String
@@ -49,7 +49,7 @@ enum PasskeyManager {
             case "get":
                 let request = PasskeyAuthenticator.GetRequest(
                     rpId: body["rpId"] as? String,
-                    challenge: try string(body, "challenge"),
+                    challenge: try base64urlString(body, "challenge"),
                     allowCredentialIDs: (body["allowCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
                 )
                 let candidates = try authenticator.candidates(request: request, origin: origin)
@@ -65,6 +65,10 @@ enum PasskeyManager {
                     "signature": WebAuthn.base64url(response.signature),
                     "userHandle": WebAuthn.base64url(response.userHandle),
                 ]
+            case "discard":
+                // ページ側で abort された create の結果。RP に渡っていない鍵なので削除する (無ければ何もしない)
+                try authenticator.discard(credentialID: try data(body, "id"), origin: origin)
+                return [:]
             default:
                 throw WebAuthnError(name: "NotSupportedError", description: "不明な要求")
             }
@@ -135,6 +139,15 @@ enum PasskeyManager {
 
     private static func data(_ body: [String: Any], _ key: String) throws -> Data {
         guard let value = WebAuthn.data(base64url: try string(body, key)) else {
+            throw WebAuthnError(name: "TypeError", description: "\(key) が base64url でない")
+        }
+        return value
+    }
+
+    /// base64url であることを検証した生文字列 (clientDataJSON へ埋め込む challenge 等。復号値でなく元の文字列が必要な場面で使う)
+    private static func base64urlString(_ body: [String: Any], _ key: String) throws -> String {
+        let value = try string(body, key)
+        guard WebAuthn.data(base64url: value) != nil else {
             throw WebAuthnError(name: "TypeError", description: "\(key) が base64url でない")
         }
         return value

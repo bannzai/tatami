@@ -234,14 +234,13 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
                 return (nil, "invalid message")
             }
             // オリジンはスクリプトの申告ではなく WebKit が持つフレームの security origin から決める。
-            // 別オリジンの iframe からの要求は許さない (通常の WebAuthn は Permissions Policy の明示的な委譲が無ければ拒む。
-            // 委譲の解釈は持たないため、トップレベルと同じオリジンのフレームだけを許す。clientDataJSON の crossOrigin は常に false で正しい)
-            let frameOrigin = WebPane.originURL(frame: message.frameInfo)
-            if !message.frameInfo.isMainFrame {
-                guard let frameOrigin, let topURL = message.webView?.url, CredentialMatcher.sameOrigin(credentialURL: frameOrigin, pageURL: topURL) else {
-                    return (["error": "別オリジンの iframe からの WebAuthn には対応しない", "name": "NotAllowedError"], nil)
-                }
+            // WKFrameInfo は祖先フレームのオリジン鎖を公開しないため、`トップ → 別オリジン iframe → 同一オリジンの孫 iframe`
+            // のように途中に別オリジンを挟む経路 (Permissions Policy の委譲が無ければ本来拒まれ、client data の crossOrigin も
+            // 本来 true になる) を送信元とトップの比較だけでは弾けない。トップフレームからの要求だけを許し、crossOrigin: false を保証する
+            guard message.frameInfo.isMainFrame else {
+                return (["error": "WebAuthn はトップフレームからのみ利用できる", "name": "NotAllowedError"], nil)
             }
+            let frameOrigin = WebPane.originURL(frame: message.frameInfo)
             return (await PasskeyManager.handle(body: body, origin: frameOrigin), nil)
         }
     }

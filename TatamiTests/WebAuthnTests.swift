@@ -39,6 +39,10 @@ struct WebAuthnTests {
         #expect(WebAuthn.isTrustworthyOrigin(URL(string: "https://example.com/")!))
         #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://localhost:8080/")!))
         #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://127.0.0.1/")!))
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://127.0.0.2/")!))
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://[::1]:3000/")!))
+        #expect(WebAuthn.isTrustworthyOrigin(URL(string: "http://dev.localhost/")!))
+        #expect(!WebAuthn.isTrustworthyOrigin(URL(string: "http://128.0.0.1/")!))
         #expect(!WebAuthn.isTrustworthyOrigin(URL(string: "http://example.com/")!))
         #expect(!WebAuthn.isTrustworthyOrigin(URL(string: "file:///tmp/a.html")!))
     }
@@ -63,13 +67,58 @@ struct WebAuthnTests {
         }
         #expect(try authenticator.validate(request: base, origin: origin) == "example.com")
         #expect(try store.all().isEmpty)
-        // 同じ RP・同じ userHandle の再登録では、新しい項目を保存してから古い項目を消す
+        // 同じ RP・同じ userHandle の再登録でも、RP 側の登録完了を確認できないため旧項目は自動削除せず両方保持する
         let first = try authenticator.makeCredential(request: base, origin: origin, userVerified: true)
         let second = try authenticator.makeCredential(request: base, origin: origin, userVerified: true)
         let remaining = try store.all()
-        #expect(remaining.count == 1)
-        #expect(remaining[0].credentialID == second.credentialID)
-        #expect(remaining[0].credentialID != first.credentialID)
+        #expect(remaining.count == 2)
+        #expect(remaining.contains { $0.credentialID == first.credentialID })
+        #expect(remaining.contains { $0.credentialID == second.credentialID })
+    }
+
+    @Test func discardRemovesOnlyOwnCredential() throws {
+        let store = InMemoryPasskeyStore()
+        let authenticator = PasskeyAuthenticator(store: store, usesSecureEnclave: false)
+        let request = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([1]), userName: "a", userDisplayName: "A", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: [], authenticatorAttachment: nil)
+        let response = try authenticator.makeCredential(request: request, origin: URL(string: "https://example.com")!, userVerified: true)
+        // 別オリジンからは消せない
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://evil.example")!)
+        #expect(try store.all().count == 1)
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://example.com")!)
+        #expect(try store.all().isEmpty)
+        // 無い ID は何もしない (冪等)
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://example.com")!)
+    }
+
+    @Test func userIdLengthIsValidated() throws {
+        let authenticator = PasskeyAuthenticator(store: InMemoryPasskeyStore(), usesSecureEnclave: false)
+        let origin = URL(string: "https://example.com")!
+        func request(userIDLength: Int) -> PasskeyAuthenticator.CreateRequest {
+            PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data(count: userIDLength), userName: "a", userDisplayName: "A", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: [], authenticatorAttachment: nil)
+        }
+        #expect(throws: WebAuthnError.self) { try authenticator.validate(request: request(userIDLength: 0), origin: origin) }
+        #expect(throws: WebAuthnError.self) { try authenticator.validate(request: request(userIDLength: 65), origin: origin) }
+        #expect(try authenticator.validate(request: request(userIDLength: 64), origin: origin) == "example.com")
+    }
+
+    @Test func rpIdIsNormalizedToAscii() throws {
+        #expect(WebAuthn.normalizedRpId("Example.COM") == "example.com")
+        #expect(WebAuthn.normalizedRpId(nil) == nil)
+        #expect(WebAuthn.normalizedRpId("") == nil)
+        let normalized = try #require(WebAuthn.normalizedRpId("例え.テスト"))
+        #expect(normalized.allSatisfy { $0.isASCII })
+        #expect(normalized.contains("xn--"))
+        // IDN の Unicode 表記 rpId と punycode オリジンが同じドメインとして一致する
+        #expect(WebAuthn.isValidRpId(normalized, originHost: normalized))
+    }
+
+    @Test func clientDataJSONEscapesValues() throws {
+        // origin に JSON 構造を壊す文字が来ても、重複キーを差し込めないことを確認する
+        let data = WebAuthn.clientDataJSON(type: "webauthn.get", challenge: "aWR4", origin: "https://a\",\"x\":\"b")
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["origin"] as? String == "https://a\",\"x\":\"b")
+        #expect(object["x"] == nil)
+        #expect(object["crossOrigin"] as? Bool == false)
     }
 
     @Test func makeCredentialProducesVerifiableAttestation() throws {
