@@ -24,8 +24,12 @@ struct CXFTests {
         let sePasskey = Passkey(id: UUID(), rpId: "example.org", credentialID: Data([4]), userHandle: Data([8]), userName: "bob", userDisplayName: "Bob",
                                 privateKey: Data([0]), isSecureEnclave: true, publicKeyX963: key.publicKey.x963Representation, signCount: 0, createdAt: now,
                                 isBackupEligible: false)
-        let exported = try CXF.exportArchive(credentials: [credential], passkeys: [passkey, sePasskey], exporter: "Tatami", now: now)
-        #expect(exported.result == CXF.ExportResult(credentials: 1, passkeys: 1, skippedSecureEnclavePasskeys: 1, excludedCredentials: 0, brokenPasskeys: 0))
+        // 旧スキーマで署名カウンタが進んだソフトウェア鍵は CXF で持ち出せない (移行先で 0 に戻ると RP に複製とみなされる)
+        let usedPasskey = Passkey(id: UUID(), rpId: "example.com", credentialID: Data([5]), userHandle: Data([9]), userName: "alice", userDisplayName: "Alice",
+                                  privateKey: key.rawRepresentation, isSecureEnclave: false, publicKeyX963: key.publicKey.x963Representation, signCount: 3, createdAt: now,
+                                  isBackupEligible: false)
+        let exported = try CXF.exportArchive(credentials: [credential], passkeys: [passkey, sePasskey, usedPasskey], exporter: "Tatami", now: now)
+        #expect(exported.result == CXF.ExportResult(credentials: 1, passkeys: 1, skippedSecureEnclavePasskeys: 1, excludedCredentials: 0, brokenPasskeys: 0, usedCounterPasskeys: 1))
         let json = try #require(try ZIPArchive.entries(data: exported.data).first).data
         let header = try #require(try JSONSerialization.jsonObject(with: json) as? [String: Any])
         // Tatami が書き出した Passkey は登録時の BE (ローカル作成は false) を往復で保つ

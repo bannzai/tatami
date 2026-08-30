@@ -776,10 +776,11 @@ final class BrowserWindowModel {
             let notes = [
                 exported.result.skippedSecureEnclavePasskeys > 0 ? "Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : nil,
                 exported.result.brokenPasskeys > 0 ? "鍵を読めない Passkey \(exported.result.brokenPasskeys) 件は除外した" : nil,
+                exported.result.usedCounterPasskeys > 0 ? "署名カウンタが進んだ Passkey \(exported.result.usedCounterPasskeys) 件は CXF で持ち出せない" : nil,
                 exported.result.excludedCredentials > 0 ? "ホストの無い資格情報 \(exported.result.excludedCredentials) 件は除外した" : nil,
                 passkeyError.map { "Passkey を読めない: \($0)" },
             ].compactMap { $0 }
-            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(notes.map { "・" + $0 }.joined()): \(filePath)"
+            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(notes.map { "・" + $0 }.joined()): \(filePath)。このファイルは削除するまで平文で残る (秘密鍵を含む)"
         } catch {
             statusMessage = "エクスポートに失敗: \(error)"
         }

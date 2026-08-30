@@ -19,6 +19,8 @@ enum CXF {
         var excludedCredentials: Int
         /// 秘密鍵を復元できず書き出せなかった Passkey (旧スキーマ・破損した Keychain 項目)
         var brokenPasskeys: Int
+        /// 署名カウンタが非ゼロのため書き出せなかった Passkey。CXF はカウンタを持つ Passkey の書き出しを禁じる (移行先で 0 に戻ると RP に複製とみなされる)
+        var usedCounterPasskeys: Int = 0
     }
 
     /// インポートの結果
@@ -57,6 +59,7 @@ enum CXF {
         var exportedPasskeys = 0
         var skippedSecureEnclave = 0
         var brokenPasskeys = 0
+        var usedCounterPasskeys = 0
         for passkey in passkeys {
             guard !passkey.isSecureEnclave else {
                 skippedSecureEnclave += 1
@@ -65,6 +68,10 @@ enum CXF {
             // 壊れた 1 件のために資格情報ごと書き出せなくならないよう、鍵を復元できない項目は件数で知らせて飛ばす
             guard let key = try? P256.Signing.PrivateKey(rawRepresentation: passkey.privateKey) else {
                 brokenPasskeys += 1
+                continue
+            }
+            guard passkey.signCount == 0 else {
+                usedCounterPasskeys += 1
                 continue
             }
             exportedPasskeys += 1
@@ -102,7 +109,7 @@ enum CXF {
         let data = try JSONSerialization.data(withJSONObject: header, options: [.sortedKeys])
         return (data, ExportResult(
             credentials: exportable.rows.count, passkeys: exportedPasskeys, skippedSecureEnclavePasskeys: skippedSecureEnclave,
-            excludedCredentials: exportable.excluded, brokenPasskeys: brokenPasskeys
+            excludedCredentials: exportable.excluded, brokenPasskeys: brokenPasskeys, usedCounterPasskeys: usedCounterPasskeys
         ))
     }
 

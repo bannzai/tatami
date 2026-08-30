@@ -4,11 +4,11 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
 
 ## 現在の実装状況
 
-開発中。現時点の実装はアドレスバー + WKWebView 1 枚の最小構成で、以下は設計済みの予定機能。進捗はロードマップ issue (https://github.com/bannzai/tatami/issues/20 ) を参照。
+MVP ロードマップ (https://github.com/bannzai/tatami/issues/20 ) の子 issue はすべて実装済み。実サイトでの検証と細部の調整を続けている。
 
-- (予定) `prefix + "` / `prefix + %` でペインを上下・左右に分割し、`prefix + o` で次のペインへ。どのサイト上でも prefix が効く
-- (予定) 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)
-- (予定) Password Manager を内蔵する (Keychain バックエンド・Chrome 互換 CSV の入出力・Credential Provider Extension・Passkey)
+- `prefix + "` / `prefix + %` でペインを上下・左右に分割し、`prefix + o` で次のペインへ。どのサイト上でも prefix が効く
+- 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)
+- Password Manager を内蔵する (Keychain バックエンド・Chrome 互換 CSV の入出力・Credential Provider Extension・Passkey と CXF の入出力)
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
 
