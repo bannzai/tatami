@@ -751,7 +751,15 @@ final class BrowserWindowModel {
             return
         }
         do {
-            let exported = try CXF.exportArchive(credentials: try credentialStore.all(), passkeys: try PasskeyManager.store.all(), exporter: "Tatami", now: Date())
+            // Passkey が 1 件でも旧スキーマ・破損データだと all() 全体が失敗するため、資格情報の書き出しまで巻き添えにしない
+            var passkeys: [Passkey] = []
+            var passkeyError: (any Error)?
+            do {
+                passkeys = try PasskeyManager.store.all()
+            } catch {
+                passkeyError = error
+            }
+            let exported = try CXF.exportArchive(credentials: try credentialStore.all(), passkeys: passkeys, exporter: "Tatami", now: Date())
             let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
             guard descriptor >= 0 else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -765,8 +773,13 @@ final class BrowserWindowModel {
                 try? FileManager.default.removeItem(at: fileURL)
                 throw error
             }
-            let skipped = exported.result.skippedSecureEnclavePasskeys > 0 ? "・Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : ""
-            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(skipped): \(filePath)"
+            let notes = [
+                exported.result.skippedSecureEnclavePasskeys > 0 ? "Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : nil,
+                exported.result.brokenPasskeys > 0 ? "鍵を読めない Passkey \(exported.result.brokenPasskeys) 件は除外した" : nil,
+                exported.result.excludedCredentials > 0 ? "ホストの無い資格情報 \(exported.result.excludedCredentials) 件は除外した" : nil,
+                passkeyError.map { "Passkey を読めない: \($0)" },
+            ].compactMap { $0 }
+            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(notes.map { "・" + $0 }.joined()): \(filePath)"
         } catch {
             statusMessage = "エクスポートに失敗: \(error)"
         }
@@ -785,8 +798,8 @@ final class BrowserWindowModel {
         do {
             let imported = try CXF.importArchive(data: try Data(contentsOf: BrowserWindowModel.commandFileURL(path: path)), now: Date())
             let existing = try credentialStore.all()
-            // CXF にメモは無いため note を nil (既存のメモを保つ) にして CSV と同じ突き合わせにかける
-            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: nil) }
+            // CXF にメモが無い項目は note を nil にして既存のメモを保つ (CSV と同じ突き合わせにかける)
+            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: $0.note.isEmpty ? nil : $0.note) }
             let merged = PasswordImporter.merge(rows: rows, existing: existing, now: Date())
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             var seenIDs = Set<UUID>()
@@ -1279,22 +1292,35 @@ final class BrowserWindowModel {
     /// アンロック後に候補を探し、1 件なら充填・複数なら一覧を出す
     private func presentCredentialCandidates(pane: WebPane, host: String) {
         let candidates: [Credential]
-        let passkeys: [Passkey]
         do {
             candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
-            // 同じ RP (rpId がホストかその親) の Passkey も並べる。WebAuthn を拒む (https でない) ページでは使えないため出さない
-            passkeys = WebAuthn.isTrustworthyOrigin(pane.url) ? try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) } : []
         } catch {
             statusMessage = "資格情報を読めない: \(error)"
             return
         }
+        // 同じ RP (rpId がホストかその親) の Passkey も並べる。WebAuthn を拒む (https でない) ページでは使えないため出さない。
+        // Passkey が 1 件でも旧スキーマ・破損データだと all() 全体が失敗するため、パスワード候補の表示とは切り離す
+        var passkeys: [Passkey] = []
+        var passkeyError: (any Error)?
+        if WebAuthn.isTrustworthyOrigin(pane.url) {
+            do {
+                passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) }
+            } catch {
+                passkeyError = error
+            }
+        }
+        let passkeyNote = passkeyError.map { "Passkey を読めない: \($0)" } ?? ""
         switch (candidates.count, passkeys.count) {
         case (0, 0):
-            statusMessage = "\(host) の資格情報は無い"
-        case (1, 0):
+            statusMessage = "\(host) の資格情報は無い\(passkeyNote.isEmpty ? "" : "・" + passkeyNote)"
+        case (1, 0) where passkeyError == nil:
             // 候補の取得で本人確認したばかりなので、もう一度は求めない (lock-timeout 0 では fill の再確認が二重になるため)
             fillUnlocked(credential: candidates[0], pane: pane)
         default:
+            // Passkey を読めなかったことは、充填の結果で上書きされない一覧の側で伝える (そのため 1 件でも自動充填しない)
+            if !passkeyNote.isEmpty {
+                statusMessage = passkeyNote
+            }
             chooserSelectionIndex = 0
             chooser = .credential(candidates, passkeys: passkeys, pane: pane)
         }

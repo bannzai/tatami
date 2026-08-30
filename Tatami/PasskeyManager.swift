@@ -53,7 +53,7 @@ enum PasskeyManager {
                     allowCredentialIDs: (body["allowCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
                 )
                 let candidates = try authenticator.candidates(request: request, origin: origin)
-                guard let passkey = try choose(candidates: candidates, origin: origin) else {
+                guard let passkey = try choose(candidates: candidates, origin: origin, timeout: timeout(body: body)) else {
                     throw WebAuthnError(name: "NotAllowedError", description: "このサイトの Passkey は無い")
                 }
                 let userVerified = try await verifyUser(body: body, reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする")
@@ -97,9 +97,9 @@ enum PasskeyManager {
         return true
     }
 
-    /// 同じ RP の Passkey が複数ある時は、アカウント (userName) をポップアップで選ばせる。1 件ならそのまま、0 件なら nil。
-    /// キャンセルは NotAllowedError
-    private static func choose(candidates: [Passkey], origin: URL) throws -> Passkey? {
+    /// 同じ RP の Passkey が複数ある時は、アカウントをポップアップで選ばせる。1 件ならそのまま、0 件なら nil。
+    /// キャンセルと期限切れは NotAllowedError
+    private static func choose(candidates: [Passkey], origin: URL, timeout: TimeInterval?) throws -> Passkey? {
         guard candidates.count > 1 else {
             return candidates.first
         }
@@ -108,16 +108,47 @@ enum PasskeyManager {
         alert.informativeText = "\(origin.host() ?? "") に複数の Passkey がある"
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26), pullsDown: false)
         for passkey in candidates {
-            popup.addItem(withTitle: passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+            popup.addItem(withTitle: chooserTitle(passkey: passkey))
         }
         popup.setAccessibilityIdentifier("passkeyChooserPopup")
         alert.accessoryView = popup
         alert.addButton(withTitle: "選ぶ").setAccessibilityIdentifier("passkeyChooseButton")
         alert.addButton(withTitle: "キャンセル").setAccessibilityIdentifier("passkeyChooserCancelButton")
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            throw WebAuthnError(name: "NotAllowedError", description: "利用者がキャンセルした")
+        // RP が期限を指定している場合、放置されたポップアップで要求が終わらないと再試行や別の認証手段へ進めないため、
+        // 期限でモーダルを終える (alert を捕まえずに済むよう NSApplication で終える。表示中の window は runModal から戻る時に閉じる)
+        let expiration = timeout.map { seconds -> DispatchWorkItem in
+            let item = DispatchWorkItem {
+                MainActor.assumeIsolated {
+                    NSApplication.shared.abortModal()
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
+            return item
+        }
+        let response = alert.runModal()
+        expiration?.cancel()
+        guard response == .alertFirstButtonReturn else {
+            throw WebAuthnError(name: "NotAllowedError", description: response == .abort ? "選択の期限が切れた" : "利用者がキャンセルした")
         }
         return candidates[popup.indexOfSelectedItem]
+    }
+
+    /// 選択ポップアップの 1 行。同じ RP に userName が同じ Passkey が複数あると (CXF からの取り込みで起きる) どれを選ぶか
+    /// 判断できないため、表示名と credential ID の先頭を添えて一意に見分けられるようにする
+    private static func chooserTitle(passkey: Passkey) -> String {
+        let name = passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName
+        let displayName = passkey.userDisplayName.isEmpty || passkey.userDisplayName == name ? "" : " (\(passkey.userDisplayName))"
+        // credential ID は RP が発行する不透明な識別子。先頭 8 文字あれば同名の候補を見分けられる
+        return "\(name.isEmpty ? "名前なし" : name)\(displayName) — \(WebAuthn.base64url(passkey.credentialID).prefix(8))"
+    }
+
+    /// 選択ポップアップを閉じる期限 (秒)。RP の `publicKey.timeout` (ミリ秒) を、
+    /// WebAuthn L3 5.1.4 がクライアントに推奨する丸め範囲 (本人確認を伴う要求で 30〜600 秒) に収めて使う
+    private static func timeout(body: [String: Any]) -> TimeInterval? {
+        guard let milliseconds = (body["timeout"] as? NSNumber)?.doubleValue, milliseconds > 0 else {
+            return nil
+        }
+        return min(max(milliseconds / 1000, 30), 600)
     }
 
     /// 存在確認 (UP) のための同意ダイアログ。モーダルで表示し、「許可」で true

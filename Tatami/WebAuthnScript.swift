@@ -133,6 +133,7 @@ enum WebAuthnScript {
             challenge: encodeOptional(publicKey.challenge),
             allowCredentials: (publicKey.allowCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
             userVerification: publicKey.userVerification || 'preferred',
+            timeout: typeof publicKey.timeout === 'number' ? publicKey.timeout : null,
           }, options.signal);
           return makeCredential(reply, false);
         },

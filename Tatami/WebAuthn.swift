@@ -43,9 +43,9 @@ enum WebAuthn {
     }
 
     /// 登録時の authenticatorData: rpIdHash (32) | flags | signCount (4, BE) | aaguid (16) | credentialIdLength (2, BE) | credentialId | COSE 公開鍵
-    static func attestedAuthenticatorData(rpId: String, credentialID: Data, publicKeyX963: Data, userVerified: Bool) -> Data {
+    static func attestedAuthenticatorData(rpId: String, credentialID: Data, publicKeyX963: Data, userVerified: Bool, backupEligible: Bool) -> Data {
         var data = Data(SHA256.hash(data: Data(rpId.utf8)))
-        data.append(flags(userVerified: userVerified, attested: true))
+        data.append(flags(userVerified: userVerified, attested: true, backupEligible: backupEligible))
         data.append(contentsOf: [0, 0, 0, 0])
         data.append(aaguid)
         data.append(contentsOf: [UInt8(credentialID.count >> 8), UInt8(credentialID.count & 0xff)])
@@ -55,16 +55,20 @@ enum WebAuthn {
     }
 
     /// 認証時の authenticatorData: rpIdHash (32) | flags | signCount (4, BE)
-    static func assertionAuthenticatorData(rpId: String, signCount: UInt32, userVerified: Bool) -> Data {
+    static func assertionAuthenticatorData(rpId: String, signCount: UInt32, userVerified: Bool, backupEligible: Bool) -> Data {
         var data = Data(SHA256.hash(data: Data(rpId.utf8)))
-        data.append(flags(userVerified: userVerified, attested: false))
+        data.append(flags(userVerified: userVerified, attested: false, backupEligible: backupEligible))
         data.append(contentsOf: [UInt8(signCount >> 24), UInt8((signCount >> 16) & 0xff), UInt8((signCount >> 8) & 0xff), UInt8(signCount & 0xff)])
         return data
     }
 
-    /// flags: UP (0x01) | UV (0x04) | AT (0x40)。BE (backup eligible) / BS は付けない (端末内の鍵で、同期しない)
-    static func flags(userVerified: Bool, attested: Bool) -> UInt8 {
-        0x01 | (userVerified ? 0x04 : 0) | (attested ? 0x40 : 0)
+    /// flags: UP (0x01) | UV (0x04) | BE (0x08) | BS (0x10) | AT (0x40)。
+    /// BE/BS は Tatami が端末内で作った鍵では立てない (Keychain に ThisDeviceOnly で保存し、同期も複製もしない)。
+    /// 他のパスワードマネージャーから CXF で取り込んだ鍵は移行元で BE を立てて登録されていることがあり、
+    /// RP は登録時と assertion で BE が食い違う資格情報を拒めるため (WebAuthn L3 6.1.3)、取り込んだ状態をそのまま返す。
+    /// 取り込んだ鍵は移行元でバックアップ済みのため BS も併せて立てる
+    static func flags(userVerified: Bool, attested: Bool, backupEligible: Bool) -> UInt8 {
+        0x01 | (userVerified ? 0x04 : 0) | (backupEligible ? 0x18 : 0) | (attested ? 0x40 : 0)
     }
 
     /// attestationObject (fmt "none")。canonical CBOR の順序 (fmt, attStmt, authData)
@@ -221,8 +225,33 @@ struct Passkey: Codable, Equatable, Identifiable, Sendable {
     let isSecureEnclave: Bool
     /// 公開鍵 (X9.63 非圧縮)
     let publicKeyX963: Data
+    /// 署名カウンタ。CXF で持ち出せるソフトウェア鍵では常に 0 のまま (WebAuthn L3 6.1.1 が認める「カウンタを持たない authenticator」として扱う)
     var signCount: UInt32
     let createdAt: Date
+    /// 登録時に RP へ BE (backup eligible) を立てたか。CXF で取り込んだ鍵だけ true になる
+    let isBackupEligible: Bool
+}
+
+extension Passkey {
+    /// isBackupEligible を持たない旧スキーマの Keychain 項目も読めるようにするため、欠けている時は false として復号する
+    /// (既存の項目は Tatami が端末内で作った鍵で、BE を立てずに登録している)
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            rpId: try container.decode(String.self, forKey: .rpId),
+            credentialID: try container.decode(Data.self, forKey: .credentialID),
+            userHandle: try container.decode(Data.self, forKey: .userHandle),
+            userName: try container.decode(String.self, forKey: .userName),
+            userDisplayName: try container.decode(String.self, forKey: .userDisplayName),
+            privateKey: try container.decode(Data.self, forKey: .privateKey),
+            isSecureEnclave: try container.decode(Bool.self, forKey: .isSecureEnclave),
+            publicKeyX963: try container.decode(Data.self, forKey: .publicKeyX963),
+            signCount: try container.decode(UInt32.self, forKey: .signCount),
+            createdAt: try container.decode(Date.self, forKey: .createdAt),
+            isBackupEligible: try container.decodeIfPresent(Bool.self, forKey: .isBackupEligible) ?? false
+        )
+    }
 }
 
 /// Passkey の保存先。Keychain 実装とユニットテスト用のメモリ実装
@@ -346,12 +375,12 @@ final class PasskeyAuthenticator {
         let passkey = Passkey(
             id: UUID(), rpId: rpId, credentialID: credentialID, userHandle: request.userID, userName: request.userName,
             userDisplayName: request.userDisplayName, privateKey: key.privateKey, isSecureEnclave: key.isSecureEnclave,
-            publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date()
+            publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date(), isBackupEligible: false
         )
         try store.save(passkey: passkey)
         // 同じ RP・userHandle の旧 Passkey は自動削除しない。ページが返り値を RP に登録できたか (ネットワーク/サーバー検証の成否)
         // はローカルからは分からず、削除してから登録が失敗すると旧鍵も新鍵も使えずログイン不能になるため。整理は明示的な操作で行う
-        let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified)
+        let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified, backupEligible: passkey.isBackupEligible)
         return CreateResponse(
             credentialID: credentialID,
             clientDataJSON: WebAuthn.clientDataJSON(type: "webauthn.create", challenge: request.challenge, origin: PasskeyAuthenticator.originString(url: origin)),
@@ -382,8 +411,12 @@ final class PasskeyAuthenticator {
             throw WebAuthnError(name: "NotAllowedError", description: "Passkey が削除された")
         }
         var updated = passkey
-        updated.signCount &+= 1
-        let authenticatorData = WebAuthn.assertionAuthenticatorData(rpId: passkey.rpId, signCount: updated.signCount, userVerified: userVerified)
+        // ソフトウェア鍵は CXF で他のパスワードマネージャーへ持ち出せる。移行先で 0 から数え直すとカウンタが後退し、
+        // 複製された authenticator とみなす RP に認証を拒まれるため、常に 0 のままにする (Secure Enclave の鍵は端末から出ないので数える)
+        if passkey.isSecureEnclave {
+            updated.signCount &+= 1
+        }
+        let authenticatorData = WebAuthn.assertionAuthenticatorData(rpId: passkey.rpId, signCount: updated.signCount, userVerified: userVerified, backupEligible: passkey.isBackupEligible)
         let clientDataJSON = WebAuthn.clientDataJSON(type: "webauthn.get", challenge: request.challenge, origin: PasskeyAuthenticator.originString(url: origin))
         let signature = try sign(passkey: passkey, data: WebAuthn.signedData(authenticatorData: authenticatorData, clientDataJSON: clientDataJSON))
         try store.save(passkey: updated)

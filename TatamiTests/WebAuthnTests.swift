@@ -170,15 +170,15 @@ struct WebAuthnTests {
         #expect(candidates.count == 1)
         let assertion = try authenticator.getAssertion(passkey: candidates[0], request: request, origin: origin, userVerified: true)
         #expect(assertion.authenticatorData[32] == 0x05)
-        #expect(assertion.authenticatorData.suffix(4) == Data([0, 0, 0, 1]))
+        // ソフトウェア鍵は CXF で持ち出せるため署名カウンタを進めない (移行先でカウンタが後退しないようにする)
+        #expect(assertion.authenticatorData.suffix(4) == Data([0, 0, 0, 0]))
         #expect(assertion.userHandle == Data([7]))
         let clientData = try #require(try JSONSerialization.jsonObject(with: assertion.clientDataJSON) as? [String: Any])
         #expect(clientData["origin"] as? String == "https://login.example.com:8443")
         let publicKey = try P256.Signing.PublicKey(derRepresentation: created.publicKeyDER)
         let signature = try P256.Signing.ECDSASignature(derRepresentation: assertion.signature)
         #expect(publicKey.isValidSignature(signature, for: WebAuthn.signedData(authenticatorData: assertion.authenticatorData, clientDataJSON: assertion.clientDataJSON)))
-        // 署名カウンタが保存される
-        #expect(try store.all()[0].signCount == 1)
+        #expect(try store.all()[0].signCount == 0)
         // allowCredentials に無い id では候補が無い
         let none = try authenticator.candidates(request: PasskeyAuthenticator.GetRequest(rpId: "example.com", challenge: "Yg", allowCredentialIDs: [Data([0])]), origin: origin)
         #expect(none.isEmpty)
