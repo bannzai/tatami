@@ -17,12 +17,51 @@ enum PasskeyManager {
 
     static let authenticator = PasskeyAuthenticator(store: store)
 
+    /// 表示中の同意・選択ダイアログの要求 ID。ページの abort (`cancel`) で該当する要求のモーダルだけを閉じるために持つ
+    private static var modalRequestID: String?
+
     /// ページからの要求を処理し、注入スクリプトへ返す辞書 (成功なら各フィールドの base64url、失敗なら error / name) を作る
     static func handle(body: [String: Any], origin: URL?) async -> [String: Any] {
         do {
             guard let origin else {
                 throw WebAuthnError(name: "SecurityError", description: "フレームのオリジンが不明")
             }
+            // RP の timeout は候補の選択と本人確認を含む要求全体に適用する (期限を過ぎたら RP が再試行や別の手段へ進めるよう NotAllowedError で終える。
+            // 進行中の Touch ID / パスワード確認は取り消せないため、その結果は捨てる)
+            return try await withDeadline(seconds: timeout(body: body)) {
+                try await perform(body: body, origin: origin)
+            }
+        } catch let error as WebAuthnError {
+            return ["error": error.description, "name": error.name]
+        } catch {
+            return ["error": "\(error)", "name": "NotAllowedError"]
+        }
+    }
+
+    /// `operation` を期限付きで実行する。期限なし (nil) ならそのまま実行する
+    private static func withDeadline(seconds: TimeInterval?, operation: @escaping @MainActor () async throws -> [String: String]) async throws -> [String: String] {
+        guard let seconds else {
+            return try await operation()
+        }
+        return try await withThrowingTaskGroup(of: [String: String].self) { group in
+            group.addTask { @MainActor in
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw WebAuthnError(name: "NotAllowedError", description: "要求の期限が切れた")
+            }
+            guard let result = try await group.next() else {
+                throw WebAuthnError(name: "NotAllowedError", description: "要求の期限が切れた")
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private static func perform(body: [String: Any], origin: URL) async throws -> [String: String] {
+        let requestID = body["requestId"] as? String
+        do {
             switch body["op"] as? String {
             case "create":
                 let request = PasskeyAuthenticator.CreateRequest(
@@ -37,7 +76,7 @@ enum PasskeyManager {
                 )
                 // 鍵を作れない要求 (無効な rpId・非対応のアルゴリズム・exclude 済み) では本人確認のダイアログを出さない
                 _ = try authenticator.validate(request: request, origin: origin)
-                let userVerified = try await verifyUser(body: body, reason: "\(origin.host() ?? "") に Passkey を登録する")
+                let userVerified = try await verifyUser(body: body, reason: "\(origin.host() ?? "") に Passkey を登録する", requestID: requestID)
                 let response = try authenticator.makeCredential(request: request, origin: origin, userVerified: userVerified)
                 return [
                     "id": WebAuthn.base64url(response.credentialID),
@@ -53,10 +92,10 @@ enum PasskeyManager {
                     allowCredentialIDs: (body["allowCredentials"] as? [String] ?? []).compactMap(WebAuthn.data(base64url:))
                 )
                 let candidates = try authenticator.candidates(request: request, origin: origin)
-                guard let passkey = try choose(candidates: candidates, origin: origin, timeout: timeout(body: body)) else {
+                guard let passkey = try choose(candidates: candidates, origin: origin, timeout: timeout(body: body), requestID: requestID) else {
                     throw WebAuthnError(name: "NotAllowedError", description: "このサイトの Passkey は無い")
                 }
-                let userVerified = try await verifyUser(body: body, reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする")
+                let userVerified = try await verifyUser(body: body, reason: "\(passkey.rpId) の Passkey (\(passkey.userName)) でサインインする", requestID: requestID)
                 let response = try authenticator.getAssertion(passkey: passkey, request: request, origin: origin, userVerified: userVerified)
                 return [
                     "id": WebAuthn.base64url(response.credentialID),
@@ -69,22 +108,24 @@ enum PasskeyManager {
                 // ページ側で abort された create の結果。RP に渡っていない鍵なので削除する (無ければ何もしない)
                 try authenticator.discard(credentialID: try data(body, "id"), origin: origin)
                 return [:]
+            case "cancel":
+                // ページの AbortSignal。その要求のダイアログが表示中なら閉じる (別の要求のダイアログは閉じない)
+                if let requestID, modalRequestID == requestID {
+                    NSApplication.shared.abortModal()
+                }
+                return [:]
             default:
                 throw WebAuthnError(name: "NotSupportedError", description: "不明な要求")
             }
-        } catch let error as WebAuthnError {
-            return ["error": error.description, "name": error.name]
-        } catch {
-            return ["error": "\(error)", "name": "NotAllowedError"]
         }
     }
 
     /// WebAuthn の要求ごとに利用者の操作を求める (資格情報の自動ロックとは独立。ページのスクリプトが操作なしに assertion を得られないようにする)。
     /// `discouraged` では確認ダイアログでの同意 (存在確認 UP のみ。UV フラグは立てない)、`preferred` / `required` では
     /// Touch ID / パスワードでこの要求のために本人確認し、成功した時だけ UV を立てる。拒否・失敗・キャンセルは NotAllowedError
-    private static func verifyUser(body: [String: Any], reason: String) async throws -> Bool {
+    private static func verifyUser(body: [String: Any], reason: String, requestID: String?) async throws -> Bool {
         if body["userVerification"] as? String == "discouraged" {
-            guard confirmPresence(reason: reason) else {
+            guard confirmPresence(reason: reason, requestID: requestID) else {
                 throw WebAuthnError(name: "NotAllowedError", description: "利用者が許可しなかった")
             }
             return false
@@ -99,7 +140,7 @@ enum PasskeyManager {
 
     /// 同じ RP の Passkey が複数ある時は、アカウントをポップアップで選ばせる。1 件ならそのまま、0 件なら nil。
     /// キャンセルと期限切れは NotAllowedError
-    private static func choose(candidates: [Passkey], origin: URL, timeout: TimeInterval?) throws -> Passkey? {
+    private static func choose(candidates: [Passkey], origin: URL, timeout: TimeInterval?, requestID: String?) throws -> Passkey? {
         guard candidates.count > 1 else {
             return candidates.first
         }
@@ -125,10 +166,10 @@ enum PasskeyManager {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
             return item
         }
-        let response = alert.runModal()
+        let response = runModal(alert: alert, requestID: requestID)
         expiration?.cancel()
         guard response == .alertFirstButtonReturn else {
-            throw WebAuthnError(name: "NotAllowedError", description: response == .abort ? "選択の期限が切れた" : "利用者がキャンセルした")
+            throw WebAuthnError(name: "NotAllowedError", description: response == .abort ? "選択の期限が切れたか、ページが要求を取り消した" : "利用者がキャンセルした")
         }
         return candidates[popup.indexOfSelectedItem]
     }
@@ -152,13 +193,22 @@ enum PasskeyManager {
     }
 
     /// 存在確認 (UP) のための同意ダイアログ。モーダルで表示し、「許可」で true
-    private static func confirmPresence(reason: String) -> Bool {
+    private static func confirmPresence(reason: String, requestID: String?) -> Bool {
         let alert = NSAlert()
         alert.messageText = "Passkey を使う"
         alert.informativeText = reason
         alert.addButton(withTitle: "許可").setAccessibilityIdentifier("passkeyAllowButton")
         alert.addButton(withTitle: "キャンセル").setAccessibilityIdentifier("passkeyCancelButton")
-        return alert.runModal() == .alertFirstButtonReturn
+        return runModal(alert: alert, requestID: requestID) == .alertFirstButtonReturn
+    }
+
+    /// 要求 ID を表示中として記録してモーダルを出す (`cancel` と期限が `abortModal` で閉じられるようにする)
+    private static func runModal(alert: NSAlert, requestID: String?) -> NSApplication.ModalResponse {
+        modalRequestID = requestID
+        defer {
+            modalRequestID = nil
+        }
+        return alert.runModal()
     }
 
     private static func string(_ body: [String: Any], _ key: String) throws -> String {

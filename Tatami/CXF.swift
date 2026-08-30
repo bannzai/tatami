@@ -27,6 +27,8 @@ enum CXF {
         var passkeys: [Passkey]
         /// 対応しない種類 (totp 等) や読めない項目の数
         var skipped: Int
+        /// `note` credential を持たない item から作った資格情報の id。取り込み時に既存のメモを残すため、空のメモが明示された item と区別する
+        var credentialIDsWithoutNote: Set<UUID> = []
     }
 
     /// index.json の内容 (ZIP に入れる前)
@@ -150,7 +152,8 @@ enum CXF {
         let title = item["title"] as? String ?? ""
         let createdAt = date(milliseconds: item["creationAt"]) ?? now
         let updatedAt = date(milliseconds: item["modifiedAt"]) ?? createdAt
-        let note = credentials.first { $0["type"] as? String == "note" }.flatMap { editableValue($0["content"]) } ?? ""
+        let noteCredential = credentials.first { $0["type"] as? String == "note" }
+        let note = noteCredential.flatMap { editableValue($0["content"]) } ?? ""
         var appliedNote = false
         for credential in credentials {
             switch credential["type"] as? String {
@@ -166,7 +169,11 @@ enum CXF {
                 }
                 appliedNote = true
                 for url in urls {
-                    result.credentials.append(Credential(id: UUID(), url: url, username: username, password: password, note: note, updatedAt: updatedAt))
+                    let credentialID = UUID()
+                    if noteCredential == nil {
+                        result.credentialIDsWithoutNote.insert(credentialID)
+                    }
+                    result.credentials.append(Credential(id: credentialID, url: url, username: username, password: password, note: note, updatedAt: updatedAt))
                 }
             case "passkey":
                 guard let passkey = importedPasskey(credential: credential, createdAt: createdAt) else {

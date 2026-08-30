@@ -80,6 +80,8 @@ enum WebAuthnScript {
       // (ネイティブ側の本人確認は取り消せないため、その結果は捨てる)
       const request = async (body, signal) => {
         if (signal && signal.aborted) { throw new DOMException('The operation was aborted.', 'AbortError'); }
+        // ネイティブ側で表示中のダイアログを abort で閉じられるよう、要求ごとの識別子を付ける
+        body.requestId = crypto.randomUUID();
         const native = window.webkit.messageHandlers.tatamiWebAuthn.postMessage(body);
         let reply;
         try {
@@ -87,6 +89,7 @@ enum WebAuthnScript {
             ? Promise.race([native, new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }))])
             : native);
         } catch (error) {
+          window.webkit.messageHandlers.tatamiWebAuthn.postMessage({ op: 'cancel', requestId: body.requestId }).catch(() => {});
           // abort 後にネイティブが登録を終えると、ページにも RP にも渡らない Passkey が Keychain に残るため、届いた時点で捨てる
           if (body.op === 'create') {
             native.then((late) => { if (late && late.id) { window.webkit.messageHandlers.tatamiWebAuthn.postMessage({ op: 'discard', id: late.id }); } }).catch(() => {});

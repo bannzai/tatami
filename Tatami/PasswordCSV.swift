@@ -221,6 +221,10 @@ enum PasswordImporter {
             let note = row.note ?? credentials[index].note
             // Unicode の正規化形だけが違う値 (U+00E9 と U+0065 U+0301) はサイト側で別のパスワードになりうるため、String の等価ではなくスカラー列で比較する
             guard !credentials[index].password.unicodeScalars.elementsEqual(row.password.unicodeScalars) || !credentials[index].note.unicodeScalars.elementsEqual(note.unicodeScalars) else {
+                // 内容が同じでも移行元の更新日時は反映する (候補の並び順と再エクスポートの日時を移行元に揃える)
+                if let rowUpdatedAt = row.updatedAt {
+                    credentials[index].updatedAt = rowUpdatedAt
+                }
                 unchanged += 1
                 continue
             }

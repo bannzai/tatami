@@ -196,6 +196,10 @@ struct PasswordCSVTests {
         // 行が日時を持たない CSV は取り込み時刻
         let plain = PasswordImporter.merge(rows: [PasswordCSV.Row(name: "example.com", url: "https://example.com", username: "bob", password: "dummy", note: nil)], existing: [], now: now)
         #expect(plain.credentials.map(\.updatedAt) == [now])
+        // 内容が同じでも移行元の日時は反映する
+        let again = PasswordImporter.merge(rows: [PasswordCSV.Row(name: "example.com", url: "https://example.com", username: "bob", password: "dummy", note: nil, updatedAt: imported)], existing: plain.credentials, now: now)
+        #expect(again.unchanged == 1)
+        #expect(again.credentials.map(\.updatedAt) == [imported])
     }
 
     @Test func mergeAddsUpdatesAndSkips() {

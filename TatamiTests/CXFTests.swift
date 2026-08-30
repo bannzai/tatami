@@ -30,6 +30,8 @@ struct CXFTests {
         let header = try #require(try JSONSerialization.jsonObject(with: json) as? [String: Any])
         // Tatami が書き出した Passkey は登録時の BE (ローカル作成は false) を往復で保つ
         let roundTrip = try CXF.importArchive(data: exported.data, now: now)
+        // note credential を持つ item はメモの有無を区別できる (メモ付きなので「メモ無し」には入らない)
+        #expect(roundTrip.credentialIDsWithoutNote.isEmpty)
         #expect(roundTrip.passkeys.map(\.isBackupEligible) == [false])
         #expect(roundTrip.credentials.map(\.updatedAt) == [now])
         #expect(header["version"] as? Int == CXF.version)
@@ -234,5 +236,21 @@ struct CXFTests {
     private func passkeyCredential(header: [String: Any]) -> [String: Any] {
         let items = (header["accounts"] as? [[String: Any]])?.first?["items"] as? [[String: Any]] ?? []
         return items.flatMap { $0["credentials"] as? [[String: Any]] ?? [] }.first { $0["type"] as? String == "passkey" } ?? [:]
+    }
+
+    @Test func importDistinguishesMissingNoteFromEmptyNote() throws {
+        func json(credentials: String) -> Data {
+            Data("""
+            {"version":0,"exporter":"x","timestamp":0,"accounts":[{"id":"YQ","userName":"","email":"","collections":[],"items":[{"id":"YQ","creationAt":0,"modifiedAt":0,"type":"login","title":"example.com","credentials":[\(credentials)]}]}]}
+            """.utf8)
+        }
+        let basic = """
+        {"type":"basic-auth","urls":["https://example.com"],"username":{"fieldType":"string","value":"alice"},"password":{"fieldType":"concealed-string","value":"dummy"}}
+        """
+        let missing = try CXF.importJSON(data: json(credentials: basic), now: now)
+        #expect(missing.credentialIDsWithoutNote == Set(missing.credentials.map(\.id)))
+        let empty = try CXF.importJSON(data: json(credentials: basic + ",{\"type\":\"note\",\"content\":{\"fieldType\":\"string\",\"value\":\"\"}}"), now: now)
+        #expect(empty.credentialIDsWithoutNote.isEmpty)
+        #expect(empty.credentials.map(\.note) == [""])
     }
 }
