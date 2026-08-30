@@ -115,6 +115,7 @@ enum WebAuthnScript {
             excludeCredentials: (publicKey.excludeCredentials || []).map((item) => encodeOptional(item.id)).filter(Boolean),
             userVerification: (publicKey.authenticatorSelection && publicKey.authenticatorSelection.userVerification) || 'preferred',
             authenticatorAttachment: (publicKey.authenticatorSelection && publicKey.authenticatorSelection.authenticatorAttachment) || null,
+            timeout: typeof publicKey.timeout === 'number' ? publicKey.timeout : null,
           }, options.signal);
           return makeCredential(reply, true);
         },

@@ -43,19 +43,45 @@ enum PasskeyManager {
         guard let seconds else {
             return try await operation()
         }
-        return try await withThrowingTaskGroup(of: [String: String].self) { group in
-            group.addTask { @MainActor in
-                try await operation()
+        // 構造化並行 (TaskGroup) はスコープ終了時に残りのタスクを待つため、取り消せない本人確認が終わるまで返信できない。
+        // 先に終わった側だけで continuation を再開し、遅れて終わった側の結果は捨てる
+        let settled = Settled()
+        return try await withCheckedThrowingContinuation { continuation in
+            Task { @MainActor in
+                do {
+                    let value = try await operation()
+                    if settled.claim() {
+                        continuation.resume(returning: value)
+                    }
+                } catch {
+                    if settled.claim() {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
-            group.addTask {
-                try await Task.sleep(for: .seconds(seconds))
-                throw WebAuthnError(name: "NotAllowedError", description: "要求の期限が切れた")
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if settled.claim() {
+                    continuation.resume(throwing: WebAuthnError(name: "NotAllowedError", description: "要求の期限が切れた"))
+                }
             }
-            guard let result = try await group.next() else {
-                throw WebAuthnError(name: "NotAllowedError", description: "要求の期限が切れた")
+        }
+    }
+
+    /// 期限と本人確認のどちらが先に終わったかを 1 度だけ決めるためのフラグ (continuation の二重再開を防ぐ)
+    private final class Settled: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool {
+            lock.lock()
+            defer {
+                lock.unlock()
             }
-            group.cancelAll()
-            return result
+            if claimed {
+                return false
+            }
+            claimed = true
+            return true
         }
     }
 

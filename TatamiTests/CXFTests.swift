@@ -252,5 +252,18 @@ struct CXFTests {
         let empty = try CXF.importJSON(data: json(credentials: basic + ",{\"type\":\"note\",\"content\":{\"fieldType\":\"string\",\"value\":\"\"}}"), now: now)
         #expect(empty.credentialIDsWithoutNote.isEmpty)
         #expect(empty.credentials.map(\.note) == [""])
+        // content を読めない note は「無い」扱い (既存のメモを消さない)
+        let unreadable = try CXF.importJSON(data: json(credentials: basic + ",{\"type\":\"note\",\"content\":{\"fieldType\":\"string\"}}"), now: now)
+        #expect(unreadable.credentialIDsWithoutNote == Set(unreadable.credentials.map(\.id)))
+    }
+
+    @Test func storedEntryRejectsMismatchedSizes() throws {
+        var zip = ZIPArchive.make(entries: [("index.json", Data("{}".utf8))])
+        // 中央ディレクトリの展開後サイズ (uncompressed) を書き換えて、圧縮サイズと食い違わせる
+        let central = try #require(zip.range(of: Data([0x50, 0x4b, 0x01, 0x02])))
+        zip[central.lowerBound + 24] = 1
+        #expect(throws: CXFError.self) {
+            try ZIPArchive.entries(data: zip)
+        }
     }
 }

@@ -152,8 +152,9 @@ enum CXF {
         let title = item["title"] as? String ?? ""
         let createdAt = date(milliseconds: item["creationAt"]) ?? now
         let updatedAt = date(milliseconds: item["modifiedAt"]) ?? createdAt
-        let noteCredential = credentials.first { $0["type"] as? String == "note" }
-        let note = noteCredential.flatMap { editableValue($0["content"]) } ?? ""
+        // content を読めない note は「無い」と同じ扱いにして既存のメモを消さない (空のメモが明示された場合だけ空文字で上書きする)
+        let noteCredential = credentials.first { $0["type"] as? String == "note" }.flatMap { editableValue($0["content"]) }
+        let note = noteCredential ?? ""
         var appliedNote = false
         for credential in credentials {
             switch credential["type"] as? String {
@@ -378,6 +379,10 @@ enum ZIPArchive {
             let content: Data
             switch method {
             case 0:
+                // stored では両サイズが一致する。展開後サイズだけを上限検査に使うと、圧縮サイズを巨大に申告したエントリが通ってしまう
+                guard compressed == uncompressed else {
+                    throw CXFError(description: "ZIP のエントリ \(name) の圧縮サイズと展開後サイズが一致しない")
+                }
                 content = raw
             case 8:
                 content = try inflate(raw, expected: uncompressed)
