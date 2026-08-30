@@ -109,6 +109,11 @@ enum WebAuthnScript {
         get: async (options) => {
           const publicKey = options && options.publicKey;
           if (!publicKey) { return original.get(options); }
+          if (options.mediation === 'silent') {
+            // silent は利用者の操作を求めてはいけない。この authenticator は本人確認なしに assertion を返さないため、
+            // プロンプトを出さず「候補なし」の標準的な結果 (null) で完了する
+            return null;
+          }
           if (options.mediation === 'conditional') {
             // 入力欄の自動入力候補 (conditional UI) には対応しない。ページはこの拒否を受けて通常のボタン経由へ進む
             throw new DOMException('conditional mediation is not supported', 'NotSupportedError');

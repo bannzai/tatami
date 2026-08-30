@@ -22,7 +22,10 @@ enum WebAuthn {
 
     /// clientDataJSON。RP はこの JSON の hash に署名されていることを確かめるため、ここで組み立てた文字列をそのまま渡す
     static func clientDataJSON(type: String, challenge: String, origin: String) -> Data {
-        Data("{\"type\":\"\(type)\",\"challenge\":\"\(challenge)\",\"origin\":\"\(origin)\",\"crossOrigin\":false}".utf8)
+        // 文字列補間だと challenge / origin に含まれる `"` などが JSON 構造を壊し、重複キーを差し込む余地を与える。
+        // JSONSerialization にエスケープさせて構造を保つ (challenge は呼び出し前に base64url であることを検証済み)
+        let object: [String: Any] = ["type": type, "challenge": challenge, "origin": origin, "crossOrigin": false]
+        return (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
     }
 
     /// 公開鍵の COSE_Key (EC2, P-256, ES256)。CTAP2 の canonical CBOR の順序 (1, 3, -1, -2, -3) で並べる
@@ -97,17 +100,40 @@ enum WebAuthn {
     /// WebAuthn を許す「信頼できる」オリジンか。https と、ローカル開発用の localhost / 127.0.0.1 だけ
     /// (平文 http のページは改ざんされ得るため、既存 Passkey の assertion を要求させない)
     static func isTrustworthyOrigin(_ url: URL) -> Bool {
-        guard let host = url.host()?.lowercased(), !host.isEmpty else {
+        guard let rawHost = url.host()?.lowercased(), !rawHost.isEmpty else {
             return false
         }
         switch url.scheme?.lowercased() {
         case "https":
             return true
         case "http":
-            return host == "localhost" || host.hasSuffix(".localhost") || host == "127.0.0.1" || host == "[::1]"
+            // URL.host() は IPv6 を角括弧なし (`::1`) で返すため、角括弧付きの表記も剥がしてから比べる
+            let host = rawHost.hasPrefix("[") && rawHost.hasSuffix("]") ? String(rawHost.dropFirst().dropLast()) : rawHost
+            if host == "localhost" || host.hasSuffix(".localhost") || host == "::1" {
+                return true
+            }
+            return isIPv4Loopback(host)
         default:
             return false
         }
+    }
+
+    /// Secure Contexts 仕様は 127.0.0.0/8 全体を potentially trustworthy とみなすため、127.0.0.1 だけでなく範囲で判定する
+    private static func isIPv4Loopback(_ host: String) -> Bool {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        let octets = parts.compactMap { UInt8($0) }
+        guard octets.count == 4 else { return false }
+        return octets[0] == 127
+    }
+
+    /// rp.id は Unicode 表記 (`例え.テスト`) でも来るため、比較・保存・rpIdHash の前に IDNA の ASCII 形 (A-label) に揃える
+    static func normalizedRpId(_ rpId: String?) -> String? {
+        guard let rpId, !rpId.isEmpty else { return nil }
+        if let url = URL(string: "https://\(rpId)"), let host = CredentialMatcher.host(url: url) {
+            return host
+        }
+        return rpId.lowercased()
     }
 }
 
@@ -278,6 +304,9 @@ final class PasskeyAuthenticator {
     /// 登録要求の検証 (本人確認の前に行い、鍵を作れない要求で確認ダイアログを出さない)。有効なら rpId を返す
     func validate(request: CreateRequest, origin: URL) throws -> String {
         let rpId = try validatedRpId(rpId: request.rpId, origin: origin)
+        guard (1...64).contains(request.userID.count) else {
+            throw WebAuthnError(name: "TypeError", description: "user.id は 1〜64 バイトでなければならない")
+        }
         guard request.algorithms.contains(WebAuthn.es256Algorithm) else {
             throw WebAuthnError(name: "NotSupportedError", description: "ES256 以外のアルゴリズムには対応しない")
         }
@@ -292,10 +321,10 @@ final class PasskeyAuthenticator {
 
     /// オリジンが信頼できること (https / localhost) と rpId の有効性を確かめ、既定 (オリジンのホスト) を補った rpId を返す
     private func validatedRpId(rpId requested: String?, origin: URL) throws -> String {
-        guard WebAuthn.isTrustworthyOrigin(origin), let host = origin.host()?.lowercased() else {
+        guard WebAuthn.isTrustworthyOrigin(origin), let host = CredentialMatcher.host(url: origin) else {
             throw WebAuthnError(name: "SecurityError", description: "信頼できないオリジン (https でない): \(origin.absoluteString)")
         }
-        let rpId = requested ?? host
+        let rpId = WebAuthn.normalizedRpId(requested) ?? host
         guard WebAuthn.isValidRpId(rpId, originHost: host) else {
             throw WebAuthnError(name: "SecurityError", description: "rpId がオリジンに対して無効: \(rpId)")
         }
@@ -306,7 +335,6 @@ final class PasskeyAuthenticator {
     /// 新しい項目の保存に成功してから削除する (保存に失敗した時に既存の鍵を失わない)
     func makeCredential(request: CreateRequest, origin: URL, userVerified: Bool) throws -> CreateResponse {
         let rpId = try validate(request: request, origin: origin)
-        let existing = try store.all().filter { $0.rpId == rpId }
         let key = try makeKey()
         var credentialID = Data(count: 32)
         let randomStatus = credentialID.withUnsafeMutableBytes { buffer in
@@ -321,10 +349,8 @@ final class PasskeyAuthenticator {
             publicKeyX963: key.publicKeyX963, signCount: 0, createdAt: Date()
         )
         try store.save(passkey: passkey)
-        // 旧項目の削除の失敗は登録の失敗にしない (新項目は RP に登録される。旧項目は次の登録時にまた削除を試みる)
-        for old in existing where old.userHandle == request.userID {
-            try? store.delete(id: old.id)
-        }
+        // 同じ RP・userHandle の旧 Passkey は自動削除しない。ページが返り値を RP に登録できたか (ネットワーク/サーバー検証の成否)
+        // はローカルからは分からず、削除してから登録が失敗すると旧鍵も新鍵も使えずログイン不能になるため。整理は明示的な操作で行う
         let authenticatorData = WebAuthn.attestedAuthenticatorData(rpId: rpId, credentialID: credentialID, publicKeyX963: key.publicKeyX963, userVerified: userVerified)
         return CreateResponse(
             credentialID: credentialID,
@@ -361,7 +387,9 @@ final class PasskeyAuthenticator {
         let scheme = url.scheme?.lowercased() ?? ""
         let defaultPort = scheme == "https" ? 443 : (scheme == "http" ? 80 : nil)
         let port = url.port.flatMap { $0 == defaultPort ? nil : $0 }.map { ":\($0)" } ?? ""
-        let host = url.host()?.lowercased() ?? ""
+        // IDN はオリジンのシリアライズでも A-label (punycode) にそろえる。encodedHost は IPv6 を角括弧付きで返すため一旦剥がす
+        let rawHost = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.encodedHost ?? url.host())?.lowercased() ?? ""
+        let host = rawHost.hasPrefix("[") && rawHost.hasSuffix("]") ? String(rawHost.dropFirst().dropLast()) : rawHost
         // IPv6 は角括弧付きが正規の serialized origin
         return "\(scheme)://\(host.contains(":") ? "[\(host)]" : host)\(port)"
     }
