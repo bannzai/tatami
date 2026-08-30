@@ -81,9 +81,18 @@ enum WebAuthnScript {
       const request = async (body, signal) => {
         if (signal && signal.aborted) { throw new DOMException('The operation was aborted.', 'AbortError'); }
         const native = window.webkit.messageHandlers.tatamiWebAuthn.postMessage(body);
-        const reply = await (signal
-          ? Promise.race([native, new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }))])
-          : native);
+        let reply;
+        try {
+          reply = await (signal
+            ? Promise.race([native, new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }))])
+            : native);
+        } catch (error) {
+          // abort 後にネイティブが登録を終えると、ページにも RP にも渡らない Passkey が Keychain に残るため、届いた時点で捨てる
+          if (body.op === 'create') {
+            native.then((late) => { if (late && late.id) { window.webkit.messageHandlers.tatamiWebAuthn.postMessage({ op: 'discard', id: late.id }); } }).catch(() => {});
+          }
+          throw error;
+        }
         if (!reply || reply.error) { throw domException(reply || {}); }
         return reply;
       };

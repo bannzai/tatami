@@ -14,7 +14,7 @@ WKWebView は任意サイトの WebAuthn を標準では扱えない (Associated
 - 鍵は Secure Enclave の P-256 (`SecureEnclave.P256.Signing.PrivateKey`)。Secure Enclave が無い環境 (VM・GitHub Actions runner) では CryptoKit のソフトウェア鍵にフォールバックする
 - attestation は "none"、アルゴリズムは ES256 だけ。authenticatorData・COSE 鍵・attestationObject は自前の最小 CBOR エンコーダで組み立てる
 - 利用者の確認は要求ごとに行う (資格情報の自動ロックの状態とは独立。ページのスクリプトが操作なしに assertion を得られないようにする)。RP の `userVerification` が `preferred` / `required` なら Touch ID / パスワードでこの要求のために本人確認して UV を立て、`discouraged` なら同意ダイアログでの存在確認 (UP) だけで UV は立てない
-- 受け付けるオリジンは https (と localhost)。別オリジンの iframe からの要求は拒む (Permissions Policy の委譲は解釈しない)
+- 受け付けるオリジンは https (と localhost)。要求はトップフレームからのみ受け付け、iframe からの要求は同一オリジンでも拒む (WKFrameInfo からは祖先フレームのオリジン鎖を得られず、Permissions Policy の委譲も解釈しない)
 - Passkey は資格情報と違い、共有 access group にも iCloud 同期にも乗せない (Secure Enclave の鍵は端末固有)
 - Passkey は資格情報と別の Keychain service に保存する (`KeychainPasskeyStore`)
 - 対応しないもの: `cross-platform` (セキュリティキー) の要求、conditional mediation、attestation "direct"。`timeout` の期限切れと同一 rpId の複数 Passkey の選択は #19

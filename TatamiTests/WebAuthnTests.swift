@@ -76,6 +76,20 @@ struct WebAuthnTests {
         #expect(remaining.contains { $0.credentialID == second.credentialID })
     }
 
+    @Test func discardRemovesOnlyOwnCredential() throws {
+        let store = InMemoryPasskeyStore()
+        let authenticator = PasskeyAuthenticator(store: store, usesSecureEnclave: false)
+        let request = PasskeyAuthenticator.CreateRequest(rpId: nil, userID: Data([1]), userName: "a", userDisplayName: "A", challenge: "YQ", algorithms: [-7], excludeCredentialIDs: [], authenticatorAttachment: nil)
+        let response = try authenticator.makeCredential(request: request, origin: URL(string: "https://example.com")!, userVerified: true)
+        // 別オリジンからは消せない
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://evil.example")!)
+        #expect(try store.all().count == 1)
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://example.com")!)
+        #expect(try store.all().isEmpty)
+        // 無い ID は何もしない (冪等)
+        try authenticator.discard(credentialID: response.credentialID, origin: URL(string: "https://example.com")!)
+    }
+
     @Test func userIdLengthIsValidated() throws {
         let authenticator = PasskeyAuthenticator(store: InMemoryPasskeyStore(), usesSecureEnclave: false)
         let origin = URL(string: "https://example.com")!

@@ -63,6 +63,10 @@ enum PasskeyManager {
                     "signature": WebAuthn.base64url(response.signature),
                     "userHandle": WebAuthn.base64url(response.userHandle),
                 ]
+            case "discard":
+                // ページ側で abort された create の結果。RP に渡っていない鍵なので削除する (無ければ何もしない)
+                try authenticator.discard(credentialID: try data(body, "id"), origin: origin)
+                return [:]
             default:
                 throw WebAuthnError(name: "NotSupportedError", description: "不明な要求")
             }

@@ -369,6 +369,14 @@ final class PasskeyAuthenticator {
 
     /// 認証。署名カウンタを進めて保存し、assertion を返す。カウンタは本人確認の待機中に別の要求が進めていることがあるため、
     /// 署名の直前にストアの最新値を読み直してから増やす (同期的に読み取り → 増分 → 保存まで行い、要求ごとに直列になる)
+    /// abort された create の結果を捨てる。credentialID はネイティブが生成した 32 バイトの乱数で、削除は作成元オリジンの RP に属する項目に限る
+    func discard(credentialID: Data, origin: URL) throws {
+        let host = CredentialMatcher.host(url: origin) ?? ""
+        for passkey in try store.all() where passkey.credentialID == credentialID && WebAuthn.isValidRpId(passkey.rpId, originHost: host) {
+            try store.delete(id: passkey.id)
+        }
+    }
+
     func getAssertion(passkey selected: Passkey, request: GetRequest, origin: URL, userVerified: Bool) throws -> GetResponse {
         guard let passkey = try store.all().first(where: { $0.id == selected.id }) else {
             throw WebAuthnError(name: "NotAllowedError", description: "Passkey が削除された")
