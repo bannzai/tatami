@@ -89,6 +89,18 @@ final class CredentialLock {
         NotificationCenter.default.post(name: CredentialLock.didLockNotification, object: self)
     }
 
+    /// アンロックの状態に関わらず、この要求のために本人確認を行う (WebAuthn の UV のように「この操作で確認した」ことが要る時)。
+    /// 成功したらアンロック状態も更新する
+    func authenticateNow(reason: String) async throws {
+        let generation = lockGeneration
+        try await authenticate(reason)
+        guard generation == lockGeneration else {
+            throw CredentialLockError(description: "本人確認の間にロックされたため中断")
+        }
+        policy.touch(now: .now)
+        scheduleExpiry()
+    }
+
     /// アンロック済みなら期限を延ばし、ロック中なら本人確認を行ってからアンロックする。失敗・キャンセルは throw する。
     /// 待機中に `lock()` が実行された要求は、本人確認が通っても実行しない
     func ensureUnlocked(reason: String) async throws {
