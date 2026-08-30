@@ -187,6 +187,17 @@ struct PasswordCSVTests {
         ]
     }
 
+    @Test func mergeKeepsRowUpdatedAt() {
+        let imported = Date(timeIntervalSince1970: 1_700_000_000)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows = [PasswordCSV.Row(name: "example.com", url: "https://example.com", username: "alice", password: "dummy", note: nil, updatedAt: imported)]
+        let merged = PasswordImporter.merge(rows: rows, existing: [], now: now)
+        #expect(merged.credentials.map(\.updatedAt) == [imported])
+        // 行が日時を持たない CSV は取り込み時刻
+        let plain = PasswordImporter.merge(rows: [PasswordCSV.Row(name: "example.com", url: "https://example.com", username: "bob", password: "dummy", note: nil)], existing: [], now: now)
+        #expect(plain.credentials.map(\.updatedAt) == [now])
+    }
+
     @Test func mergeAddsUpdatesAndSkips() {
         let existing = [makeCredential(url: "https://EXAMPLE.com/", username: "alice", password: "dummy-alice-old", date: past)]
         let result = PasswordImporter.merge(rows: mergeFixtureRows, existing: existing, now: now)

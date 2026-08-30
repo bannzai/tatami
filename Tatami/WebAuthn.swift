@@ -412,8 +412,9 @@ final class PasskeyAuthenticator {
         }
         var updated = passkey
         // ソフトウェア鍵は CXF で他のパスワードマネージャーへ持ち出せる。移行先で 0 から数え直すとカウンタが後退し、
-        // 複製された authenticator とみなす RP に認証を拒まれるため、常に 0 のままにする (Secure Enclave の鍵は端末から出ないので数える)
-        if passkey.isSecureEnclave {
+        // 複製された authenticator とみなす RP に認証を拒まれるため 0 のままにする (Secure Enclave の鍵は端末から出ないので数える)。
+        // 旧スキーマで既に非ゼロのソフトウェア鍵は、同じ値を返し続けると RP に「増えていない」と拒まれるため増分を続ける
+        if passkey.isSecureEnclave || passkey.signCount != 0 {
             updated.signCount &+= 1
         }
         let authenticatorData = WebAuthn.assertionAuthenticatorData(rpId: passkey.rpId, signCount: updated.signCount, userVerified: userVerified, backupEligible: passkey.isBackupEligible)

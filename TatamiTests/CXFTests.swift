@@ -28,6 +28,10 @@ struct CXFTests {
         #expect(exported.result == CXF.ExportResult(credentials: 1, passkeys: 1, skippedSecureEnclavePasskeys: 1, excludedCredentials: 0, brokenPasskeys: 0))
         let json = try #require(try ZIPArchive.entries(data: exported.data).first).data
         let header = try #require(try JSONSerialization.jsonObject(with: json) as? [String: Any])
+        // Tatami が書き出した Passkey は登録時の BE (ローカル作成は false) を往復で保つ
+        let roundTrip = try CXF.importArchive(data: exported.data, now: now)
+        #expect(roundTrip.passkeys.map(\.isBackupEligible) == [false])
+        #expect(roundTrip.credentials.map(\.updatedAt) == [now])
         #expect(header["version"] as? Int == CXF.version)
         #expect(header["exporter"] as? String == "Tatami")
         // 秘密鍵は CXF が要求する PKCS#8 の PrivateKeyInfo で書き出す

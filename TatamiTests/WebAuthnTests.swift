@@ -179,6 +179,12 @@ struct WebAuthnTests {
         let signature = try P256.Signing.ECDSASignature(derRepresentation: assertion.signature)
         #expect(publicKey.isValidSignature(signature, for: WebAuthn.signedData(authenticatorData: assertion.authenticatorData, clientDataJSON: assertion.clientDataJSON)))
         #expect(try store.all()[0].signCount == 0)
+        // 旧スキーマで既に非ゼロのソフトウェア鍵は、同じ値を返し続けると RP に拒まれるため増分を続ける
+        var legacy = try store.all()[0]
+        legacy.signCount = 5
+        try store.save(passkey: legacy)
+        let legacyAssertion = try authenticator.getAssertion(passkey: legacy, request: PasskeyAuthenticator.GetRequest(rpId: "example.com", challenge: "Yg", allowCredentialIDs: [created.credentialID]), origin: origin, userVerified: true)
+        #expect(legacyAssertion.authenticatorData.suffix(4) == Data([0, 0, 0, 6]))
         // allowCredentials に無い id では候補が無い
         let none = try authenticator.candidates(request: PasskeyAuthenticator.GetRequest(rpId: "example.com", challenge: "Yg", allowCredentialIDs: [Data([0])]), origin: origin)
         #expect(none.isEmpty)

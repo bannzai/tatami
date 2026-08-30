@@ -80,6 +80,8 @@ enum CXF {
                     "userDisplayName": passkey.userDisplayName,
                     "userHandle": WebAuthn.base64url(passkey.userHandle),
                     "key": WebAuthn.base64url(key.derRepresentation),
+                    // CXF に BE の項目は無い。Tatami 同士の往復で登録時の BE (ローカル作成は 0) を保つための独自キー
+                    "x-tatami-backupEligible": passkey.isBackupEligible,
                 ] as [String: Any]],
             ])
         }
@@ -203,8 +205,8 @@ enum CXF {
             privateKey: key.rawRepresentation, isSecureEnclave: false, publicKeyX963: key.publicKey.x963Representation,
             signCount: 0, createdAt: createdAt,
             // 移行元 (同期するパスワードマネージャー) は BE を立てて登録していることがあり、assertion で BE=0 に戻すと
-            // 登録時との一致を検証する RP に拒まれる (WebAuthn L3 6.1.3)
-            isBackupEligible: true
+            // 登録時との一致を検証する RP に拒まれる (WebAuthn L3 6.1.3)。Tatami が書き出した値があればそれを優先する
+            isBackupEligible: credential["x-tatami-backupEligible"] as? Bool ?? true
         )
     }
 

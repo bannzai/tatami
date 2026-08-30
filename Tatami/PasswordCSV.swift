@@ -23,6 +23,8 @@ enum PasswordCSV {
         var password: String
         /// Chrome の note 列。この列を持たない古い形式では nil (取り込み時に既存のメモを消さないため、空文字と区別する)
         var note: String?
+        /// 移行元が持つ更新日時。CSV には無いため nil で、その場合は取り込み時刻を使う (CXF の modifiedAt を merge で失わないための項目)
+        var updatedAt: Date? = nil
     }
 
     /// 書き出す列とその順序。Chrome が出力するヘッダと同じにして、Chrome にそのまま読み戻せるようにする。
@@ -209,7 +211,7 @@ enum PasswordImporter {
             let key = matchKey(url: url, username: row.username)
             guard let index = indexesByKey[key] else {
                 credentials.append(
-                    Credential(id: UUID(), url: url, username: row.username, password: row.password, note: row.note ?? "", updatedAt: now)
+                    Credential(id: UUID(), url: url, username: row.username, password: row.password, note: row.note ?? "", updatedAt: row.updatedAt ?? now)
                 )
                 indexesByKey[key] = credentials.count - 1
                 added += 1
@@ -225,7 +227,7 @@ enum PasswordImporter {
             // URL は既存の値を残す。Chrome の URL はログインページとサイトのトップが混在し、どちらが正しいか決められないため
             credentials[index].password = row.password
             credentials[index].note = note
-            credentials[index].updatedAt = now
+            credentials[index].updatedAt = row.updatedAt ?? now
             updated += 1
         }
         return (credentials, added, updated, unchanged, skipped)

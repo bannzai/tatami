@@ -799,7 +799,7 @@ final class BrowserWindowModel {
             let imported = try CXF.importArchive(data: try Data(contentsOf: BrowserWindowModel.commandFileURL(path: path)), now: Date())
             let existing = try credentialStore.all()
             // CXF にメモが無い項目は note を nil にして既存のメモを保つ (CSV と同じ突き合わせにかける)
-            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: $0.note.isEmpty ? nil : $0.note) }
+            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: $0.note.isEmpty ? nil : $0.note, updatedAt: $0.updatedAt) }
             let merged = PasswordImporter.merge(rows: rows, existing: existing, now: Date())
             let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             var seenIDs = Set<UUID>()
@@ -1304,7 +1304,9 @@ final class BrowserWindowModel {
         var passkeyError: (any Error)?
         if WebAuthn.isTrustworthyOrigin(pane.url) {
             do {
-                passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: host) }
+                // rpId は A-label で保存しているため、URL.host() の percent-encoded な IDN ではなく正規化済みのホストで照合する
+                let matchHost = CredentialMatcher.host(url: pane.url) ?? host
+                passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: matchHost) }
             } catch {
                 passkeyError = error
             }
