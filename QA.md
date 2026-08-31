@@ -36,6 +36,11 @@ pkill -x Tatami; open tmp/DerivedData/Build/Products/Debug/Tatami.app
 
 - ペイン分割: `keystroke "t" using control down` → delay 0.4 → `keystroke "\""` (上下) / `keystroke "%"` (左右)
 - ウィンドウ選択: prefix → 数字キー。status line の `*` が現在ウィンドウ
+- 再読み込みが起きたかの判定: https://httpbin.org/uuid を開き、表示される UUID が変わるかを見る
+- ユーザーの実 conf を書き換えずに設定を試す: 一時ファイルに設定を書き、`prefix + :` → `:source-file <絶対パス>` で重ねて適用する。引数なしの `:source-file` で既定の `~/.config/tatami/tatami.conf` から読み直して元に戻す
+- httpbin.org の応答 (`/get` 等) には `"origin"` としてグローバル IP が載る。撮影範囲をその行の手前までに切る (`screencapture -R<x>,<y>,<w>,<h>` の h を縮める)
+- Web ページ内のリンク・要素のクリック: osascript の `click at {x, y}` は AX アクションのため WKWebView に効かない。CGEvent (`mouseMoved` → `leftMouseDown` → `leftMouseUp`) を送る小さな Swift コマンドを `swiftc` でビルドして使う
+- `target=_blank` などページを用意して確かめる項目: `python3 -m http.server <ポート>` でローカルに立て、`localhost:<ポート>/<ファイル>` で開く。`data:` URL はアドレスバーの解決 (`AddressInput.resolve`) で URL 扱いにならないため使えない
 
 ## 実行ナレッジ
 

@@ -1,8 +1,8 @@
 ---
 feature: panes_windows
 verification: manual
-last_verified_commit: null
-last_verified_at: null
+last_verified_commit: 57deef2d2255effb6e03c2eb84d4de8e066d4bdc
+last_verified_at: 2026-09-01
 ---
 
 # panes_windows QA
@@ -31,11 +31,11 @@ last_verified_at: null
 
 ## 1. ペイン分割
 
-- [ ] **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が空ページでフォーカスされる
+- [x] **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が空ページでフォーカスされる
   - 自動化: manual（macOS アプリのため osascript のキー送信 + screencapture の目視で確認する）
-- [ ] **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が空ページでフォーカスされる
+- [x] **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が空ページでフォーカスされる
   - 自動化: manual（同上）
-- [ ] **分割直後の入力**: 分割直後に prefix + / を押さずに `example.org` + Enter をタイプすると、アドレスバーに入力が入り新しいペインで開く
+- [x] **分割直後の入力**: 分割直後に prefix + / を押さずに `example.org` + Enter をタイプすると、アドレスバーに入力が入り新しいペインで開く
   - 自動化: manual（同上。検証済み実例: https://github.com/bannzai/tatami/pull/48#issuecomment-5481009154 ）
 
 #### 動作確認
@@ -46,7 +46,15 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+分割前 (1 ペイン)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/1efde99d-ba80-4204-89f0-e9d551ae8f57.png" width="320">
+
+`prefix + "` の後。下に空ページのペインができ、青枠とアドレスバーのフォーカスがそちらへ移る
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/a83c150f-c126-4952-9f5f-bc172017993b.png" width="320">
 
 </details>
 
@@ -54,7 +62,11 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+下のペインを `prefix + %` で左右に分割し、右の空ページがフォーカスされる
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/2018044e-4201-4cd5-a1a0-69ae7477a5f2.png" width="320">
 
 </details>
 
@@ -62,7 +74,11 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+分割直後にそのまま `example.org` と打って Enter すると、新しいペインが example.org を開く
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/5573dc7a-aae0-4bdf-a40a-53dd7575b173.png" width="320">
 
 </details>
 
@@ -72,15 +88,16 @@ last_verified_at: null
 
 ## 2. ペインのフォーカスと配置
 
-- [ ] **フォーカス移動**: `prefix + o` で次のペインへ、`prefix + h/j/k/l` で方向指定でフォーカスが移る (青枠の追従で確認)
+- [x] **フォーカス移動**: `prefix + o` で次のペインへ、`prefix + h/j/k/l` で方向指定でフォーカスが移る (青枠の追従で確認)
   - 自動化: manual（osascript + screencapture）
-- [ ] **ペインの入れ替え**: `prefix + {` / `}` でフォーカス中のペインが隣と入れ替わる
+  - どのペインがどれか分かるよう、`python3 -m http.server` で「PANE A」「PANE B」「PANE C」と大きく表示するだけのページを配って各ペインに割り当てると判定しやすい
+- [x] **ペインの入れ替え**: `prefix + {` / `}` でフォーカス中のペインが隣と入れ替わる
   - 自動化: manual（同上）
-- [ ] **zoom**: `prefix + z` でフォーカス中のペインが全面表示になり、もう一度で元に戻る
+- [x] **zoom**: `prefix + z` でフォーカス中のペインが全面表示になり、もう一度で元に戻る
   - 自動化: manual（同上）
-- [ ] **レイアウト切り替え**: `prefix + Space` で even-horizontal / even-vertical / tiled が順に切り替わる
+- [x] **レイアウト切り替え**: `prefix + Space` で even-horizontal / even-vertical / tiled が順に切り替わる
   - 自動化: manual（同上）
-- [ ] **ペインを閉じる**: `prefix + x` でフォーカス中のペインが閉じ、残りのペインが領域を引き継ぐ
+- [x] **ペインを閉じる**: `prefix + x` でフォーカス中のペインが閉じ、残りのペインが領域を引き継ぐ
   - 自動化: manual（同上）
 
 #### 動作確認
@@ -91,7 +108,19 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+`prefix + k` で上の PANE A にフォーカスがある状態
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/9d0aaee9-7790-4dcb-8c7e-0d28ca460da4.png" width="320">
+
+`prefix + o` で次のペイン PANE B へ青枠が移る
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/023a4def-65a2-4178-b730-6cd124de620e.png" width="320">
+
+`prefix + l` で右の PANE C へ移る
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/6dd463a1-8cfd-4ff0-a518-a5a93aaaf716.png" width="320">
 
 </details>
 
@@ -99,7 +128,11 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+PANE C にフォーカスした状態で `prefix + {` を押すと、下段の左右 (PANE B と PANE C) が入れ替わり、フォーカスは PANE C に付いて移動する
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/c4406406-ea1d-4992-b7c9-41fa4d1675a1.png" width="320">
 
 </details>
 
@@ -107,7 +140,15 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+`prefix + z` で PANE C が全面表示になる
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/97f4f081-3461-4fbb-bb32-2268e6520a2d.png" width="320">
+
+もう一度の `prefix + z` で 3 ペインの配置に戻る
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/9d1b8619-6208-418d-83a0-e403822991a4.png" width="320">
 
 </details>
 
@@ -115,7 +156,19 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+1 回目: 横並び (even-horizontal)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/fb6ad027-ff18-4140-9e24-f7b55332a3ad.png" width="320">
+
+2 回目: 縦並び (even-vertical)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/2bd93c3e-22f8-4668-ba71-2a7bb8f5096a.png" width="320">
+
+3 回目: tiled
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/80dfcda7-63be-40df-a583-537bf6b570aa.png" width="320">
 
 </details>
 
@@ -123,7 +176,11 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域を分け合う
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/2e9c01d2-67f6-4720-ab84-30afda0ceade.png" width="320">
 
 </details>
 
@@ -133,12 +190,13 @@ last_verified_at: null
 
 ## 3. ウィンドウ操作
 
-- [ ] **新しいウィンドウ**: `prefix + c` で新しいウィンドウが空ページ + アドレスバーフォーカスで開き、status line の一覧に追加される
+- [x] **新しいウィンドウ**: `prefix + c` で新しいウィンドウが空ページ + アドレスバーフォーカスで開き、status line の一覧に追加される
   - 自動化: manual（osascript + screencapture）
-- [ ] **ウィンドウの移動・選択**: `prefix + n` / `p` で隣へ、`prefix + <番号>` で直接選択でき、status line の `*` が追従する
+- [x] **ウィンドウの移動・選択**: `prefix + n` / `p` で隣へ、`prefix + <番号>` で直接選択でき、status line の `*` が追従する
   - 自動化: manual（同上）
-- [ ] **ウィンドウの名前変更・閉じる・一覧**: `prefix + ,` で名前変更、`prefix + w` で一覧から選択、`prefix + &` で閉じられる
+- [x] **ウィンドウの名前変更・閉じる・一覧**: `prefix + ,` で名前変更、`prefix + w` で一覧から選択、`prefix + &` で閉じられる
   - 自動化: manual（同上）
+  - ⚠️ `prefix + ,` の rename-window プロンプトも、navigation feature に記録した「プロンプトの入力欄にフォーカスが入らない」事象が起きる。status line の入力欄をクリック → Cmd+A → 入力で回避した (features/navigation/QA.md 参照。issue: 未起票)
 - [ ] **macOS ウィンドウの追加**: File > New Window (Cmd+N) で別の macOS ウィンドウが新しいセッションで開く
   - 自動化: manual（同上）
   - ❌ 失敗: 保存済みセッションが大きいとアプリ全体がハングする。再現手順: ウィンドウ 8 個のセッションを復元した状態で Cmd+N。issue: https://github.com/bannzai/tatami/issues/51
@@ -151,7 +209,11 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+`prefix + c` で `9:blank*` が status line に加わり、空ページ + アドレスバーフォーカスで開く
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/68ac7144-2ffc-4b28-9e2a-82ec8c78a13c.png" width="320">
 
 </details>
 
@@ -159,7 +221,19 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+`prefix + p` でウィンドウ 9 から 8 へ (`8:localhost*`)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/0cf3f58d-80f2-44ed-87ed-d9a3d12bebf9.png" width="320">
+
+`prefix + n` で 9 へ戻る (`9:localhost*`)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/9b2c0821-d5cc-4c39-8335-401abc8aafce.png" width="320">
+
+`prefix + 0` で番号指定の直接選択 (`0:example.org*`)
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/624dc685-0b41-4205-9f93-516e34701ad2.png" width="320">
 
 </details>
 
@@ -167,7 +241,23 @@ last_verified_at: null
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-01**
+
+`prefix + ,` で `qa-renamed` に変更し、status line が `9:qa-renamed*` になる
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/2cc50071-2d28-4aee-a2c4-ce74b75b152d.png" width="320">
+
+`prefix + w` の一覧。現在のウィンドウ `(9) qa-renamed` が選択状態で表示される
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/03e3ec90-854e-4305-97cf-0af7612e9369.png" width="320">
+
+一覧で 8 を押すとウィンドウ 8 へ切り替わる
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/c6ca1fe2-1ab4-419c-b532-97a6bd909bc4.png" width="320">
+
+`prefix + &` で `9:qa-renamed` が一覧から消える
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/528742ad-ac50-4adf-abff-007d12936c85.png" width="320">
 
 </details>
 
