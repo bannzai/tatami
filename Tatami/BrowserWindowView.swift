@@ -17,7 +17,6 @@ struct BrowserWindowView: View {
                     Image(systemName: "chevron.left")
                 }
                 .disabled(!model.canGoBack)
-                .focusable(false)
                 .accessibilityIdentifier("backButton")
                 Button {
                     model.goForward()
@@ -25,14 +24,12 @@ struct BrowserWindowView: View {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(!model.canGoForward)
-                .focusable(false)
                 .accessibilityIdentifier("forwardButton")
                 Button {
                     model.reload()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .focusable(false)
                 .accessibilityIdentifier("reloadButton")
                 TextField("URL または検索語", text: $model.addressText)
                     .textFieldStyle(.roundedBorder)
