@@ -20,6 +20,12 @@ struct AddressInputTests {
         #expect(AddressInput.resolve(text: "about:blank") == AddressInput.homeURL)
     }
 
+    /// 空ページはアドレスバーを空にしてすぐ入力できるようにし、実ページは URL をそのまま表示する
+    @Test func blankPageHasEmptyDisplayText() {
+        #expect(AddressInput.displayText(url: AddressInput.homeURL) == "")
+        #expect(AddressInput.displayText(url: URL(string: "https://example.com/path?x=1")!) == "https://example.com/path?x=1")
+    }
+
     @Test func emailAddressBecomesSearchQuery() {
         #expect(AddressInput.resolve(text: "user@example.com") == URL(string: "https://www.google.com/search?q=user@example.com"))
     }

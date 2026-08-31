@@ -184,7 +184,7 @@ final class BrowserWindowModel {
             sessionName = name
             windows = [makeWindow()]
         }
-        addressText = currentWindow.focusedPane.url.absoluteString
+        syncAddressTextToFocusedPane()
         statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
         self.credentialLock.apply(lockTimeout: config.lockTimeout)
     }
@@ -484,6 +484,15 @@ final class BrowserWindowModel {
         cancelPrompt()
         cancelPrefix()
         addressBarFocusRequestCount += 1
+    }
+
+    /// 分割・新規ウィンドウで開いたペインが空ページ (about:blank) なら、操作する対象が無いのでアドレスバーへフォーカスを移してすぐ URL を打てるようにする。
+    /// `set -g home` で実ページを開く設定の時は、ページ側の操作を邪魔しないためフォーカスを移さない
+    private func focusAddressBarIfBlankPane() {
+        guard currentWindow.focusedPane.url == AddressInput.homeURL else {
+            return
+        }
+        focusAddressBar()
     }
 
     func goBack() {
@@ -1604,8 +1613,10 @@ final class BrowserWindowModel {
         switch command {
         case .splitWindowHorizontal:
             currentWindow.split(axis: .horizontal)
+            focusAddressBarIfBlankPane()
         case .splitWindowVertical:
             currentWindow.split(axis: .vertical)
+            focusAddressBarIfBlankPane()
         case .killPane:
             closeFocusedPane()
         case .selectPaneNext:
@@ -1632,6 +1643,7 @@ final class BrowserWindowModel {
             currentWindow.applyNextLayout()
         case .newWindow:
             newWindow()
+            focusAddressBarIfBlankPane()
         case .nextWindow:
             nextWindow()
         case .previousWindow:
@@ -1717,7 +1729,7 @@ final class BrowserWindowModel {
             guard currentWindow === window else {
                 return
             }
-            addressText = navigatedURL.absoluteString
+            addressText = AddressInput.displayText(url: navigatedURL)
             focusedPaneStateVersion += 1
             scheduleSave()
             evaluateNewPasswordProposal()
@@ -1746,6 +1758,6 @@ final class BrowserWindowModel {
     }
 
     private func syncAddressTextToFocusedPane() {
-        addressText = currentWindow.focusedPane.url.absoluteString
+        addressText = AddressInput.displayText(url: currentWindow.focusedPane.url)
     }
 }

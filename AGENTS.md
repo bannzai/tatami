@@ -18,6 +18,10 @@ tmux の操作体系で画面分割を扱う、macOS ネイティブの個人用
 - 動作確認 (UI・挙動): 本リポジトリは public のため、GitHub Actions の macOS runner 上で simtunnel を通じて行える (`/macos-simtunnel` skill。caller workflow は `.github/workflows/macos-app-session.yml`、既定 runner は `macos-26`)。ローカルの GUI セッションを使える場合は `make build-macos` の成果物 `tmp/DerivedData/Build/Products/Debug/Tatami.app` を `open` で起動してもよい
 - UI 要素には `accessibilityIdentifier` を付ける (WebDriverAgentMac から要素を特定するため)
 
+## タスクの進め方
+
+- ユーザーの手作業 (GUI 操作・実機での実測・アカウントを要する検証など、agent が代行できない操作) が必要なタスクは総じて後回しにする。agent だけで完遂できるタスクを優先して進め、後回しにした分は issue に残して完了報告で伝える
+
 ## 秘匿情報
 
 public リポジトリのため、秘匿情報を一切コミットしない。詳細は `.claude/rules/no-secrets-in-repository.md`
