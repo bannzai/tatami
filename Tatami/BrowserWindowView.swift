@@ -17,6 +17,7 @@ struct BrowserWindowView: View {
                     Image(systemName: "chevron.left")
                 }
                 .disabled(!model.canGoBack)
+                .focusable(false)
                 .accessibilityIdentifier("backButton")
                 Button {
                     model.goForward()
@@ -24,12 +25,14 @@ struct BrowserWindowView: View {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(!model.canGoForward)
+                .focusable(false)
                 .accessibilityIdentifier("forwardButton")
                 Button {
                     model.reload()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .focusable(false)
                 .accessibilityIdentifier("reloadButton")
                 TextField("URL または検索語", text: $model.addressText)
                     .textFieldStyle(.roundedBorder)
@@ -140,9 +143,16 @@ struct BrowserWindowView: View {
                         model.recallNewerCommand()
                         return model.prompt == .command ? .handled : .ignored
                     }
-                    // onChange(of: prompt) と同じ更新で入力欄が現れる時に FocusState の反映が抜けることがあるため、出現時にも求める
+                    // 入力欄が現れる前に FocusState が true だと同値の再代入では移動しないため、次の MainActor ターンで要求し直す
                     .onAppear {
-                        isPromptFocused = true
+                        isPromptFocused = false
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard model.prompt != nil else {
+                                return
+                            }
+                            isPromptFocused = true
+                        }
                     }
                     .accessibilityIdentifier("promptField")
                     .onSubmit {
