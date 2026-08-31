@@ -7,7 +7,14 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
 MVP ロードマップ (https://github.com/bannzai/tatami/issues/20 ) の子 issue はすべて実装済み。実サイトでの検証と細部の調整を続けている。
 
 - `prefix + "` / `prefix + %` でペインを上下・左右に分割し、`prefix + o` で次のペインへ。どのサイト上でも prefix が効く
-- 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)
+- 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)。例:
+
+  ```conf
+  set -g prefix C-t                                    # prefix の変更 (既定は C-b)
+  set -g home https://www.google.com/                  # 新しいペインで開くページ (既定は空ページ)
+  set -g search-engine https://duckduckgo.com/?q=      # アドレスバーの検索エンジン (既定は Google)
+  bind v split-window -v                               # キーの割り当て変更。unbind <キー> / source-file <パス> も使える
+  ```
 - Password Manager を内蔵する (Keychain バックエンド・Chrome 互換 CSV の入出力・Credential Provider Extension・Passkey と CXF の入出力)
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
