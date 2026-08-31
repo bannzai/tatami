@@ -1,10 +1,10 @@
 # Tatami
 
-tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS ネイティブの個人用ブラウザ。畳 = 部屋をタイリングするもの。
+tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS ネイティブの開発用ブラウザ。複数並列開発のコックピットとして使う。畳 = 部屋をタイリングするもの。
 
-## 現在の実装状況
+## 現在の状況
 
-MVP ロードマップ (https://github.com/bannzai/tatami/issues/20 ) の子 issue はすべて実装済み。実サイトでの検証と細部の調整を続けている。
+方向転換 ( https://github.com/bannzai/tatami/issues/47 ) により、普段使いブラウザではなく開発用ブラウザとして進化させる (普段使いは Chrome)。GitHub の効率的な移動と、PR から tmux の作業スペースへのジャンプが今後の中心。
 
 - `prefix + "` / `prefix + %` でペインを上下・左右に分割し、`prefix + o` で次のペインへ。どのサイト上でも prefix が効く
 - 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)。例:
@@ -15,7 +15,7 @@ MVP ロードマップ (https://github.com/bannzai/tatami/issues/20 ) の子 iss
   set -g search-engine https://duckduckgo.com/?q=      # アドレスバーの検索エンジン (既定は Google)
   bind v split-window -v                               # キーの割り当て変更。unbind <キー> / source-file <パス> も使える
   ```
-- Password Manager を内蔵する (Keychain バックエンド・Chrome 互換 CSV の入出力・Credential Provider Extension・Passkey と CXF の入出力)
+- Password Manager は削除予定 ( https://github.com/bannzai/tatami/issues/49 )。削除前に `:export-passwords` (Chrome 互換 CSV) / `:export-cxf` で書き出せる。Cookie / セッション永続化によるログイン状態の維持は残る
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
 
@@ -31,20 +31,7 @@ make test          # ユニットテスト
 make macos         # Release ビルドを /Applications/Tatami.app に配置する
 ```
 
-署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする。ad-hoc 署名のビルドでは Password Manager の資格情報を iCloud Keychain と同期せず、ローカルのログインキーチェーンに置く (共有 access group の entitlement が無いため)。Team 署名と ad-hoc 署名では資格情報の置き場所が異なり互いに読めないので、切り替える前に `:export-passwords` で書き出し、切り替え後に `:import-passwords` で取り込む。
-
-### Passkey と CXF (FIDO Credential Exchange Format)
-
-Passkey は Tatami 自身が authenticator になる (`navigator.credentials` を注入スクリプトで置き換える。設計と制約は `documents/adr/0005-self-authenticator-for-passkeys.md`)。サイトの登録 / サインインのボタンから使い、同じサイトに複数の Passkey があれば選ぶダイアログが出る。`prefix + a` の一覧にはパスワードの後に Passkey も並ぶ (Passkey はサイトのボタンから使うため、選んでも案内だけ出る)。
-
-「いつでも他のパスワードマネージャに戻れる」ための CXF の入出力:
-
-- `:export-cxf <path>`: 資格情報 (basic-auth) とソフトウェア鍵の Passkey を `index.json` を含む ZIP に書き出す (平文。0600 で新規作成し、既存ファイルには書かない)。Secure Enclave の鍵は取り出せないため、その Passkey は書き出されない (件数を status line で知らせる)
-- `:import-cxf <path>`: ZIP か `index.json` を読み、資格情報 (CSV と同じ突き合わせ) と Passkey (同じ rpId・credentialId が無ければ追加) を取り込む
-
-### Safari や他のアプリへの自動入力 (Credential Provider Extension)
-
-`Tatami.app` は Credential Provider Extension (`TatamiCredentialProvider.appex`) を同梱している。システム設定 > 一般 > 自動入力とパスワード で「Tatami」をオンにすると、Safari を含む OS 全体のログインフォームで Tatami に保存した資格情報を自動入力できる (候補の選択時に Touch ID / パスワードで本人確認する)。拡張がアプリと同じ資格情報を読めるのは Team 署名 (`make macos`) のビルドで、ad-hoc 署名では拡張の entitlement (`autofill-credential-provider` と共有 access group) を含められないため自動入力の対象にならない。
+署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする (Password Manager 削除 (#49) までの間は、Team 署名と ad-hoc 署名で資格情報の置き場所が異なり互いに読めない点に注意。切り替える前に `:export-passwords` で書き出し、切り替え後に `:import-passwords` で取り込む)。
 
 ## 公開ページ
 
