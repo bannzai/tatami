@@ -7,6 +7,11 @@ enum AddressInput {
     /// 検索エンジンの既定。作者が普段使っている Google を選んだ。tatami.conf で変更できるようにする予定
     static let defaultSearchURL = URL(string: "https://www.google.com/search")!
 
+    /// アドレスバーに表示する文字列。空ページ (about:blank) は「URL が無い」状態なので空にして、そのまま URL や検索語を打てるようにする
+    static func displayText(url: URL) -> String {
+        url == homeURL ? "" : url.absoluteString
+    }
+
     /// 入力の種類に応じて URL を決める。
     /// スキーム付きはそのまま、localhost・IP アドレス (ポート付き含む) は http を補い、
     /// 空白と @ を含まずドットを含む語は https を補ってホストとして扱い、それ以外 (メールアドレスを含む) は検索語にする
