@@ -1,8 +1,8 @@
 ---
 feature: panes_windows
 verification: manual
-last_verified_commit: 57deef2d2255effb6e03c2eb84d4de8e066d4bdc
-last_verified_at: 2026-09-01
+last_verified_commit: 72b7bead854a8e1fb1e7968d458a22e4325c42ac
+last_verified_at: 2026-09-02
 ---
 
 # panes_windows QA
@@ -200,6 +200,7 @@ PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域�
 - [ ] **macOS ウィンドウの追加**: File > New Window (Cmd+N) で別の macOS ウィンドウが新しいセッションで開く
   - 自動化: manual（同上）
   - ❌ 失敗: 保存済みセッションが大きいとアプリ全体がハングする。再現手順: ウィンドウ 8 個のセッションを復元した状態で Cmd+N。issue: https://github.com/bannzai/tatami/issues/51
+  - ❌ 修正 https://github.com/bannzai/tatami/pull/55 のマージ後 (2026-09-02、ウィンドウ 10 個のセッション) も再現。新しい macOS ウィンドウは開かず、`tell application "Tatami" to activate` が -1712 でタイムアウトし、その後は prefix + キーにも反応しなくなる。`pkill -9 -x Tatami` → 再起動で復旧。9-01 と違い `sample` の main thread は `_DPSNextEvent` で待機しており、main thread のブロックとは別の要因の可能性がある (スタック: `tmp/qa/hang-b3-01.txt`)。issue #51 の再オープン要否は呼び出し元が判断する
 
 #### 動作確認
 <details>
@@ -265,7 +266,11 @@ PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域�
 
 <details><summary>動作確認スクショ</summary>
 
-（未実行）
+**確認日: 2026-09-02**（修正 #55 マージ後の再検証。失敗）
+
+Cmd+N を送って 5 秒後の状態。新しい macOS ウィンドウは開かず、直前の画面のまま固まっている (この後 prefix + `%` を送っても分割されなかった):
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260902/f660e705-6407-4ddf-9eaf-70617956f21e.png" width="320">
 
 </details>
 
