@@ -2,6 +2,8 @@
 
 日付: 2026-08-29
 
+Status: Deprecated (2026-09-02)。方向転換 ( https://github.com/bannzai/tatami/issues/47 ) により Password Manager を削除した ( https://github.com/bannzai/tatami/issues/49 )
+
 ## 状況
 
 WKWebView は任意サイトの WebAuthn を標準では扱えない (Associated Domains 限定)。任意サイトで動かすには Apple の承認制 entitlement `com.apple.developer.web-browser.public-key-credential` が必要になる (documents/PROJECT.md 技術リスク)。スパイク (#18) で、`navigator.credentials.create / get` を注入スクリプトで置き換えて自前の authenticator に転送する方式が成立するかを実測した。

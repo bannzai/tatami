@@ -1,7 +1,7 @@
 # 0004. Password Manager の資格情報は Keychain の generic password アイテムに JSON で保存する
 
 ## Status
-Accepted (2026-08-29)
+Deprecated (2026-09-02)。方向転換 ( https://github.com/bannzai/tatami/issues/47 ) により Password Manager を削除した ( https://github.com/bannzai/tatami/issues/49 )
 
 ## Context
 Password Manager (documents/PROJECT.md 機能要件 3) の資格情報を端末内の Keychain に置くことは ADR 0002 で決めている。決めるべきは Keychain アイテムの属性の設計で、次の要件を満たす必要がある:
