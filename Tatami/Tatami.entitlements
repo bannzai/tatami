@@ -7,13 +7,5 @@
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
-	<!-- Password Manager の Keychain アイテムを Credential Provider Extension と共有するための access group (documents/adr/0004) -->
-	<!-- 本体からも ASCredentialIdentityStore を更新するため (自動入力候補の同期)。Team 署名でのみ付く (Debug の ad-hoc は profile が要るため付けない) -->
-	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
-	<true/>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)com.bannzai.Tatami.shared</string>
-	</array>
 </dict>
 </plist>

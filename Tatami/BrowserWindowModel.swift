@@ -25,9 +25,6 @@ final class BrowserWindowModel {
         case session([String])
         /// ブックマークの一覧。x で選択中の項目を削除する
         case bookmark
-        /// 表示中のページに合う資格情報の一覧 (パスワードの後に Passkey)。パスワードを選ぶと候補を作ったペインへ充填する
-        /// (充填時にそのペインの URL と再照合する)。Passkey はサイトのサインインボタンから使うため、選んでもその案内を出すだけ
-        case credential([Credential], passkeys: [Passkey], pane: WebPane)
     }
 
     /// 最後に表示していたセッション名の保存先。次回起動時にこのセッションを復元する
@@ -85,35 +82,6 @@ final class BrowserWindowModel {
     private static let commandHistoryLimit = 100
     /// 表示中の一覧。nil なら通常表示
     private(set) var chooser: Chooser?
-    /// status line に出す提案 (y で承認・n / Escape で却下)
-    enum Proposal: Equatable {
-        /// 未保存の資格情報を保存する
-        case save(url: URL, username: String, password: String)
-        /// 既存の資格情報のパスワードを更新する
-        case update(credential: Credential, password: String)
-        /// サインアップ用のパスワード欄に強いパスワードを生成して入れる
-        case generatePassword
-
-        var text: String {
-            switch self {
-            case .save(let url, let username, _):
-                return "\(url.host() ?? "") の \(username.isEmpty ? "(ユーザー名なし)" : username) のパスワードを保存する? (y/n)"
-            case .update(let credential, _):
-                return "\(credential.host) の \(credential.username) のパスワードを更新する? (y/n)"
-            case .generatePassword:
-                return "強いパスワードを生成して入れる? (y/n)"
-            }
-        }
-    }
-
-    /// 表示中の提案。nil なら無し
-    private(set) var proposal: Proposal?
-    /// 提案の対象ペイン。生成したパスワードの充填先になる
-    private var proposalPane: WebPane?
-    /// 提案を出した時のペインの URL。別のページへ移った後に承認しても、そのページへ充填・保存しない
-    private var proposalURL: URL?
-    /// 生成提案を出した時点の文書の世代。同じ URL の別文書 (再読み込み・DOM の置換) へ生成値を入れないために持つ
-    private var proposalGeneration: Int?
     /// 履歴とブックマーク (アプリ全体で 1 つの BrowsingDataStore を参照する)
     var browsingData: BrowsingData {
         BrowsingDataStore.shared.data
@@ -144,31 +112,9 @@ final class BrowserWindowModel {
     /// フォーカス中のペインの表示状態 (タイトル・進捗・戻る/進む) の更新回数。View がこれを読むことで再描画される
     private(set) var focusedPaneStateVersion = 0
 
-    /// 資格情報の保存先。既定は Keychain で、ユニットテストからはメモリ実装に差し替える。
-    /// Debug と Release で Keychain の領域が分かれる扱いは KeychainCredentialStore.sharedAccessGroup が持つ
-    @ObservationIgnored private let credentialStore: any CredentialStore
-    /// 資格情報のロック状態。充填・一覧・エクスポートの前に本人確認を求める。既定はアプリ全体で共有する 1 つの状態
-    @ObservationIgnored private let credentialLock: CredentialLock
-    /// アプリのアクティブ化の購読 (自動入力候補の再同期用。deactivate で解除する)
-    @ObservationIgnored private var activationObserver: (any NSObjectProtocol)?
-    /// ロック通知の購読 (deactivate で解除する)
-    @ObservationIgnored private var lockObservation: (any NSObjectProtocol)?
-
     /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。
-    /// そのセッションが別のウィンドウで開いていれば、復元せず未使用の番号の新しいセッションで始める。読めなければ新規セッション。
-    /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
-    /// @MainActor の KeychainCredentialStore を呼べないため
-    init(credentialStore: (any CredentialStore)? = nil, credentialLock: CredentialLock? = nil) {
-        // credentialStore と同じ理由で、共有のロック状態も本体で解決する
-        self.credentialLock = credentialLock ?? CredentialLock.shared
-        #if DEBUG
-        // 開発中の動作確認で本物の Keychain (iCloud 同期) にダミーの資格情報を書かないための切り替え。
-        // `defaults write com.bannzai.Tatami TatamiUseInMemoryCredentialStore -bool YES` で有効になる (Debug ビルドのみ)
-        let debugStore: (any CredentialStore)? = UserDefaults.standard.bool(forKey: "TatamiUseInMemoryCredentialStore") ? InMemoryCredentialStore() : nil
-        self.credentialStore = credentialStore ?? debugStore ?? KeychainCredentialStore()
-        #else
-        self.credentialStore = credentialStore ?? KeychainCredentialStore()
-        #endif
+    /// そのセッションが別のウィンドウで開いていれば、復元せず未使用の番号の新しいセッションで始める。読めなければ新規セッション
+    init() {
         windows = []
         // 旧版や壊れた defaults で無効な名前 (`../work` 等) が残っていると以後の保存が全て失敗するため、有効な名前へ戻す
         let storedName = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
@@ -198,7 +144,6 @@ final class BrowserWindowModel {
         }
         syncAddressTextToFocusedPane()
         statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
-        self.credentialLock.apply(lockTimeout: config.lockTimeout)
     }
 
     /// 画面に表示された時に呼ぶ。以後の変更を保存の対象にし、終了時は debounce を待たずに保存する
@@ -207,21 +152,6 @@ final class BrowserWindowModel {
             return
         }
         isActive = true
-        // 拡張が充填する候補は OS 側に保持されるため、起動時と、別の Mac からの iCloud 同期を受けた可能性があるアクティブ化のたびに
-        // ストアの内容と揃える
-        syncCredentialIdentities()
-        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.syncCredentialIdentities()
-            }
-        }
-        // ロックされたら、本人確認後にだけ見せる候補一覧を閉じる (別ウィンドウの :lock や自動ロックでも)。
-        // init では stored property の初期化が終わる前に self を捕捉できないため、ここで購読する
-        lockObservation = NotificationCenter.default.addObserver(forName: CredentialLock.didLockNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.closeCredentialChooserIfLocked()
-            }
-        }
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
             // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
@@ -263,14 +193,6 @@ final class BrowserWindowModel {
         BrowserWindowModel.openSessionNames.remove(sessionName)
         BrowserWindowModel.activeModels.remove(self)
         DownloadManager.shared.unsubscribe(model: self)
-        if let lockObservation {
-            NotificationCenter.default.removeObserver(lockObservation)
-            self.lockObservation = nil
-        }
-        if let activationObserver {
-            NotificationCenter.default.removeObserver(activationObserver)
-            self.activationObserver = nil
-        }
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
         }
@@ -566,8 +488,6 @@ final class BrowserWindowModel {
         currentWindowIndex = windowIndex
         syncAddressTextToFocusedPane()
         focusedPaneStateVersion += 1
-        // 非表示のウィンドウで検出した登録フォームの生成提案は、表示された時に出す
-        evaluateNewPasswordProposal()
         scheduleSave()
     }
 
@@ -589,8 +509,6 @@ final class BrowserWindowModel {
         }
         currentWindowIndex = min(closingIndex, windows.count - 1)
         syncAddressTextToFocusedPane()
-        // 表示されたウィンドウで検出済みの登録フォームの生成提案を出す (select(windowIndex:) と同じ)
-        evaluateNewPasswordProposal()
     }
 
     /// rename-window のプロンプトを開く (prefix + ,)。現在の名前を初期値にする
@@ -679,7 +597,7 @@ final class BrowserWindowModel {
     }
 
     /// コマンドプロンプトの 1 行を実行する。キーバインドと同じコマンド表 (BrowserCommand) と、tatami.conf と同じ設定行 (set / bind / unbind / source-file) を使い、
-    /// それ以外に `open <url>`・`find <text>`・`import-passwords <path>`・`export-passwords <path>` を持つ。
+    /// それ以外に `open <url>`・`find <text>` を持つ。
     /// 未知のコマンドや解釈できない行は status line に表示する
     func execute(commandLine: String) {
         let line = commandLine.trimmingCharacters(in: .whitespaces)
@@ -710,46 +628,11 @@ final class BrowserWindowModel {
             navigate(text: text)
         case "bookmark":
             toggleBookmark()
-        case "generate-password":
-            generatePassword()
         case "find":
             lastFindText = arguments.joined(separator: " ")
             isFindModeActive = !lastFindText.isEmpty
             // find プロンプトと同じく、コマンドプロンプトを閉じて Web コンテンツへフォーカスが移った後に検索する
             pendingFindText = lastFindText
-        case "import-passwords":
-            guard !arguments.isEmpty else {
-                statusMessage = "import-passwords は CSV のパスを取る"
-                return
-            }
-            importPasswords(path: arguments.joined(separator: " "))
-        case "export-passwords":
-            guard !arguments.isEmpty else {
-                statusMessage = "export-passwords は CSV のパスを取る"
-                return
-            }
-            let path = arguments.joined(separator: " ")
-            withUnlockedCredentials(reason: "資格情報を CSV に書き出す") { [weak self] in
-                self?.exportPasswords(path: path)
-            }
-        case "export-cxf":
-            guard !arguments.isEmpty else {
-                statusMessage = "export-cxf は ZIP のパスを取る"
-                return
-            }
-            let path = arguments.joined(separator: " ")
-            withUnlockedCredentials(reason: "資格情報と Passkey を CXF に書き出す") { [weak self] in
-                self?.exportCXF(path: path)
-            }
-        case "import-cxf":
-            guard !arguments.isEmpty else {
-                statusMessage = "import-cxf は ZIP (または index.json) のパスを取る"
-                return
-            }
-            importCXF(path: arguments.joined(separator: " "))
-        case "lock":
-            credentialLock.lock()
-            statusMessage = "資格情報をロックした"
         case "source-file":
             // キーバインドからの実行と同じ経路 (既定値から読み直して差し替える)。引数なしは既定ファイル
             perform(command: .sourceFile(arguments.isEmpty ? nil : arguments.joined(separator: " ")))
@@ -768,160 +651,6 @@ final class BrowserWindowModel {
                 return
             }
             perform(command: command)
-        }
-    }
-
-    /// コマンドの引数のパスを解決する。`~` を展開し、相対パスは GUI アプリのカレントディレクトリ (利用者から見えず不安定) ではなく
-    /// ホームディレクトリを基準にする
-    static func commandFileURL(path: String) -> URL {
-        URL(filePath: TatamiConfigParser.expandedPath(path: path), directoryHint: .notDirectory, relativeTo: FileManager.default.homeDirectoryForCurrentUser).absoluteURL
-    }
-
-    /// FIDO Credential Exchange Format (ZIP) に資格情報とソフトウェア鍵の Passkey を書き出す。平文のため既存ファイルには書かない (CSV と同じ)
-    private func exportCXF(path: String) {
-        let fileURL = BrowserWindowModel.commandFileURL(path: path)
-        let filePath = fileURL.path(percentEncoded: false)
-        guard !FileManager.default.fileExists(atPath: filePath) else {
-            statusMessage = "エクスポート: すでにファイルがある: \(filePath)"
-            return
-        }
-        do {
-            // Passkey が 1 件でも旧スキーマ・破損データだと all() 全体が失敗するため、資格情報の書き出しまで巻き添えにしない
-            var passkeys: [Passkey] = []
-            var passkeyError: (any Error)?
-            do {
-                passkeys = try PasskeyManager.store.all()
-            } catch {
-                passkeyError = error
-            }
-            let exported = try CXF.exportArchive(credentials: try credentialStore.all(), passkeys: passkeys, exporter: "Tatami", now: Date())
-            let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-            guard descriptor >= 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            do {
-                try handle.write(contentsOf: exported.data)
-                try handle.close()
-            } catch {
-                // 書きかけの平文ファイルを残さない (残すと次回の書き出しも「すでにファイルがある」で止まる)
-                try? FileManager.default.removeItem(at: fileURL)
-                throw error
-            }
-            let notes = [
-                exported.result.skippedSecureEnclavePasskeys > 0 ? "Secure Enclave の Passkey \(exported.result.skippedSecureEnclavePasskeys) 件は書き出せない" : nil,
-                exported.result.brokenPasskeys > 0 ? "鍵を読めない Passkey \(exported.result.brokenPasskeys) 件は除外した" : nil,
-                exported.result.usedCounterPasskeys > 0 ? "署名カウンタが進んだ Passkey \(exported.result.usedCounterPasskeys) 件は CXF で持ち出せない" : nil,
-                exported.result.excludedCredentials > 0 ? "ホストの無い資格情報 \(exported.result.excludedCredentials) 件は除外した" : nil,
-                passkeyError.map { "Passkey を読めない: \($0)" },
-            ].compactMap { $0 }
-            statusMessage = "CXF に書き出した: 資格情報 \(exported.result.credentials) 件・Passkey \(exported.result.passkeys) 件\(notes.map { "・" + $0 }.joined()): \(filePath)。このファイルは削除するまで平文で残る (秘密鍵を含む)"
-        } catch {
-            statusMessage = "エクスポートに失敗: \(error)"
-        }
-    }
-
-    /// CXF を読み、資格情報 (CSV と同じ突き合わせ) と Passkey (同じ rpId・credentialId が無ければ追加) を取り込む
-    private func importCXF(path: String) {
-        var savedCredentials = 0
-        var savedPasskeys = 0
-        // 途中で失敗しても確定済みの資格情報は OS の自動入力候補に反映する
-        defer {
-            if savedCredentials > 0 {
-                syncCredentialIdentities()
-            }
-        }
-        do {
-            let imported = try CXF.importArchive(data: try Data(contentsOf: BrowserWindowModel.commandFileURL(path: path)), now: Date())
-            let existing = try credentialStore.all()
-            // note credential を持たない item は nil にして既存のメモを保ち、空のメモが明示された item は空文字で既存のメモを消す (CSV と同じ突き合わせにかける)
-            let rows = imported.credentials.map { PasswordCSV.Row(name: $0.host, url: $0.url.absoluteString, username: $0.username, password: $0.password, note: imported.credentialIDsWithoutNote.contains($0.id) ? nil : $0.note, updatedAt: $0.updatedAt) }
-            let merged = PasswordImporter.merge(rows: rows, existing: existing, now: Date())
-            let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            var seenIDs = Set<UUID>()
-            for credential in merged.credentials where seenIDs.insert(credential.id).inserted && existingByID[credential.id] != credential {
-                try credentialStore.save(credential: credential)
-                savedCredentials += 1
-            }
-            // 同じアーカイブ内の重複も 1 件だけにする
-            var knownPasskeys = Set(try PasskeyManager.store.all().map { "\($0.rpId)\n\(WebAuthn.base64url($0.credentialID))" })
-            for passkey in imported.passkeys where knownPasskeys.insert("\(passkey.rpId)\n\(WebAuthn.base64url(passkey.credentialID))").inserted {
-                try PasskeyManager.store.save(passkey: passkey)
-                savedPasskeys += 1
-            }
-            statusMessage = "CXF を取り込んだ: 資格情報 追加 \(merged.added)・更新 \(merged.updated)・変更なし \(merged.unchanged)・Passkey 追加 \(savedPasskeys)・読み飛ばし \(imported.skipped + merged.skipped)"
-        } catch {
-            statusMessage = "インポートに失敗 (資格情報 \(savedCredentials) 件・Passkey \(savedPasskeys) 件は保存済み): \(error)"
-        }
-    }
-
-    /// Chrome 互換 CSV を読み、既存の資格情報に取り込む。同じファイルを何度取り込んでも重複しない (PasswordImporter.merge が冪等)
-    private func importPasswords(path: String) {
-        let fileURL = BrowserWindowModel.commandFileURL(path: path)
-        do {
-            let existing = try credentialStore.all()
-            let result = PasswordImporter.merge(
-                rows: try PasswordCSV.parse(text: String(contentsOf: fileURL, encoding: .utf8)),
-                existing: existing,
-                now: Date()
-            )
-            // id は資格情報ごとに一意だが、万一重複しても落ちないよう先に現れた側を残す
-            let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            // 保存対象も id ごとに先頭の 1 件に限る (同じ id の後続要素で更新済みの項目を戻さない)
-            var seenIDs = Set<UUID>()
-            let changed = result.credentials.filter { seenIDs.insert($0.id).inserted && existingByID[$0.id] != $0 }
-            var saved = 0
-            for credential in changed {
-                do {
-                    try credentialStore.save(credential: credential)
-                    saved += 1
-                } catch {
-                    // Keychain への保存は 1 件ずつ確定するためロールバックできない。途中まで反映したことを件数で明示する
-                    statusMessage = "インポートを途中で中断: \(saved)/\(changed.count) 件を保存した後に失敗: \(error)"
-                    // 確定済みの分は OS の候補にも反映する (1 件ごとではなく最後に 1 回)
-                    syncCredentialIdentities()
-                    return
-                }
-            }
-            statusMessage = "インポート: 追加 \(result.added)・更新 \(result.updated)・変更なし \(result.unchanged)・読み飛ばし \(result.skipped)"
-            if saved > 0 {
-                syncCredentialIdentities()
-            }
-        } catch {
-            statusMessage = "インポートに失敗: \(error)"
-        }
-    }
-
-    /// 資格情報を Chrome 互換 CSV に書き出す。書き出したファイルは平文のため、既存のファイルには追記も上書きもせずエラーにする
-    private func exportPasswords(path: String) {
-        let fileURL = BrowserWindowModel.commandFileURL(path: path)
-        let filePath = fileURL.path(percentEncoded: false)
-        guard !FileManager.default.fileExists(atPath: filePath) else {
-            statusMessage = "エクスポート: すでにファイルがある: \(filePath)"
-            return
-        }
-        do {
-            let exportable = PasswordImporter.exportable(credentials: try credentialStore.all())
-            let credentials = exportable.rows
-            let text = PasswordCSV.serialize(rows: PasswordImporter.rows(credentials: credentials))
-            // 事前確認から書き込みまでの間に他のプロセスが同じパスを作っても上書きしないよう排他的に新規作成し、
-            // 作成時点から本人だけが読める権限 (0600) にする (後から権限を落とすと、その間に開かれたディスクリプタから読めてしまう)
-            let descriptor = Darwin.open(filePath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-            guard descriptor >= 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-            do {
-                try handle.write(contentsOf: Data(text.utf8))
-                try handle.close()
-            } catch {
-                try? FileManager.default.removeItem(at: fileURL)
-                throw error
-            }
-            let excludedNote = exportable.excluded > 0 ? "・ホストの無い URL の \(exportable.excluded) 件は対象外" : ""
-            statusMessage = "エクスポート: \(filePath) に \(credentials.count) 件\(excludedNote)。このファイルは削除するまで平文で残る"
-        } catch {
-            statusMessage = "エクスポートに失敗: \(error)"
         }
     }
 
@@ -1042,375 +771,8 @@ final class BrowserWindowModel {
             return names
         case .bookmark:
             return browsingData.bookmarks.map { "\($0.title)  \($0.url.absoluteString)" }
-        case .credential(let credentials, let passkeys, _):
-            return credentials.map { "\($0.username)  \($0.host)" } + passkeys.map { "\($0.userName)  \($0.rpId)  (Passkey)" }
         case nil:
             return []
-        }
-    }
-
-    /// ログインフォームの送信を受けて、保存・更新の提案を出す。同じ内容が保存済みなら何もしない
-    private func handleLoginSubmit(pane: WebPane, frameURL: URL, username: String, password: String, currentPassword: String, isNewPassword: Bool) {
-        guard WebPane.isWebPage(url: frameURL), let host = CredentialMatcher.host(url: frameURL), !host.isEmpty else {
-            return
-        }
-        let existing: [Credential]
-        do {
-            // 更新対象は同じオリジン (scheme・host・ポート) の項目に限る (http 用や別ポート用の項目を上書きしない)。
-            // ホストは IDNA の ASCII 形で照合する (Unicode 表記で保存した項目と punycode で届くフレームの URL を同じホストとして扱う)
-            existing = try credentialStore.all().filter {
-                CredentialMatcher.host(url: $0.url) == host && $0.url.scheme?.lowercased() == frameURL.scheme?.lowercased()
-                    && CredentialMatcher.matches(credentialURL: $0.url, pageURL: frameURL)
-            }
-        } catch {
-            statusMessage = "資格情報を読めない: \(error)"
-            return
-        }
-        // ユーザー名の無い変更フォーム (現在・新規・確認だけ) では、現在のパスワードが一致する既存の項目を更新対象にする。
-        // 同じ現在のパスワードを使う項目が複数あればどのアカウントか判別できないため、更新を提案しない (誤った項目を上書きしない)
-        let byCurrentPassword = username.isEmpty && !currentPassword.isEmpty
-            ? existing.filter { $0.password.unicodeScalars.elementsEqual(currentPassword.unicodeScalars) }
-            : []
-        // ユーザー名も正規化形だけが違う値を別アカウントとして扱う (PasswordImporter.matchKey と同じ) ため、スカラー値で比較する
-        // ユーザー名が空の送信では、変更フォーム (isNewPassword) なら現在のパスワードが一意に一致する項目だけを使い、
-        // 通常のパスワード専用ログインならユーザー名の無い項目が 1 件だけあればそれを照合する (正しいパスワードの再送信で重複保存しない)
-        let unnamed = existing.filter(\.username.isEmpty)
-        let matched = username.isEmpty
-            ? (isNewPassword ? (byCurrentPassword.count == 1 ? byCurrentPassword[0] : nil) : (unnamed.count == 1 ? unnamed[0] : nil))
-            : existing.first(where: { $0.username.unicodeScalars.elementsEqual(username.unicodeScalars) })
-        if username.isEmpty, byCurrentPassword.count > 1 {
-            statusMessage = "現在のパスワードが同じ項目が複数あるため更新を提案しない"
-            return
-        }
-        if let same = matched {
-            // 正規化形だけが違う値は別のパスワードとして扱う (サーバーが受け取るバイト列が異なる) ため、スカラー値で比較する
-            guard !same.password.unicodeScalars.elementsEqual(password.unicodeScalars) else {
-                // 保存済みの正しいパスワードで送り直した時は、その前の誤ったパスワードの提案を残さない
-                if proposalPane === pane {
-                    dismissProposal()
-                }
-                return
-            }
-            proposalPane = pane
-            proposalURL = pane.url
-            proposal = .update(credential: same, password: password)
-        } else {
-            proposalPane = pane
-            proposalURL = pane.url
-            proposal = .save(url: frameURL, username: username, password: password)
-        }
-    }
-
-    /// フォーカスが移った時に、そのペインで検出済みのサインアップ用の欄について生成の提案を評価する
-    /// (バックグラウンドで読み込まれたページは検出時の通知が捨てられているため)
-    private func evaluateNewPasswordProposal() {
-        let pane = currentWindow.focusedPane
-        // 生成提案を出したペインが閉じられた・別ペインへ移った・遷移したら、前の提案を捨ててから評価し直す (status line に古い提案を残さない)
-        if proposal == .generatePassword, let proposalPane,
-           !windows.contains(where: { $0.panes[proposalPane.id] === proposalPane }) || proposalPane !== pane || pane.url != proposalURL || pane.documentGeneration != proposalGeneration {
-            dismissProposal()
-        }
-        guard pane.hasNewPasswordForm, proposal == nil else {
-            return
-        }
-        proposalPane = pane
-        proposalURL = pane.url
-        proposalGeneration = pane.documentGeneration
-        proposal = .generatePassword
-    }
-
-    /// サインアップ用のパスワード欄が現れた時に、生成の提案を出す (既に提案中なら出さない)
-    private func handleNewPasswordForm(pane: WebPane, hasNewPasswordForm: Bool) {
-        // 欄が消えた (モーダルを閉じた・SPA がログインフォームへ置き換えた) 時は、そのペインの生成提案を取り下げる
-        if !hasNewPasswordForm, proposal == .generatePassword, proposalPane === pane {
-            dismissProposal()
-            return
-        }
-        guard hasNewPasswordForm, proposal == nil, pane === currentWindow.focusedPane else {
-            return
-        }
-        proposalPane = pane
-        proposalURL = pane.url
-        proposalGeneration = pane.documentGeneration
-        proposal = .generatePassword
-    }
-
-    /// 提案を承認する (y)
-    func acceptProposal() {
-        guard let proposal else {
-            return
-        }
-        let pane = proposalPane
-        let url = proposalURL
-        let generation = proposalGeneration
-        self.proposal = nil
-        proposalPane = nil
-        proposalURL = nil
-        proposalGeneration = nil
-        defer {
-            reevaluateAfterResolving(proposal: proposal)
-        }
-        // 保存・更新の提案は送信時に捕捉済みの値なので、送信後の遷移 (ダッシュボードへのリダイレクト等) の後でも承認できる。
-        // ページの同一性を確かめるのは、現在の文書へ充填する生成提案だけ
-        switch proposal {
-        case .save(let url, let username, let password):
-            do {
-                // 別ウィンドウで同じアカウントを先に保存していることがあるため、保存の直前に同じオリジン・ユーザー名を再照合し、
-                // 既にあれば新規保存せず更新にする (同じ Keychain を複数ウィンドウが参照するため)
-                if let existing = try credentialStore.all().first(where: {
-                    CredentialMatcher.host(url: $0.url) == CredentialMatcher.host(url: url)
-                        && $0.url.scheme?.lowercased() == url.scheme?.lowercased() && CredentialMatcher.matches(credentialURL: $0.url, pageURL: url)
-                        && $0.username.unicodeScalars.elementsEqual(username.unicodeScalars)
-                }) {
-                    if !existing.password.unicodeScalars.elementsEqual(password.unicodeScalars) {
-                        var updated = existing
-                        updated.password = password
-                        updated.updatedAt = Date()
-                        try credentialStore.save(credential: updated)
-                        statusMessage = "更新した: \(username)"
-                    } else {
-                        statusMessage = "変更なし: \(username)"
-                    }
-                    return
-                }
-                try credentialStore.save(credential: Credential(id: UUID(), url: url, username: username, password: password, note: "", updatedAt: Date()))
-                syncCredentialIdentities()
-                statusMessage = "保存した: \(username)"
-            } catch {
-                statusMessage = "保存に失敗: \(error)"
-            }
-        case .update(let credential, let password):
-            do {
-                // 提案を出してから承認するまでに別ウィンドウ・インポートが同じ項目を変えていることがあるため、
-                // 最新の項目を id で読み直し、その note / URL を保ったままパスワードだけを更新する
-                var updated = (try credentialStore.all().first { $0.id == credential.id }) ?? credential
-                updated.password = password
-                updated.updatedAt = Date()
-                try credentialStore.save(credential: updated)
-                syncCredentialIdentities()
-                statusMessage = "更新した: \(updated.username)"
-            } catch {
-                statusMessage = "更新に失敗: \(error)"
-            }
-        case .generatePassword:
-            guard let pane else {
-                return
-            }
-            // 提案を出した後に別のページや同じ URL の別文書へ移っていたり、対象のペインが閉じられていたら、そのフォームへは入れない
-            // 別のペイン・ウィンドウへフォーカスを移した後の y で、見えていない元のペインへ入れない
-            guard pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
-                statusMessage = "ページが変わったため提案を取り消した"
-                return
-            }
-            let generator = config.passwordGenerator
-            Task { @MainActor [weak self] in
-                // 非同期に入るまでに文書が置き換わっていることがあるため、JavaScript を呼ぶ直前にも世代を確かめる
-                guard pane.documentGeneration == generation else {
-                    self?.statusMessage = "ページが変わったため提案を取り消した"
-                    return
-                }
-                // 対象欄の maxLength に収めて生成する (切り詰めると必須文字種が落ちるため、最初からその長さで作る)
-                let password = generator.generate(maxLength: await pane.newPasswordMaxLength())
-                guard let self else {
-                    return
-                }
-                // maxLength の取得を待つ間に別ペイン・ウィンドウ・ルート (History API) へ移っていたら、見えていない元ペインへ入れない
-                guard windows.contains(where: { $0.panes[pane.id] === pane }),
-                      pane === currentWindow.focusedPane, pane.url == url, pane.documentGeneration == generation else {
-                    statusMessage = "ページが変わったため提案を取り消した"
-                    return
-                }
-                do {
-                    let filled = try await pane.fillNewPassword(password)
-                    statusMessage = filled ? "生成したパスワードを入れた (送信後に保存を提案する)" : "パスワード欄が見つからない"
-                } catch {
-                    statusMessage = "充填に失敗: \(error)"
-                }
-            }
-        }
-    }
-
-    /// 提案を却下する (n / Escape)
-    func dismissProposal() {
-        let resolved = proposal
-        proposal = nil
-        proposalPane = nil
-        proposalURL = nil
-        proposalGeneration = nil
-        reevaluateAfterResolving(proposal: resolved)
-    }
-
-    /// 保存・更新の提案が片付いた後、その間に捨てた新規パスワード欄の通知を補うため現在のペインを評価し直す
-    /// (生成提案そのものの解決後は、同じ欄について即座に再提案しない)
-    private func reevaluateAfterResolving(proposal resolved: Proposal?) {
-        switch resolved {
-        case .save, .update:
-            evaluateNewPasswordProposal()
-        case .generatePassword, nil:
-            break
-        }
-    }
-
-    /// パスワードを生成してサインアップ用の欄に入れる (`:generate-password`)。欄が無ければ status line に知らせる
-    func generatePassword() {
-        proposalPane = currentWindow.focusedPane
-        proposalURL = currentWindow.focusedPane.url
-        proposalGeneration = currentWindow.focusedPane.documentGeneration
-        proposal = .generatePassword
-        acceptProposal()
-    }
-
-    /// 資格情報がロック中なら Touch ID / パスワードで本人確認してから action を実行する。確認中はキー入力を受け付けられるよう、
-    /// 待つ間も UI を止めない (非同期)。失敗・キャンセルは status line に出して何もしない
-    private func withUnlockedCredentials(reason: String, action: @escaping @MainActor () -> Void) {
-        Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-            do {
-                try await credentialLock.ensureUnlocked(reason: reason)
-                // 本人確認の間にウィンドウが閉じられていたら (deactivate 済み)、閉じたペインへの充填や書き出しを行わない
-                guard isActive else {
-                    return
-                }
-                action()
-            } catch {
-                statusMessage = "\(error)"
-            }
-        }
-    }
-
-    /// ストアの内容を OS の自動入力候補 (Credential Provider Extension が充填する) に反映する。保存・更新・インポートの後と起動時に呼ぶ
-    private func syncCredentialIdentities() {
-        let store = credentialStore
-        Task {
-            await CredentialIdentityRegistrar.sync(store: store)
-        }
-    }
-
-    /// ロックされた時に、表示中の資格情報の候補一覧を閉じる
-    private func closeCredentialChooserIfLocked() {
-        if case .credential = chooser {
-            chooser = nil
-            statusMessage = "資格情報がロックされたため一覧を閉じた"
-        }
-    }
-
-    /// 資格情報がロックされているか (status line の表示用)
-    var isCredentialLocked: Bool {
-        credentialLock.isLocked
-    }
-
-    /// 表示中のページに合う資格情報を探して充填する (prefix + a)。1 件なら即充填し、複数なら一覧から選ぶ。ロック中は先に本人確認する
-    func fillCredential() {
-        cancelPrompt()
-        cancelPrefix()
-        // 前の候補一覧が残っていると、別ペインの充填後に古い一覧から更に充填できてしまうため閉じる
-        chooser = nil
-        let pane = currentWindow.focusedPane
-        let host = pane.url.host()?.lowercased() ?? ""
-        guard !host.isEmpty else {
-            statusMessage = "このページには充填できない: \(pane.url.absoluteString)"
-            return
-        }
-        // 本人確認の間に別のページへ移っていたら、確認した時のサイトとは別のページへ充填しない
-        let url = pane.url
-        let generation = pane.documentGeneration
-        withUnlockedCredentials(reason: "\(host) の資格情報を充填する") { [weak self] in
-            guard pane.url == url, pane.documentGeneration == generation else {
-                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
-                return
-            }
-            self?.presentCredentialCandidates(pane: pane, host: host)
-        }
-    }
-
-    /// アンロック後に候補を探し、1 件なら充填・複数なら一覧を出す
-    private func presentCredentialCandidates(pane: WebPane, host: String) {
-        let candidates: [Credential]
-        do {
-            candidates = CredentialMatcher.candidates(credentials: try credentialStore.all(), pageURL: pane.url)
-        } catch {
-            statusMessage = "資格情報を読めない: \(error)"
-            return
-        }
-        // 同じ RP (rpId がホストかその親) の Passkey も並べる。WebAuthn を拒む (https でない) ページでは使えないため出さない。
-        // Passkey が 1 件でも旧スキーマ・破損データだと all() 全体が失敗するため、パスワード候補の表示とは切り離す
-        var passkeys: [Passkey] = []
-        var passkeyError: (any Error)?
-        if WebAuthn.isTrustworthyOrigin(pane.url) {
-            do {
-                // rpId は A-label で保存しているため、URL.host() の percent-encoded な IDN ではなく正規化済みのホストで照合する
-                let matchHost = CredentialMatcher.host(url: pane.url) ?? host
-                passkeys = try PasskeyManager.store.all().filter { WebAuthn.isValidRpId($0.rpId, originHost: matchHost) }
-            } catch {
-                passkeyError = error
-            }
-        }
-        let passkeyNote = passkeyError.map { "Passkey を読めない: \($0)" } ?? ""
-        switch (candidates.count, passkeys.count) {
-        case (0, 0):
-            statusMessage = "\(host) の資格情報は無い\(passkeyNote.isEmpty ? "" : "・" + passkeyNote)"
-        case (1, 0) where passkeyError == nil:
-            // 候補の取得で本人確認したばかりなので、もう一度は求めない (lock-timeout 0 では fill の再確認が二重になるため)
-            fillUnlocked(credential: candidates[0], pane: pane)
-        default:
-            // Passkey を読めなかったことは、充填の結果で上書きされない一覧の側で伝える (そのため 1 件でも自動充填しない)
-            if !passkeyNote.isEmpty {
-                statusMessage = passkeyNote
-            }
-            chooserSelectionIndex = 0
-            chooser = .credential(candidates, passkeys: passkeys, pane: pane)
-        }
-    }
-
-    /// 資格情報を候補を作ったペインのログインフォームへ充填する。一覧を開いている間にリダイレクトやペインの切替が起きても
-    /// 別のサイトへ渡さないよう、実行直前にそのペインの現在の URL と再照合する
-    private func fill(credential: Credential, pane: WebPane) {
-        // 一覧を開いたまま自動ロックの時刻を過ぎていることがあるため、充填の直前にも確認する (アンロック中なら即実行)。
-        // 本人確認の間に同じ URL の別文書や別ページへ移っていたら、確認した時とは別のフォームへ充填しない
-        let url = pane.url
-        let generation = pane.documentGeneration
-        withUnlockedCredentials(reason: "\(credential.username) を充填する") { [weak self] in
-            guard pane.url == url, pane.documentGeneration == generation else {
-                self?.statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
-                return
-            }
-            self?.fillUnlocked(credential: credential, pane: pane)
-        }
-    }
-
-    /// アンロック確認後の充填本体
-    private func fillUnlocked(credential: Credential, pane: WebPane) {
-        // 候補元のペインが閉じられていたら (別のペインが表示されていて誤認しやすい) 充填しない
-        guard windows.contains(where: { $0.panes[pane.id] === pane }) else {
-            statusMessage = "ペインが閉じられたため充填しない"
-            return
-        }
-        guard CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url) else {
-            statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
-            return
-        }
-        Task { @MainActor [weak self] in
-            // 非同期に入るまでにリダイレクトや History API の遷移・ペインの破棄 (window.close 等) が起きていることがあるため、
-            // JavaScript を呼ぶ直前にペインの所属とトップレベルの URL を改めて照合する。
-            // 充填先の iframe は資格情報と同じオリジンのものを WebPane が選ぶ (別オリジンの iframe には渡さない)
-            guard let self else {
-                return
-            }
-            guard windows.contains(where: { $0.panes[pane.id] === pane }),
-                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: pane.url),
-                  let frameURL = pane.loginFormURL(credentialURL: credential.url),
-                  CredentialMatcher.matches(credentialURL: credential.url, pageURL: frameURL) else {
-                statusMessage = "ページが変わったため充填しない: \(pane.url.host() ?? pane.url.absoluteString)"
-                return
-            }
-            do {
-                let filled = try await pane.fill(credential: credential)
-                statusMessage = filled ? "充填した: \(credential.username)" : "ログインフォームが見つからない"
-            } catch {
-                statusMessage = "充填に失敗: \(error)"
-            }
         }
     }
 
@@ -1537,13 +899,6 @@ final class BrowserWindowModel {
             addressText = url.absoluteString
             currentWindow.focusedPane.load(url: url)
             webContentFocusRequestCount += 1
-        case .credential(let credentials, let passkeys, let pane):
-            if credentials.indices.contains(index) {
-                fill(credential: credentials[index], pane: pane)
-            } else if passkeys.indices.contains(index - credentials.count) {
-                // Passkey はページの navigator.credentials.get からしか使えない (アプリ側から署名を押し込む経路は無い)
-                statusMessage = "Passkey (\(passkeys[index - credentials.count].userName)) はサイトのサインインボタンから使う"
-            }
         case nil:
             break
         }
@@ -1574,20 +929,6 @@ final class BrowserWindowModel {
         // プロンプト (コマンド・名前変更) の入力中は prefix も含めて全てのキーを入力欄へ渡す (prefix と同じ文字を入力できるように)
         if prompt != nil {
             return false
-        }
-        // 提案の表示中は y / n / Escape だけを受け、他のキーは通常どおり (提案は残る)。アドレスバーや Web ページの入力中は横取りしない
-        // 一覧を開いている間は一覧のキー操作を優先する (Escape で一覧を閉じるつもりが提案の却下にならないように)
-        if proposal != nil, chooser == nil, !isAddressBarEditing, !currentWindow.focusedPane.isEditingText, keyStroke.modifiers.isEmpty {
-            switch keyStroke.key {
-            case "y":
-                acceptProposal()
-                return true
-            case "n", "Escape":
-                dismissProposal()
-                return true
-            default:
-                break
-            }
         }
         if chooser != nil {
             // ⌘Q などの macOS のショートカットは横取りせず通常のイベント処理へ渡す
@@ -1706,8 +1047,6 @@ final class BrowserWindowModel {
             setAsDefaultBrowser()
         case .chooseBookmark:
             beginChooseBookmark()
-        case .fillCredential:
-            fillCredential()
         case .sourceFile(let path):
             // 相対パスは設定ファイルのディレクトリを基準にする (GUI から起動したアプリのカレントディレクトリは当てにならない)
             reload(
@@ -1727,8 +1066,6 @@ final class BrowserWindowModel {
 
     /// 共有の設定を、表示中の全ウィンドウのペインへ反映する
     private func applyConfigToAllWindows() {
-        // 自動ロックまでの時間は共有のロック状態に反映する (:set / :source-file で変えた値を次の操作から使う)
-        credentialLock.apply(lockTimeout: config.lockTimeout)
         for model in BrowserWindowModel.activeModels.allObjects {
             // 旧設定の prefix で始めた入力が新しい対応表で実行されないよう prefix 待ちも解除する
             model.cancelPrefix()
@@ -1758,7 +1095,6 @@ final class BrowserWindowModel {
             addressText = AddressInput.displayText(url: navigatedURL)
             focusedPaneStateVersion += 1
             scheduleSave()
-            evaluateNewPasswordProposal()
         }
         window.onContentChange = { [weak self] in
             self?.scheduleSave()
@@ -1768,12 +1104,6 @@ final class BrowserWindowModel {
         }
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
-        }
-        window.onLoginSubmit = { [weak self] pane, frameURL, username, password, currentPassword, isNewPassword in
-            self?.handleLoginSubmit(pane: pane, frameURL: frameURL, username: username, password: password, currentPassword: currentPassword, isNewPassword: isNewPassword)
-        }
-        window.onNewPasswordFormChange = { [weak self] pane, hasNewPasswordForm in
-            self?.handleNewPasswordForm(pane: pane, hasNewPasswordForm: hasNewPasswordForm)
         }
         window.onFocusedPaneStateChange = { [weak self, weak window] in
             guard let self, let window, currentWindow === window else {
