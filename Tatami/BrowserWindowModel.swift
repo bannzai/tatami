@@ -154,7 +154,8 @@ final class BrowserWindowModel {
     /// ロック通知の購読 (deactivate で解除する)
     @ObservationIgnored private var lockObservation: (any NSObjectProtocol)?
 
-    /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。読めなければ新規セッション。
+    /// tatami.conf を読んでから、最後に表示していたセッション (無ければ tmux の既定と同じ "0") を復元して始める。
+    /// そのセッションが別のウィンドウで開いていれば、復元せず未使用の番号の新しいセッションで始める。読めなければ新規セッション。
     /// credentialStore の既定 (Keychain) を引数の既定値ではなく本体で作るのは、既定値の式が nonisolated な文脈で評価され、
     /// @MainActor の KeychainCredentialStore を呼べないため
     init(credentialStore: (any CredentialStore)? = nil, credentialLock: CredentialLock? = nil) {
@@ -172,17 +173,28 @@ final class BrowserWindowModel {
         // 旧版や壊れた defaults で無効な名前 (`../work` 等) が残っていると以後の保存が全て失敗するため、有効な名前へ戻す
         let storedName = UserDefaults.standard.string(forKey: BrowserWindowModel.lastSessionNameKey) ?? "0"
         let name = SessionStore.isValidName(storedName) ? storedName : "0"
-        do {
-            if let snapshot = try SessionStore.load(name: name) {
-                restore(snapshot: snapshot, name: name)
-            } else {
+        if BrowserWindowModel.openSessionNames.contains(name) {
+            // File > New Window では既存ウィンドウと同じ lastSessionName が渡る。activate() で捨てる保存済みセッションを
+            // ここで復元すると、表示前に全ペインの WKWebView を生成してしまうため、最初から新しいセッションにする
+            sessionName = BrowserWindowModel.nextAvailableSessionName(
+                openSessionNames: BrowserWindowModel.openSessionNames,
+                savedSessionNames: (try? SessionStore.sessionNames()) ?? [],
+                fileExists: { SessionStore.fileExists(name: $0) }
+            )
+            windows = [makeWindow()]
+        } else {
+            do {
+                if let snapshot = try SessionStore.load(name: name) {
+                    restore(snapshot: snapshot, name: name)
+                } else {
+                    sessionName = name
+                    windows = [makeWindow()]
+                }
+            } catch {
+                NSLog("セッションの読み込みに失敗 (新規セッションで始める): %@", String(describing: error))
                 sessionName = name
                 windows = [makeWindow()]
             }
-        } catch {
-            NSLog("セッションの読み込みに失敗 (新規セッションで始める): %@", String(describing: error))
-            sessionName = name
-            windows = [makeWindow()]
         }
         syncAddressTextToFocusedPane()
         statusMessage = TatamiConfigError.statusMessage(errors: TatamiConfigStore.shared.loadErrors)
@@ -213,8 +225,11 @@ final class BrowserWindowModel {
         if BrowserWindowModel.openSessionNames.contains(sessionName) {
             // 既に別のウィンドウが開いているセッション (File > New Window で同じ lastSessionName を復元した場合) は、未使用の番号の新しいセッションにする
             // 一覧が読めない (権限・I/O エラー) 時に既存の番号を選んで上書きしないよう、候補ごとにファイルの非存在も確認する
-            let usedNames = BrowserWindowModel.openSessionNames.union((try? SessionStore.sessionNames()) ?? [])
-            sessionName = (0...).lazy.map(String.init).first { !usedNames.contains($0) && !SessionStore.fileExists(name: $0) }!
+            sessionName = BrowserWindowModel.nextAvailableSessionName(
+                openSessionNames: BrowserWindowModel.openSessionNames,
+                savedSessionNames: (try? SessionStore.sessionNames()) ?? [],
+                fileExists: { SessionStore.fileExists(name: $0) }
+            )
             windows = [makeWindow()]
             currentWindowIndex = 0
             previousWindowIndex = nil
@@ -261,6 +276,17 @@ final class BrowserWindowModel {
         }
         terminationObserver = nil
         isActive = false
+    }
+
+    /// 開いているセッションと保存ファイルのどちらにも使われていない最小の番号を返す。
+    /// セッション一覧が古い・不完全でも既存ファイルを上書きしないよう、候補ごとにファイルの存在も確認する
+    static func nextAvailableSessionName(
+        openSessionNames: Set<String>,
+        savedSessionNames: [String],
+        fileExists: (String) -> Bool
+    ) -> String {
+        let usedNames = openSessionNames.union(savedSessionNames)
+        return (0...).lazy.map(String.init).first { !usedNames.contains($0) && !fileExists($0) }!
     }
 
     /// 保存用の内容

@@ -2,7 +2,41 @@ import SwiftUI
 
 /// 1 ウィンドウ分のブラウザ画面。アドレスバーと、ペインツリーどおりに WKWebView を並べる PaneContainer を持つ
 struct BrowserWindowView: View {
-    @State private var model = BrowserWindowModel()
+    @State private var model: BrowserWindowModel?
+
+    var body: some View {
+        Group {
+            if let model {
+                BrowserWindowContent(model: model)
+            } else {
+                Color.clear
+                    .frame(minWidth: 800, minHeight: 600)
+                    .accessibilityIdentifier("windowLoading")
+            }
+        }
+        .task {
+            guard model == nil else {
+                return
+            }
+            // WindowGroup はメニューのキー処理中の display cycle で View を構築することがある。次の run loop まで待ち、
+            // 保存済みセッションの復元に伴う WKWebView の同期 IPC をメニュー処理の外で始める
+            try? await Task.sleep(for: .milliseconds(1))
+            guard !Task.isCancelled, model == nil else {
+                return
+            }
+            let model = BrowserWindowModel()
+            model.activate()
+            self.model = model
+        }
+        .onDisappear {
+            model?.deactivate()
+        }
+    }
+}
+
+/// BrowserWindowModel の準備後に表示する画面。モデルの生成は BrowserWindowView がメニュー処理の外へ遅延する
+private struct BrowserWindowContent: View {
+    @Bindable var model: BrowserWindowModel
     /// プロンプトを開いた時にキーボードフォーカスを入力欄へ移す (アドレスバーに残ったままだと入力がそちらへ行く)
     @FocusState private var isPromptFocused: Bool
     /// prefix + / でアドレスバーへフォーカスを移すためのフォーカス状態
@@ -71,12 +105,6 @@ struct BrowserWindowView: View {
         // 2 分割しても各ペインが実用的な幅になる最小サイズとして、一般的なノート PC の画面の半分程度を選んだ
         .frame(minWidth: 800, minHeight: 600)
         .focusedSceneValue(\.browserWindowModel, model)
-        .onAppear {
-            model.activate()
-        }
-        .onDisappear {
-            model.deactivate()
-        }
         .onChange(of: model.prompt) { _, prompt in
             isPromptFocused = prompt != nil
         }

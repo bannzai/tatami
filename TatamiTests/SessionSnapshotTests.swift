@@ -105,6 +105,17 @@ struct SessionSnapshotTests {
         #expect(tree.isConsistent)
     }
 
+    @MainActor
+    @Test func nextAvailableSessionNameSkipsOpenSavedAndExistingFiles() {
+        let name = BrowserWindowModel.nextAvailableSessionName(
+            openSessionNames: ["0", "2"],
+            savedSessionNames: ["1", "work"],
+            fileExists: { $0 == "3" }
+        )
+
+        #expect(name == "4")
+    }
+
     @Test func invalidRatioIsRejectedOnLoad() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
