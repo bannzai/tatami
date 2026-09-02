@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh-r2-image:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(date:*)",
+      "Bash(bash /Users/bannzai/.claude/skills/run-qa/scripts/affected_features.sh:*)",
+      "Bash(bash /Users/bannzai/.claude/skills/run-qa/scripts/mark_verified.sh:*)",
+      "Bash(bash /Users/bannzai/.claude/skills/setup-qa/scripts/sync_evidence.sh:*)",
+      "Bash(gh api:*)",
+      "Bash(xcodebuild:*)",
+      "mcp__xcodebuildmcp",
+      "Bash(osascript:*)",
+      "Bash(screencapture:*)"
+    ]
+  }
+}
