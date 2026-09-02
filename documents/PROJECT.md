@@ -65,7 +65,7 @@ prefix の既定は tmux と同じ `Ctrl+b`。すべて `tatami.conf` で変更�
 - ペインは tmux と同じ二分木 (binary split) で管理し、リサイズ・入れ替え・zoom・レイアウト切り替えを持つ
 - 各ペインは独立した Web コンテンツ (WKWebView) で、URL バー・戻る/進む/再読み込みを持つ
 - `target=_blank` や `window.open` は新しいペインとして開く (別ウィンドウを増やさない)
-- ダウンロードはユーザーの選んだ場所へ保存する (WKDownload)
+- ダウンロードはユーザーの選んだ場所へ保存する (WKDownload)。保存先の選択は未実装で、現状は Downloads ディレクトリ固定 ( https://github.com/bannzai/tatami/issues/56 )
 - Cookie・ローカルストレージは永続化する (WKWebsiteDataStore.default)。GitHub 等のログイン状態を再起動後も保つ
 
 ### 2. 設定ファイル (実装済み)
@@ -83,7 +83,7 @@ prefix の既定は tmux と同じ `Ctrl+b`。すべて `tatami.conf` で変更�
 
 - **macOS ネイティブ (Swift / SwiftUI + AppKit / WKWebView)**。Electron ではなくネイティブを選ぶ理由と引き受けるリスクは [ADR 0001](adr/0001-native-macos-app-with-wkwebview.md)
 - macOS 26 以上専用 (作者の環境と GitHub Actions の `macos-26` runner に合わせる)
-- バックエンド・DB・Analytics を持たない。データはすべて端末内 (ローカルファイル)。詳細は [ADR 0002](adr/0002-local-only-no-backend.md)
+- バックエンド・DB・Analytics を持たない。データはすべて端末内。Password Manager の削除 (#49) が完了するまでは資格情報を Keychain に保存し、一部は iCloud Keychain と同期する。削除完了後はローカルファイルのみになる。詳細は [ADR 0002](adr/0002-local-only-no-backend.md)
 - `Tatami.xcodeproj` を構成の唯一の正とし、XcodeGen は使わない ([ADR 0003](adr/0003-manage-xcode-project-directly.md))
 - 動作確認は public リポジトリの利点を活かし、GitHub Actions の macOS runner 上で simtunnel (`/macos-simtunnel` skill) を通じて行える。ローカルでは `make macos` で `/Applications/Tatami.app` に配置する
 

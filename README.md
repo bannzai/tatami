@@ -15,7 +15,7 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
   set -g search-engine https://duckduckgo.com/?q=      # アドレスバーの検索エンジン (既定は Google)
   bind v split-window -v                               # キーの割り当て変更。unbind <キー> / source-file <パス> も使える
   ```
-- Password Manager は削除予定 ( https://github.com/bannzai/tatami/issues/49 )。削除前に `:export-passwords` (Chrome 互換 CSV) / `:export-cxf` で書き出せる。Cookie / セッション永続化によるログイン状態の維持は残る
+- Password Manager は削除予定 ( https://github.com/bannzai/tatami/issues/49 )。削除前に `:export-passwords` (Chrome 互換 CSV) / `:export-cxf` で書き出せる。ただし Secure Enclave 保存の Passkey と署名カウンタが進んだ Passkey は CXF アーカイブに含まれない (完全なバックアップではない)。書き出したファイルは平文 (CSV にはパスワード、CXF の ZIP にはパスワードと Passkey の秘密鍵がそのまま入る) のため、共有領域や通常のバックアップに置かず、移行先へ取り込んだらすぐ削除する。Cookie / セッション永続化によるログイン状態の維持は残る
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
 
