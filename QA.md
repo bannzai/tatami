@@ -1,7 +1,7 @@
 ---
 feature: _root
 verification: manual
-last_verified_commit: 72b7bead854a8e1fb1e7968d458a22e4325c42ac
+last_verified_commit: 54b761324d624f9d828d64c66d169464a900b4a6
 last_verified_at: 2026-09-02
 ---
 
@@ -11,6 +11,7 @@ last_verified_at: 2026-09-02
 
 - ローカルの macOS (作者機)。Debug ビルドの `tmp/DerivedData/Build/Products/Debug/Tatami.app` を対象にする
 - バックエンドを持たないアプリのため環境の切り替えは無い。確認に使う外部サイトは example.com / example.org / httpbin.org / badssl.com などの中立サイトに限る (ユーザーの実アカウント・実セッションの内容をスクリーンショットに写さない)
+- 検索語の解決 (検索エンジンで開く挙動) の確認に限り、固定の技術的な検索語 (例: `tmux split pane`) を既定の検索エンジンへ送ってよい (ユーザーの実閲覧内容や個人情報を含む語は送らない)
 
 ## 起動方法
 

@@ -1,7 +1,7 @@
 ---
 feature: navigation
 verification: manual
-last_verified_commit: 57deef2d2255effb6e03c2eb84d4de8e066d4bdc
+last_verified_commit: 270d0138ed3ebbc56bfcaf71a211eb7248bbe7da
 last_verified_at: 2026-09-01
 ---
 
@@ -21,9 +21,9 @@ last_verified_at: 2026-09-01
 | S3 | 空ページ (about:blank) ではアドレスバーが空欄になる | 空ページの表示 |
 | S4 | 戻る・進む・再読み込みが動く | 戻る・進む・再読み込み |
 | S5 | ページ内のリンククリックで同じペインが遷移する | リンククリック |
-| S6 | `target=_blank` / `window.open` は新しいペインとして開き、別ウィンドウを増やさない | target=_blank |
+| S6 | `target=_blank` / `window.open` は新しいペインとして開き、別ウィンドウを増やさない | target=_blank / window.open |
 | S7 | `prefix + [` でページ内検索が開き、ヒットへ移動できる | ページ内検索 |
-| S8 | `prefix + :` のコマンドプロンプトから `:open <url>` で遷移できる | コマンドプロンプト |
+| S8 | `prefix + :` のコマンドプロンプトから `:open <url>` で遷移できる | コマンドプロンプト / :find コマンド |
 
 ## 1. アドレスバーと遷移
 
@@ -92,12 +92,18 @@ last_verified_at: 2026-09-01
 - [x] **target=_blank**: `target=_blank` のリンクが新しいペインとして開き、別の macOS ウィンドウは増えない
   - 自動化: manual（同上）
   - 確認用ページは `python3 -m http.server 8731` でローカルに立て、`localhost:8731/blank.html` で開く。`data:` URL はアドレスバーの解決で URL 扱いにならないため使えない
+- [ ] **window.open**: JavaScript の `window.open(...)` 起点で新しいペインが開き、別の macOS ウィンドウは増えない
+  - 自動化: todo
+  - 未検証: 検証済みなのは `target=_blank` リンクのみで、`window.open` 起点の挙動は未確認
 - [x] **ページ内検索**: `prefix + [` → 検索語 + Enter でヒットがハイライトされ、n / N で次・前へ移動、Escape で終了する
   - 自動化: manual（同上）
   - ⚠️ 入力欄にフォーカスが入らないことがある (下記「プロンプトの入力欄にフォーカスが入らない」)。その場合は status line の入力欄をクリックしてから入力する
 - [x] **コマンドプロンプト**: `prefix + :` → `:open https://example.com` で遷移する
   - 自動化: manual（同上）
   - ⚠️ 同上のフォーカス問題が起きることがある
+- [ ] **:find コマンド**: `prefix + :` → `:find <text>` でページ内検索が開始される
+  - 自動化: todo
+  - 未検証: 検証済みは `prefix + [` からの起動のみで、`:find` コマンド経由の起動は未確認
 
 ### ❌ プロンプトの入力欄にフォーカスが入らない (2026-09-01 に発見、issue: https://github.com/bannzai/tatami/issues/52 )
 

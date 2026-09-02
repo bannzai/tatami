@@ -1,7 +1,7 @@
 ---
 feature: panes_windows
 verification: manual
-last_verified_commit: 72b7bead854a8e1fb1e7968d458a22e4325c42ac
+last_verified_commit: 54b761324d624f9d828d64c66d169464a900b4a6
 last_verified_at: 2026-09-02
 ---
 
@@ -19,15 +19,17 @@ last_verified_at: 2026-09-02
 | S1 | `prefix + "` で現在のペインを上下に分割し、新しいペインは空のページで開く | 上下分割 |
 | S2 | `prefix + %` で現在のペインを左右に分割する | 左右分割 |
 | S3 | 分割直後の空ページではアドレスバーへ自動フォーカスされ、そのまま URL を入力できる | 分割直後の入力 |
-| S4 | `prefix + o` / `;` / `h j k l` / 矢印でペインのフォーカスを移動できる | フォーカス移動 |
+| S4 | `prefix + o` / `;` / `h j k l` / 矢印でペインのフォーカスを移動できる | フォーカス移動 / 直前ペイン・矢印キーのフォーカス移動 |
 | S5 | `prefix + x` でペインを閉じ、兄弟ペインが領域を引き継ぐ | ペインを閉じる |
 | S6 | `prefix + z` でペインの zoom (全面表示) をトグルする | zoom |
-| S7 | `prefix + {` / `}` でペインを入れ替える | ペインの入れ替え |
+| S7 | `prefix + {` / `}` でペインを入れ替える | ペインの入れ替え / `prefix + }` の入れ替え |
 | S8 | `prefix + Space` でレイアウトを切り替える | レイアウト切り替え |
 | S9 | `prefix + c` で新しいウィンドウ (タブ相当) を空ページ + アドレスバーフォーカスで開く | 新しいウィンドウ |
-| S10 | `prefix + n` / `p` / `0-9` でウィンドウを移動・選択できる | ウィンドウの移動・選択 |
+| S10 | `prefix + n` / `p` / `0-9` でウィンドウを移動・選択できる | ウィンドウの移動・選択 / 0 以外の番号キーでのウィンドウ選択 |
 | S11 | `prefix + ,` / `&` / `w` でウィンドウの名前変更・閉じる・一覧ができる | ウィンドウの名前変更・閉じる・一覧 |
 | S12 | File > New Window で別の macOS ウィンドウ (新しいセッション) が開く | macOS ウィンドウの追加 |
+| S13 | ペインの境界 (divider) をドラッグしてリサイズできる | ペインのドラッグリサイズ |
+| S14 | `prefix + s` でセッションの一覧・選択、`prefix + $` でセッション名の変更ができる | セッションの一覧・選択と名前変更 |
 
 ## 1. ペイン分割
 
@@ -91,8 +93,17 @@ last_verified_at: 2026-09-02
 - [x] **フォーカス移動**: `prefix + o` で次のペインへ、`prefix + h/j/k/l` で方向指定でフォーカスが移る (青枠の追従で確認)
   - 自動化: manual（osascript + screencapture）
   - どのペインがどれか分かるよう、`python3 -m http.server` で「PANE A」「PANE B」「PANE C」と大きく表示するだけのページを配って各ペインに割り当てると判定しやすい
-- [x] **ペインの入れ替え**: `prefix + {` / `}` でフォーカス中のペインが隣と入れ替わる
+- [ ] **直前ペイン・矢印キーのフォーカス移動**: `prefix + ;` で直前のペインへ、`prefix + 矢印` で方向指定でフォーカスが移る
+  - 自動化: todo
+  - 未検証: 検証済みは `o` と `h/j/k/l` のみで、`;` と各矢印キーのバインドは未確認
+- [x] **ペインの入れ替え**: `prefix + {` でフォーカス中のペインが隣と入れ替わる (swapPaneUp)
   - 自動化: manual（同上）
+- [ ] **`prefix + }` の入れ替え**: `prefix + }` で逆方向へ入れ替わり (swapPaneDown)、フォーカスも追従する
+  - 自動化: todo
+  - 未検証: 検証済みは `{` (swapPaneUp) のみで、別コマンドの `}` (swapPaneDown) は未確認
+- [ ] **ペインのドラッグリサイズ**: ペインの境界 (divider) を水平・垂直にドラッグすると比率が変わり (PaneTree.resize)、再起動後も配置が復元される
+  - 自動化: todo
+  - 未検証: divider のドラッグ操作は未確認
 - [x] **zoom**: `prefix + z` でフォーカス中のペインが全面表示になり、もう一度で元に戻る
   - 自動化: manual（同上）
 - [x] **レイアウト切り替え**: `prefix + Space` で even-horizontal / even-vertical / tiled が順に切り替わる
@@ -194,9 +205,16 @@ PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域�
   - 自動化: manual（osascript + screencapture）
 - [x] **ウィンドウの移動・選択**: `prefix + n` / `p` で隣へ、`prefix + <番号>` で直接選択でき、status line の `*` が追従する
   - 自動化: manual（同上）
+  - 番号キーの直接選択で検証済みなのは `prefix + 0` のみ
+- [ ] **0 以外の番号キーでのウィンドウ選択**: `prefix + 1`〜`9` でも対応するウィンドウを直接選択できる
+  - 自動化: todo
+  - 未検証: 各数字は `KeyBindingTable.default` で別々の `selectWindow(index)` バインドとして登録されるため、`0` の合格だけでは 1〜9 の回帰を検出できない
+- [ ] **セッションの一覧・選択と名前変更**: `prefix + s` でセッション一覧から選択でき、`prefix + $` でセッション名を変更できる (chooseSession / renameSession)
+  - 自動化: todo
+  - 未検証: セッション操作はこれまでの QA で未実施
 - [x] **ウィンドウの名前変更・閉じる・一覧**: `prefix + ,` で名前変更、`prefix + w` で一覧から選択、`prefix + &` で閉じられる
   - 自動化: manual（同上）
-  - ⚠️ `prefix + ,` の rename-window プロンプトも、navigation feature に記録した「プロンプトの入力欄にフォーカスが入らない」事象が起きる。status line の入力欄をクリック → Cmd+A → 入力で回避した (features/navigation/QA.md 参照。issue: 未起票)
+  - ⚠️ `prefix + ,` の rename-window プロンプトも、navigation feature に記録した「プロンプトの入力欄にフォーカスが入らない」事象が起きる。status line の入力欄をクリック → Cmd+A → 入力で回避した (features/navigation/QA.md 参照。issue: https://github.com/bannzai/tatami/issues/52 、修正 PR: https://github.com/bannzai/tatami/pull/54 )
 - [ ] **macOS ウィンドウの追加**: File > New Window (Cmd+N) で別の macOS ウィンドウが新しいセッションで開く
   - 自動化: manual（同上）
   - ❌ 失敗: 保存済みセッションが大きいとアプリ全体がハングする。再現手順: ウィンドウ 8 個のセッションを復元した状態で Cmd+N。issue: https://github.com/bannzai/tatami/issues/51

@@ -1,7 +1,7 @@
 ---
 feature: platform
 verification: manual
-last_verified_commit: 72b7bead854a8e1fb1e7968d458a22e4325c42ac
+last_verified_commit: 54b761324d624f9d828d64c66d169464a900b4a6
 last_verified_at: 2026-09-02
 ---
 
@@ -18,7 +18,7 @@ last_verified_at: 2026-09-02
 |----|---------|---------|
 | S1 | ダウンロードは保存先を選んで保存され、進捗・完了が status line に出る | ダウンロード |
 | S2 | 証明書エラーのサイトはエラーが表示され、黙って読み込まれない | 証明書エラー |
-| S3 | 他アプリから渡された URL (`open -a Tatami <url>`) が新しいペインで開く | 他アプリからの URL |
+| S3 | 他アプリから渡された URL (`open -a Tatami <url>`) が新しいペインで開く | 他アプリからの URL / コールド起動での URL オープン |
 | S4 | メディア・位置情報などの権限要求でダイアログが出る | 権限ダイアログ |
 
 ## 1. ダウンロードとエラー表示
@@ -68,6 +68,9 @@ last_verified_at: 2026-09-02
 
 - [x] **他アプリからの URL**: Tatami 起動中に `open -a Tatami https://example.com` を実行すると、現在のウィンドウの新しいペインで開く
   - 自動化: manual（osascript + screencapture）
+- [ ] **コールド起動での URL オープン**: Tatami を終了した状態で `open -a Tatami <url>` を実行すると、起動後に新しいペインで開く
+  - 自動化: todo
+  - 未検証: コールド起動時は `BrowserWindowView` がモデル生成前の URL を `pendingOpenedURLs` に保持して後から開く別経路を通るため、起動中のケースの合格では回帰を検出できない
 - [ ] **権限ダイアログ**: カメラ・マイク・位置情報を要求するページで権限ダイアログが出て、許可 / 拒否が反映される
   - 自動化: todo
 
