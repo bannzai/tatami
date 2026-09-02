@@ -1,10 +1,10 @@
 # Tatami
 
-tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS ネイティブの個人用ブラウザ。畳 = 部屋をタイリングするもの。
+tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS ネイティブの開発用ブラウザ。複数並列開発のコックピットとして使う。畳 = 部屋をタイリングするもの。
 
-## 現在の実装状況
+## 現在の状況
 
-MVP ロードマップ (https://github.com/bannzai/tatami/issues/20 ) の子 issue はすべて実装済み。実サイトでの検証と細部の調整を続けている。
+方向転換 ( https://github.com/bannzai/tatami/issues/47 ) により、普段使いブラウザではなく開発用ブラウザとして進化させる (普段使いは Chrome)。GitHub の効率的な移動と、PR から tmux の作業スペースへのジャンプが今後の中心。
 
 - `prefix + "` / `prefix + %` でペインを上下・左右に分割し、`prefix + o` で次のペインへ。どのサイト上でも prefix が効く
 - 設定は `~/.config/tatami/tatami.conf` (`.tmux.conf` 風)。例:
