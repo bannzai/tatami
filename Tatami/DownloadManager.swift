@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 /// アプリ全体のダウンロードを保持する。WKDownload は delegate を弱参照するため、ダウンロード元のペインを閉じても完了・失敗まで受け取れるよう
-/// ペインより長寿命なここが delegate になる。保存先は ~/Downloads で、進行中のダウンロードの保存先も含めて同名を避ける
+/// ペインより長寿命なここが delegate になる。保存先は NSSavePanel でユーザーが選ぶ (キャンセルでダウンロード中止)
 @MainActor
 final class DownloadManager: NSObject, WKDownloadDelegate {
     static let shared = DownloadManager()
@@ -52,8 +52,22 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        let directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        let destinationURL = uniqueFileURL(directoryURL: directoryURL, fileName: DownloadManager.sanitizedFileName(suggestedFilename))
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = DownloadManager.sanitizedFileName(suggestedFilename)
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        panel.canCreateDirectories = true
+        let panelResponse: NSApplication.ModalResponse
+        if let window = download.webView?.window {
+            panelResponse = await panel.beginSheetModal(for: window)
+        } else {
+            panelResponse = panel.runModal()
+        }
+        guard panelResponse == .OK, let destinationURL = panel.url else {
+            onMessage("ダウンロードを中止しました: \(DownloadManager.sanitizedFileName(suggestedFilename))")
+            return nil
+        }
+        // NSSavePanel で置き換えを確認済みでも、WKDownload は既存ファイルがあると保存に失敗するため先に取り除く
+        try? FileManager.default.removeItem(at: destinationURL)
         let entry = Entry(destinationURL: destinationURL)
         entry.observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
             guard let self, let download else {
@@ -82,28 +96,5 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         let name = entries.removeValue(forKey: download)?.destinationURL.lastPathComponent ?? ""
         onMessage("ダウンロード失敗: \(name) \(error.localizedDescription)")
-    }
-
-    /// 既存のファイルと、進行中のダウンロードが予約した保存先を避けて `name (2).ext` のように連番を付ける
-    /// (同名を同時に落とすと、最初のファイルが作られる前に両方が同じ名前を選んでしまうため)
-    private func uniqueFileURL(directoryURL: URL, fileName: String) -> URL {
-        // 大文字小文字を区別しないボリューム (macOS の既定) では `Report.pdf` と `report.pdf` が同じファイルになるため、
-        // 予約済みの保存先もボリュームの規則に合わせて照合する
-        let isCaseSensitive = (try? directoryURL.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) ?? false
-        let normalize: (URL) -> String = { url in
-            let path = url.path(percentEncoded: false)
-            return isCaseSensitive ? path : path.lowercased()
-        }
-        let reserved = Set(entries.values.map { normalize($0.destinationURL) })
-        let base = (fileName as NSString).deletingPathExtension
-        let ext = (fileName as NSString).pathExtension
-        var candidate = directoryURL.appending(path: fileName)
-        var counter = 2
-        while FileManager.default.fileExists(atPath: candidate.path(percentEncoded: false)) || reserved.contains(normalize(candidate)) {
-            let numbered = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
-            candidate = directoryURL.appending(path: numbered)
-            counter += 1
-        }
-        return candidate
     }
 }
