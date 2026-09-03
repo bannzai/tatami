@@ -66,8 +66,16 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
             onMessage("ダウンロードを中止しました: \(DownloadManager.sanitizedFileName(suggestedFilename))")
             return nil
         }
-        // NSSavePanel で置き換えを確認済みでも、WKDownload は既存ファイルがあると保存に失敗するため先に取り除く
-        try? FileManager.default.removeItem(at: destinationURL)
+        // NSSavePanel で置き換えを確認済みでも、WKDownload は既存ファイルがあると保存に失敗するため先に取り除く。
+        // 取り除けない時に開始すると「ダウンロード開始」の後に必ず失敗するため、開始せずに中止する
+        if FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) {
+            do {
+                try FileManager.default.removeItem(at: destinationURL)
+            } catch {
+                onMessage("既存ファイルを削除できない: \(destinationURL.lastPathComponent) \(error.localizedDescription)")
+                return nil
+            }
+        }
         let entry = Entry(destinationURL: destinationURL)
         entry.observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
             guard let self, let download else {
