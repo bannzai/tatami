@@ -172,33 +172,45 @@ enum TatamiConfigParser {
     }
 
     /// `bind <key> <command...>` の形。コマンドは空白 1 つで連結して BrowserCommand の tmux 名として解釈する。
-    /// `bind -n` (prefix を押さずに効くバインド) は、キー入力が prefix の 2 ストローク検出だけを通る作りのため未対応。
-    /// 対応する時は PrefixKeyState の idle 状態にも照合先を持たせる
+    /// `bind -n <key> <command...>` は prefix を押さずに効くバインド (tmux の root キーテーブル) で、rootBindings に入れる
     private static func applyBind(arguments: [String], config: inout TatamiConfig) throws(LineError) {
-        if arguments.first == "-n" {
-            throw LineError(message: "prefix なしのバインド (bind -n) は未対応")
-        }
-        guard arguments.count >= 2 else {
+        let isRoot = arguments.first == "-n"
+        let bindArguments = isRoot ? Array(arguments.dropFirst()) : arguments
+        guard bindArguments.count >= 2 else {
             throw LineError(message: "bind はキーとコマンドを取る")
         }
-        let commandName = arguments.dropFirst().joined(separator: " ")
+        let commandName = bindArguments.dropFirst().joined(separator: " ")
         guard let command = BrowserCommand(tmuxName: commandName) else {
             throw LineError(message: "コマンドとして解釈できない: \(commandName)")
         }
-        config.keyBindings.bindings[try keyStroke(tmuxKeyName: arguments[0])] = command
+        if isRoot {
+            config.keyBindings.rootBindings[try keyStroke(tmuxKeyName: bindArguments[0])] = command
+        } else {
+            config.keyBindings.bindings[try keyStroke(tmuxKeyName: bindArguments[0])] = command
+        }
     }
 
-    /// `unbind <key>` と、全バインドを消す `unbind -a` の形
+    /// `unbind <key>` と、全バインドを消す `unbind -a` の形。`-n` を付けると prefix なしのバインド (bind -n) が対象になる
     private static func applyUnbind(arguments: [String], config: inout TatamiConfig) throws(LineError) {
-        if arguments == ["-a"] {
-            config.keyBindings.bindings.removeAll()
+        let isRoot = arguments.contains("-n")
+        let unbindArguments = arguments.filter { $0 != "-n" }
+        if unbindArguments == ["-a"] {
+            if isRoot {
+                config.keyBindings.rootBindings.removeAll()
+            } else {
+                config.keyBindings.bindings.removeAll()
+            }
             return
         }
-        guard arguments.count == 1 else {
+        guard unbindArguments.count == 1 else {
             throw LineError(message: "unbind はキーを 1 つ取る")
         }
         // 無いキーの unbind を成功扱いにするのは tmux と同じ。設定を書く側が既定のバインドの有無を気にしなくてよくなる
-        config.keyBindings.bindings[try keyStroke(tmuxKeyName: arguments[0])] = nil
+        if isRoot {
+            config.keyBindings.rootBindings[try keyStroke(tmuxKeyName: unbindArguments[0])] = nil
+        } else {
+            config.keyBindings.bindings[try keyStroke(tmuxKeyName: unbindArguments[0])] = nil
+        }
     }
 
     /// `source-file <path>` の形。読んだ内容をその場で適用し、エラーは読んだファイルの中の行番号で返す

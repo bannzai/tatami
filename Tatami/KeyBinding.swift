@@ -322,6 +322,9 @@ struct KeyBindingTable: Equatable, Sendable {
     var prefix: KeyStroke
     /// prefix の後のキーとコマンドの対応
     var bindings: [KeyStroke: BrowserCommand]
+    /// prefix を押さずに直接コマンドを実行するバインド (`bind -n`)。tmux の root キーテーブルに相当し、
+    /// tmux と同じく Web ページへのキー入力よりも優先して常に効く (バインドしたキーはページへ渡らない)。既定は空
+    var rootBindings: [KeyStroke: BrowserCommand] = [:]
 
     /// documents/PROJECT.md「コア体験」の既定値
     static let `default` = KeyBindingTable(
@@ -388,7 +391,14 @@ enum PrefixKeyState: Equatable, Sendable {
     func handling(keyStrokes: [KeyStroke], table: KeyBindingTable) -> (state: PrefixKeyState, outcome: Outcome) {
         switch self {
         case .idle:
-            return keyStrokes.contains(table.prefix) ? (.awaitingCommand, .consume) : (.idle, .passThrough)
+            if keyStrokes.contains(table.prefix) {
+                return (.awaitingCommand, .consume)
+            }
+            // prefix なしのバインド (bind -n)。prefix と同じキーを bind -n した場合は prefix の判定を優先する
+            if let command = keyStrokes.lazy.compactMap({ table.rootBindings[$0] }).first {
+                return (.idle, .perform(command))
+            }
+            return (.idle, .passThrough)
         case .awaitingCommand:
             // 設定で Escape にコマンドを割り当てた場合はそれを優先し、未設定の時だけ取り消しとして扱う (どちらも消費して idle に戻る)
             guard let command = keyStrokes.lazy.compactMap({ table.bindings[$0] }).first else {
