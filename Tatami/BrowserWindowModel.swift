@@ -323,6 +323,17 @@ final class BrowserWindowModel {
         statusMessage = message
     }
 
+    /// PR クリックで tmux の作業スペースへジャンプする (issue #47 機能の方向 2)。進行と結果は status line に出す
+    private func jumpToWorkspace(link: GitHubPullRequestLink) {
+        statusMessage = "作業スペースへジャンプ: \(link.owner)/\(link.repo)#\(link.number)"
+        let script = PRWorkspaceJumper.script(link: link, terminalApp: TatamiConfigStore.shared.config.terminalApp)
+        Task { [weak self] in
+            if let message = await PRWorkspaceJumper.run(script: script) {
+                self?.statusMessage = message
+            }
+        }
+    }
+
     /// すぐに保存する (detach やウィンドウを閉じる時)。失敗は status line に出し、false を返す
     @discardableResult
     func saveNow() -> Bool {
@@ -1765,6 +1776,9 @@ final class BrowserWindowModel {
         }
         window.onVisit = { [weak self] url, title in
             self?.recordVisit(url: url, title: title)
+        }
+        window.onPullRequestLinkActivated = { [weak self] link in
+            self?.jumpToWorkspace(link: link)
         }
         window.onTitleChange = { url, title in
             BrowsingDataStore.shared.updateTitle(url: url, title: title)
