@@ -16,23 +16,28 @@ struct BrowserWindowView: View {
                     .accessibilityIdentifier("windowLoading")
             }
         }
-        .task {
+        .onAppear {
             guard model == nil else {
                 return
             }
-            // WindowGroup はメニューのキー処理中の display cycle で View を構築することがある。次の run loop まで待ち、
-            // 保存済みセッションの復元に伴う WKWebView の同期 IPC をメニュー処理の外で始める
-            try? await Task.sleep(for: .milliseconds(1))
-            guard !Task.isCancelled, model == nil else {
-                return
+            // WindowGroup はメニューのキー処理中の display cycle で View を構築することがある。次の run loop へ遅らせ、
+            // 保存済みセッションの復元に伴う WKWebView の同期 IPC をメニュー処理の外で始める。
+            // .task + Task.sleep での遅延は、メニュー処理中の一時的な disappear でタスクが cancel されると再実行されず、
+            // モデル未生成の windowLoading がキー入力を吸い続ける (issue #51 の 2 症状目) ため、cancel されない
+            // DispatchQueue.main.async で行う。ウィンドウがこの 1 サイクルの間に閉じられた場合はモデルを 1 つ余分に
+            // 生成するが、表示されないままセッション番号を 1 つ予約するだけで実害はない
+            DispatchQueue.main.async {
+                guard model == nil else {
+                    return
+                }
+                let model = BrowserWindowModel()
+                model.activate()
+                self.model = model
+                for openedURL in pendingOpenedURLs {
+                    model.open(url: openedURL)
+                }
+                pendingOpenedURLs.removeAll()
             }
-            let model = BrowserWindowModel()
-            model.activate()
-            self.model = model
-            for openedURL in pendingOpenedURLs {
-                model.open(url: openedURL)
-            }
-            pendingOpenedURLs.removeAll()
         }
         .onDisappear {
             model?.deactivate()
