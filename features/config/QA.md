@@ -82,7 +82,7 @@ status line に `err.conf:2: 知らないオプション: theme` が赤字で出
   - 再読み込みが起きたかは https://httpbin.org/uuid を開いて UUID が変わるかで判定する
 - [ ] **bind -n (prefix なしバインド)**: `bind -n` で prefix なしのキー割り当てを設定できる
   - 自動化: todo
-  - 未検証: `bind -n` は `TatamiConfigParser.applyBind` が常に「未対応」エラーにする既知の未実装。issue: https://github.com/bannzai/tatami/issues/58
+  - 未検証: issue https://github.com/bannzai/tatami/issues/58 で実装済み (rootBindings)。`bind -n C-t reload` を `:source-file` で読ませ、prefix なしの C-t で再読み込みが起きること・`unbind -n C-t` で解除されることを確認する
 - [x] **source-file**: `prefix + :` → `:source-file` が既定の tatami.conf を読み直し、変更が即座に反映される
   - 自動化: manual（同上）
 - [ ] **プロンプトからの :bind / :unbind**: `prefix + :` から直接 `:bind r reload` / `:unbind r` を実行すると反映される

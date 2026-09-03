@@ -51,6 +51,29 @@ struct KeyBindingTests {
         #expect(result.outcome == .passThrough)
     }
 
+    @Test func rootBindingPerformsWithoutPrefix() {
+        var table = KeyBindingTable.default
+        table.rootBindings[KeyStroke(tmuxKeyName: "C-t")!] = .reload
+        let result = PrefixKeyState.idle.handling(keyStroke: KeyStroke(tmuxKeyName: "C-t")!, table: table)
+        #expect(result.state == .idle)
+        #expect(result.outcome == .perform(.reload))
+    }
+
+    @Test func prefixWinsOverRootBindingOnSameKey() {
+        var table = KeyBindingTable.default
+        table.rootBindings[table.prefix] = .reload
+        #expect(PrefixKeyState.idle.handling(keyStroke: table.prefix, table: table) == (.awaitingCommand, .consume))
+    }
+
+    @Test func rootBindingDoesNotApplyWhileAwaitingCommand() {
+        var table = KeyBindingTable.default
+        table.rootBindings[KeyStroke(tmuxKeyName: "C-t")!] = .reload
+        // prefix 待ち中は prefix 側のバインドだけを照合する (未定義なら消費して idle に戻る)
+        let result = PrefixKeyState.awaitingCommand.handling(keyStroke: KeyStroke(tmuxKeyName: "C-t")!, table: table)
+        #expect(result.state == .idle)
+        #expect(result.outcome == .consume)
+    }
+
     @Test func unboundKeyAfterPrefixIsConsumed() {
         let result = PrefixKeyState.awaitingCommand.handling(keyStroke: KeyStroke(tmuxKeyName: "q")!, table: .default)
         #expect(result.state == .idle)
