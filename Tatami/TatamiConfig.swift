@@ -14,6 +14,9 @@ struct TatamiConfig: Equatable {
     var passwordGenerator = PasswordGenerator()
     /// 資格情報の自動ロックまでの秒数 (`set -g lock-timeout`)
     var lockTimeout = CredentialLockPolicy.defaultLockTimeout
+    /// PR クリックのジャンプで open するターミナルのアプリ名 (`set -g terminal-app`)。
+    /// nil はターミナルを開かない (open するターミナルはハードコードせず設定で指定する: issue #47 機能の方向 2)
+    var terminalApp: String?
 }
 
 /// tatami.conf の 1 行を解釈できなかったこと。どこを直せばよいかが分からないと設定を書き直せないため、ファイル名と行番号を必ず持つ
@@ -142,6 +145,8 @@ enum TatamiConfigParser {
             config.searchURL = try url(text: values[1])
         case "user-agent":
             config.userAgent = values[1]
+        case "terminal-app":
+            config.terminalApp = values[1]
         case "password-length":
             guard let length = Int(values[1]), (PasswordGenerator.minimumLength...PasswordGenerator.maximumLength).contains(length) else {
                 throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上 \(PasswordGenerator.maximumLength) 以下の整数: \(values[1])")
