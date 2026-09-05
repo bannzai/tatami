@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tatami - tmux のキーバインドで動く macOS のタイル型ブラウザ</title>
-<meta name="description" content="Tatami は prefix + 1 打鍵でペインを分割・移動する、tmux ユーザーのための macOS ネイティブブラウザ。設定は tatami.conf、パスワードマネージャー内蔵。収益化なし・データはすべて端末内。" />
+<meta name="description" content="Tatami は prefix + 1 打鍵でペインを分割・移動する、tmux ユーザーのための macOS ネイティブブラウザ。設定は tatami.conf。収益化なし・データはすべて端末内。" />
 <link rel="canonical" href="https://bannzai.github.io/tatami/" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Tatami" />
@@ -25,7 +25,7 @@
   "applicationCategory": "BrowserApplication",
   "url": "https://bannzai.github.io/tatami/",
   "image": "https://bannzai.github.io/tatami/og.png",
-  "description": "tmux のキーバインドで動く macOS のタイル型ブラウザ。パスワードマネージャー内蔵。",
+  "description": "tmux のキーバインドで動く macOS のタイル型ブラウザ。",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
   "author": { "@type": "Person", "name": "bannzai" }
 }
@@ -164,15 +164,15 @@
         <p><code>~/.config/tatami/tatami.conf</code> に <code>.tmux.conf</code> 風の文法でキーバインドと既定値を書く。dotfiles と一緒に管理できる。</p>
       </div>
       <div class="card">
-        <h3>パスワードマネージャー内蔵</h3>
-        <p>拡張機能に頼らず、macOS のキーチェーンを金庫にした自前のストアを持つ。Chrome 互換 CSV で入出力でき、いつでも他のブラウザに戻れる。Safari など OS 全体からの自動入力にも対応予定。</p>
+        <h3>PR から作業スペースへジャンプ</h3>
+        <p>GitHub の PR リンクをクリックすると、ターミナルを開いて tmux の該当リポジトリ・ブランチの window へ移動する。ブラウザとターミナルの行き来コストをゼロにする。</p>
       </div>
     </div>
   </section>
 
   <section class="container" id="keys">
     <h2>キーバインド (設計上の既定値)</h2>
-    <p style="font-size: 14px; color: var(--ink2); margin-bottom: 16px;">Tatami は開発中です。以下のキーバインド・設定ファイル・パスワードマネージャーは設計済みの仕様で、実装は順次進めています。現在の実装状況はソースリポジトリのロードマップ issue を参照してください。</p>
+    <p style="font-size: 14px; color: var(--ink2); margin-bottom: 16px;">Tatami は開発中です。以下のキーバインド・設定ファイルは設計済みの仕様で、実装は順次進めています。現在の実装状況はソースリポジトリのロードマップ issue を参照してください。</p>
     <table>
       <thead><tr><th>キー</th><th>動作</th></tr></thead>
       <tbody>
@@ -182,7 +182,6 @@
         <tr><td><kbd>prefix</kbd> + <kbd>x</kbd> / <kbd>z</kbd></td><td>ペインを閉じる / zoom を切り替える</td></tr>
         <tr><td><kbd>prefix</kbd> + <kbd>c</kbd> / <kbd>n</kbd> / <kbd>p</kbd> / <kbd>0-9</kbd></td><td>ウィンドウを作る / 移動する / 番号で選ぶ</td></tr>
         <tr><td><kbd>prefix</kbd> + <kbd>/</kbd></td><td>URL または検索語を入力する</td></tr>
-        <tr><td><kbd>prefix</kbd> + <kbd>a</kbd></td><td>保存した資格情報を検索して入力する</td></tr>
         <tr><td><kbd>prefix</kbd> + <kbd>:</kbd></td><td>コマンドプロンプト (<code>:open</code>, <code>:find</code>, <code>:bind</code>, <code>:source-file</code>)</td></tr>
       </tbody>
     </table>
