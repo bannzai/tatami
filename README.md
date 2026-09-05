@@ -14,7 +14,10 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
   set -g home https://www.google.com/                  # 新しいペインで開くページ (既定は空ページ)
   set -g search-engine https://duckduckgo.com/?q=      # アドレスバーの検索エンジン (既定は Google)
   bind v split-window -v                               # キーの割り当て変更。unbind <キー> / source-file <パス> も使える
+  bind -n C-t reload                                   # prefix なしで直接効くバインド (解除は unbind -n <キー>)
+  set -g terminal-app Alacritty                        # PR クリックのジャンプで open するターミナル (未設定なら開かない)
   ```
+- GitHub の PR リンクをクリックすると、`gh` で head ブランチを調べ、リポジトリ名の tmux session の該当 window へジャンプする (window が無ければ既存の git worktree を探して `new-window`。session が無い時は status line に案内だけ出す)
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
 

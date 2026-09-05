@@ -68,6 +68,35 @@ struct TatamiConfigTests {
         #expect(TatamiConfigParser.apply(text: "unbind F", config: &config).isEmpty)
     }
 
+    @Test func rootBindingIsStoredSeparatelyFromPrefixBindings() {
+        var config = TatamiConfig()
+        #expect(TatamiConfigParser.apply(text: "bind -n C-t reload", config: &config).isEmpty)
+        #expect(config.keyBindings.rootBindings[KeyStroke(tmuxKeyName: "C-t")!] == .reload)
+        // prefix 側の同じキーのバインドには影響しない
+        #expect(config.keyBindings.bindings[KeyStroke(tmuxKeyName: "C-t")!] == nil)
+    }
+
+    @Test func unbindWithRootFlagRemovesOnlyRootBinding() {
+        var config = TatamiConfig()
+        #expect(TatamiConfigParser.apply(text: """
+            bind -n C-t reload
+            unbind -n C-t
+            """, config: &config).isEmpty)
+        #expect(config.keyBindings.rootBindings.isEmpty)
+        // prefix 側の既定バインドは残る
+        #expect(!config.keyBindings.bindings.isEmpty)
+    }
+
+    @Test func unbindAllWithRootFlagClearsOnlyRootBindings() {
+        var config = TatamiConfig()
+        #expect(TatamiConfigParser.apply(text: """
+            bind -n C-t reload
+            unbind -a -n
+            """, config: &config).isEmpty)
+        #expect(config.keyBindings.rootBindings.isEmpty)
+        #expect(!config.keyBindings.bindings.isEmpty)
+    }
+
     @Test func brokenLinesAreReportedWithLineNumbersAndSkipped() {
         var config = TatamiConfig()
         let errors = TatamiConfigParser.apply(text: """
@@ -76,7 +105,7 @@ struct TatamiConfigTests {
             set -g theme dark
             bind Foo reload
             bind r no-such-command
-            bind -n C-t reload
+            bind -n Foo reload
             unbind Foo
             attach-session
             bind q "閉じていない
@@ -89,7 +118,7 @@ struct TatamiConfigTests {
             "tatami.conf:3: 知らないオプション: theme",
             "tatami.conf:4: キー名として解釈できない: Foo",
             "tatami.conf:5: コマンドとして解釈できない: no-such-command",
-            "tatami.conf:6: prefix なしのバインド (bind -n) は未対応",
+            "tatami.conf:6: キー名として解釈できない: Foo",
             "tatami.conf:7: キー名として解釈できない: Foo",
             "tatami.conf:8: 知らないコマンド: attach-session",
             "tatami.conf:9: クオートが閉じていない",

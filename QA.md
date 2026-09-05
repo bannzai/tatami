@@ -117,6 +117,7 @@ duckduckgo.com の検索結果ページで、ページ内の検索入力欄に�
 - [features/persistence/QA.md](features/persistence/QA.md) — Cookie・セッション復元・履歴・ブックマーク
 - [features/config/QA.md](features/config/QA.md) — tatami.conf の反映・再読込
 - [features/platform/QA.md](features/platform/QA.md) — ダウンロード・証明書エラー・OS 連携
+- [features/pr_jump/QA.md](features/pr_jump/QA.md) — PR クリックから tmux 作業スペースへのジャンプ
 
 ## QA 対象外
 

@@ -23,6 +23,8 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
     var onVisit: ((URL, String) -> Void)?
     /// 表示中のページのタイトルだけが変わった時の通知先 (履歴のタイトル更新。順序は変えない)
     var onTitleChange: ((URL, String) -> Void)?
+    /// GitHub の PR ページへのリンクをクリックした時の通知先 (tmux の作業スペースへのジャンプ: issue #47)
+    var onPullRequestLinkActivated: ((GitHubPullRequestLink) -> Void)?
     /// 証明書エラーの警告ページを表示している間 true。警告ページは履歴に残さない
     private var isShowingCertificateWarning = false
     /// セッションの復元による読み込みのナビゲーション。復元は新しい訪問ではないため、このナビゲーションの完了は履歴に記録しない
@@ -326,6 +328,14 @@ final class WebPane: NSObject, WKUIDelegate, WKNavigationDelegate {
             break
         @unknown default:
             break
+        }
+        // PR ページへのリンククリックで tmux の作業スペースへジャンプする (issue #47)。同じ PR の中のタブ移動では再ジャンプしない
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.targetFrame?.isMainFrame == true,
+           let destinationURL = navigationAction.request.url,
+           let link = GitHubPullRequestLink.parse(url: destinationURL),
+           PRWorkspaceJumper.shouldJump(currentURL: webView.url, destinationLink: link) {
+            onPullRequestLinkActivated?(link)
         }
         // ダウンロードへの変換はトップレベルの操作に限る (隠し iframe からスクリプトで download 属性のリンクを起動して
         // Downloads へ大量保存させない。response 側の制限と同じ理由)

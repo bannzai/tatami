@@ -18,6 +18,8 @@ final class PaneWindow {
     var onContentChange: (() -> Void)?
     /// どのペインでも実際のナビゲーションがあった時の通知先 (履歴の記録)
     var onVisit: ((URL, String) -> Void)?
+    /// GitHub の PR ページへのリンクをクリックした時の通知先 (tmux の作業スペースへのジャンプ: issue #47)
+    var onPullRequestLinkActivated: ((GitHubPullRequestLink) -> Void)?
     /// どのペインでもタイトルだけが変わった時の通知先 (履歴のタイトル更新)
     var onTitleChange: ((URL, String) -> Void)?
     /// タイトル・進捗・戻る/進むの可否など、フォーカス中のペインの表示状態が変わった時の通知先
@@ -222,6 +224,9 @@ final class PaneWindow {
         }
         pane.onVisit = { [weak self] url, title in
             self?.onVisit?(url, title)
+        }
+        pane.onPullRequestLinkActivated = { [weak self] link in
+            self?.onPullRequestLinkActivated?(link)
         }
         pane.onTitleChange = { [weak self] url, title in
             self?.onTitleChange?(url, title)
