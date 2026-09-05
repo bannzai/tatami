@@ -3,6 +3,8 @@
 ## Status
 Accepted (2026-08-28)
 
+補記 (2026-09-02): Password Manager は方向転換 (#47) により削除した (#49)。資格情報・Keychain に関する記述は削除前の状態を指す
+
 ## Context
 Tatami は tmux の操作体系で動く個人用ブラウザで、Password Manager を内蔵する (要件: https://github.com/bannzai/IdeaMemo/issues/191 )。企画段階の評価では Electron (Chromium + WebContentsView) が本命候補だった。ペインツリーの実装しやすさと、WebAuthn (Passkey) の API 層が Chromium に実装済みである点が理由だった。
 

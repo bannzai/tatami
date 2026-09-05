@@ -83,13 +83,13 @@ prefix の既定は tmux と同じ `Ctrl+b`。すべて `tatami.conf` で変更�
 
 - **macOS ネイティブ (Swift / SwiftUI + AppKit / WKWebView)**。Electron ではなくネイティブを選ぶ理由と引き受けるリスクは [ADR 0001](adr/0001-native-macos-app-with-wkwebview.md)
 - macOS 26 以上専用 (作者の環境と GitHub Actions の `macos-26` runner に合わせる)
-- バックエンド・DB・Analytics を持たない。データはすべて端末内。Password Manager の削除 (#49) が完了するまでは資格情報を Keychain に保存し、一部は iCloud Keychain と同期する。削除完了後はローカルファイルのみになる。詳細は [ADR 0002](adr/0002-local-only-no-backend.md)
+- バックエンド・DB・Analytics を持たない。データはすべて端末内 (ローカルファイル)。詳細は [ADR 0002](adr/0002-local-only-no-backend.md)
 - `Tatami.xcodeproj` を構成の唯一の正とし、XcodeGen は使わない ([ADR 0003](adr/0003-manage-xcode-project-directly.md))
 - 動作確認は public リポジトリの利点を活かし、GitHub Actions の macOS runner 上で simtunnel (`/macos-simtunnel` skill) を通じて行える。ローカルでは `make macos` で `/Applications/Tatami.app` に配置する
 
 ## やらないこと
 
-- Password Manager (方向転換で削除する: https://github.com/bannzai/tatami/issues/49 。Cookie / セッション永続化によるログイン維持は残す)
+- Password Manager (方向転換で削除済み: https://github.com/bannzai/tatami/issues/49 。Cookie / セッション永続化によるログイン維持は残す)
 - 収益化 (課金・広告・サブスクリプション)
 - アカウント・サーバー同期
 - Chrome 拡張の実行互換

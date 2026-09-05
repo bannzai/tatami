@@ -130,7 +130,7 @@ private struct BrowserWindowContent: View {
         .onChange(of: model.addressBarFocusRequestCount) {
             isAddressFieldFocused = true
         }
-        // アドレスバーの編集中は find モードの n / N / Escape (と提案の y / n) を消費しないよう、フォーカス状態をモデルへ反映する
+        // アドレスバーの編集中は find モードの n / N / Escape を消費しないよう、フォーカス状態をモデルへ反映する
         .onChange(of: isAddressFieldFocused, initial: true) { _, focused in
             model.isAddressBarEditing = focused
         }
@@ -201,10 +201,6 @@ private struct BrowserWindowContent: View {
                     .onExitCommand {
                         model.cancelPrompt()
                     }
-            } else if let proposal = model.proposal {
-                Text(proposal.text)
-                    .foregroundStyle(.orange)
-                    .accessibilityIdentifier("proposal")
             } else if let statusMessage = BrowsingDataStore.shared.lastSaveError ?? model.statusMessage {
                 // 履歴の保存は非同期 (debounce) のため、失敗はストアのエラー状態を表示側で監視し、成功メッセージより優先して出す
                 Text(statusMessage)
@@ -214,10 +210,6 @@ private struct BrowserWindowContent: View {
                 windowList
             }
             Spacer()
-            // 資格情報のロック状態。ロック中の充填・エクスポートは本人確認を求めることが分かるよう常に出す
-            Text(model.isCredentialLocked ? "🔒" : "🔓")
-                .accessibilityIdentifier("credentialLockIndicator")
-                .accessibilityLabel(model.isCredentialLocked ? "locked" : "unlocked")
             Text(model.prefixKeyState == .awaitingCommand ? model.keyBindings.prefix.tmuxKeyName : "")
                 .accessibilityIdentifier("prefixIndicator")
         }

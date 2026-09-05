@@ -70,10 +70,12 @@ pkill -x Tatami; open tmp/DerivedData/Build/Products/Debug/Tatami.app
 
 ## 横断確認項目
 
-- [x] **起動と復元**: `make build-macos` の成果物が起動し、前回のセッションが復元され、status line にエラーが出ていない
+- [ ] **起動と復元**: `make build-macos` の成果物が起動し、前回のセッションが復元され、status line にエラーが出ていない
   - 自動化: manual（osascript + screencapture）
-- [x] **prefix が任意サイトで効く**: 実サイト (github.com 等の入力欄があるページ) 上でも prefix + キーがページに吸われず動作する
+  - 未検証: Password Manager 削除 (PR #57) 後の再検証は未実施。削除は起動経路・メニュー・status line・prefix 操作に触れるため、削除後のビルドで本項目と各 feature の回帰確認を夜間 QA で実施する (前回検証は削除前の 2026-09-01)
+- [ ] **prefix が任意サイトで効く**: 実サイト (github.com 等の入力欄があるページ) 上でも prefix + キーがページに吸われず動作する
   - 自動化: manual（同上）
+  - 未検証: 同上 (PR #57 後の再検証は未実施)
   - 確認に使うサイトは duckduckgo.com の検索結果ページ (`https://duckduckgo.com/?q=...`) にする。ページ内の検索入力欄にフォーカスを置き、サイト側のサジェストが開いた状態で prefix + キーが効くかを見る
 
 #### 動作確認

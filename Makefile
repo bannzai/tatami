@@ -17,9 +17,7 @@ CODE_SIGNING_ALLOWED :=
 DEVELOPMENT_TEAM :=
 SIGNING := automatic
 ifeq ($(SIGNING),adhoc)
-# ad-hoc 署名では provisioning profile が要る keychain-access-groups 等を含められないため、各 target の Debug 用 entitlements
-# (`<target>.Debug.entitlements`。project.pbxproj の CODE_SIGN_ENTITLEMENTS が ENTITLEMENTS_VARIANT で切り替える) を使う
-SIGNING_FLAGS = CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= ENTITLEMENTS_VARIANT=.Debug
+SIGNING_FLAGS = CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
 else
 SIGNING_FLAGS = $(if $(CODE_SIGNING_ALLOWED),CODE_SIGNING_ALLOWED=$(CODE_SIGNING_ALLOWED),-allowProvisioningUpdates -allowProvisioningDeviceRegistration) $(if $(DEVELOPMENT_TEAM),DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM))
 endif

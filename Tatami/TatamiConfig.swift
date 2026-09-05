@@ -10,10 +10,6 @@ struct TatamiConfig: Equatable {
     var searchURL = AddressInput.defaultSearchURL
     /// WKWebView に設定する User-Agent (`set -g user-agent`)。nil は WebKit の既定 (Safari 相当) を使うことを表す
     var userAgent: String?
-    /// パスワード生成の規則 (`set -g password-length` / `set -g password-symbols on|off`)
-    var passwordGenerator = PasswordGenerator()
-    /// 資格情報の自動ロックまでの秒数 (`set -g lock-timeout`)
-    var lockTimeout = CredentialLockPolicy.defaultLockTimeout
     /// PR クリックのジャンプで open するターミナルのアプリ名 (`set -g terminal-app`)。
     /// nil はターミナルを開かない (open するターミナルはハードコードせず設定で指定する: issue #47 機能の方向 2)
     var terminalApp: String?
@@ -147,25 +143,6 @@ enum TatamiConfigParser {
             config.userAgent = values[1]
         case "terminal-app":
             config.terminalApp = values[1]
-        case "password-length":
-            guard let length = Int(values[1]), (PasswordGenerator.minimumLength...PasswordGenerator.maximumLength).contains(length) else {
-                throw LineError(message: "password-length は \(PasswordGenerator.minimumLength) 以上 \(PasswordGenerator.maximumLength) 以下の整数: \(values[1])")
-            }
-            config.passwordGenerator.length = length
-        case "lock-timeout":
-            guard let seconds = Int(values[1]), (CredentialLockPolicy.minimumLockTimeout...CredentialLockPolicy.maximumLockTimeout).contains(seconds) else {
-                throw LineError(message: "lock-timeout は \(CredentialLockPolicy.minimumLockTimeout) 以上 \(CredentialLockPolicy.maximumLockTimeout) 以下の秒数: \(values[1])")
-            }
-            config.lockTimeout = TimeInterval(seconds)
-        case "password-symbols":
-            switch values[1] {
-            case "on":
-                config.passwordGenerator.includesSymbols = true
-            case "off":
-                config.passwordGenerator.includesSymbols = false
-            default:
-                throw LineError(message: "password-symbols は on か off: \(values[1])")
-            }
         default:
             throw LineError(message: "知らないオプション: \(values[0])")
         }

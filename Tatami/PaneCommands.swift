@@ -42,10 +42,6 @@ struct PaneCommands: Commands {
             Button("Bookmarks…") { model?.perform(command: .chooseBookmark) }
                 .keyboardShortcut("b", modifiers: [.command, .option])
                 .accessibilityIdentifier("menu-choose-bookmark")
-            Divider()
-            Button("Fill Password…") { model?.perform(command: .fillCredential) }
-                .keyboardShortcut("a", modifiers: [.command, .option])
-                .accessibilityIdentifier("menu-fill-credential")
         }
         CommandMenu("Pane") {
             Button("Split Left / Right") { model?.perform(command: .splitWindowHorizontal) }

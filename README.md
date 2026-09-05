@@ -18,7 +18,6 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
   set -g terminal-app Alacritty                        # PR クリックのジャンプで open するターミナル (未設定なら開かない)
   ```
 - GitHub の PR リンクをクリックすると、`gh` で head ブランチを調べ、リポジトリ名の tmux session の該当 window へジャンプする (window が無ければ既存の git worktree を探して `new-window`。session が無い時は status line に案内だけ出す)
-- Password Manager は削除予定 ( https://github.com/bannzai/tatami/issues/49 )。削除前に `:export-passwords` (Chrome 互換 CSV) / `:export-cxf` で書き出せる。ただし Secure Enclave 保存の Passkey と署名カウンタが進んだ Passkey は CXF アーカイブに含まれない (完全なバックアップではない)。書き出したファイルは平文 (CSV にはパスワード、CXF の ZIP にはパスワードと Passkey の秘密鍵がそのまま入る) のため、共有領域や通常のバックアップに置かず、移行先へ取り込んだらすぐ削除する。Cookie / セッション永続化によるログイン状態の維持は残る
 
 企画・要件・技術方針は [documents/PROJECT.md](documents/PROJECT.md)、設計判断は [documents/adr/](documents/adr/) を参照。
 
@@ -34,7 +33,7 @@ make test          # ユニットテスト
 make macos         # Release ビルドを /Applications/Tatami.app に配置する
 ```
 
-署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする (Password Manager 削除 (#49) までの間は、Team 署名と ad-hoc 署名で資格情報の置き場所が異なり互いに読めない点に注意。切り替える前に `:export-passwords` で書き出し、切り替え後に `:import-passwords` で取り込む)。
+署名は既定で作者の Apple Developer Team による自動署名になる。その Team に所属していない場合は `make macos DEVELOPMENT_TEAM=<自分の Team ID>` で自分の Team を使うか、`make macos SIGNING=adhoc` で証明書不要の ad-hoc 署名にする。
 
 ## 公開ページ
 
