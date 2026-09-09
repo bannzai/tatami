@@ -29,55 +29,7 @@ paths:
 
 ## 理由
 
-- 余計な知識が増える。正しく理解すべきは SSOT のデータ構造であり、加工して個別最適化した構造は余計な知識とコードリーディングを増やす
-- 二重定義が増える。「この中間表現のプロパティの実態は何か」を SSOT まで遡って調べる作業が繰り返し発生する
-- クリティカルなデータ構造（DB・API）にフィールドの追加・削除があると、中間表現側も追随した更新が必要になる
-- 逆に、中間表現があることで変更量が減るシチュエーションも存在するが限定的。あるかないかわからない将来の変更に備えて作らない
-
-## 悪い例
-
-```swift
-// User と Group から表示用にフィールドを寄せ集めた中間表現
-struct UserAndGroupContainer {
-    let userID: String
-    let groupID: String
-    let userName: String
-    let groupName: String
-}
-```
-
-```typescript
-// gql リテラルから生成できる型を手書きしている
-interface ViewerQueryData {
-  viewer: { login: string; avatarUrl: string };
-}
-```
-
-```dart
-// Firestore の User ドキュメントを表示用に詰め替えた中間表現
-class UserViewData {
-  final String name;
-  final String iconUrl;
-}
-```
-
-## 良い例
-
-```swift
-// SSOT の User / Group をそのまま渡す
-func render(user: User, group: Group)
-```
-
-```typescript
-// @graphql-codegen/cli + client-preset が gql リテラルから TypedDocumentNode を生成するため、
-// クエリ結果の型を手書きしなくてよい
-const { data } = useQuery(ViewerDocument);
-```
-
-```dart
-// Firestore のドキュメント (entity) をそのまま使う
-Text(user.name)
-```
+SSOT と構造を二重定義すると、フィールドの実態を遡る負担と変更時の追随箇所が増えるため。
 
 ## 関連ルール
 
