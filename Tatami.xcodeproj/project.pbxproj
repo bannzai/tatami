@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A09100000000000000000001 /* LicenseList in Frameworks */ = {isa = PBXBuildFile; productRef = A09100000000000000000002 /* LicenseList */; };
 		02E240FFA8AB4B9DB0282623 /* PaneTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10214FFA89244825ACDF4111 /* PaneTreeTests.swift */; };
 		98314FEAF2C3EBCB62AC6792 /* AddressInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A58A44FEE49F58D4F91CEB5 /* AddressInput.swift */; };
 		9CE9B8CF20614337918C6E06 /* PaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8C5B56487F4F1F9006165F /* PaneTree.swift */; };
@@ -77,6 +78,17 @@
 		68269241F1A4489382C5C3E4 /* BrowsingDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataTests.swift; sourceTree = "<group>"; };
 		46D6ECA84EF14A21A27D0FE7 /* BrowsingDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowsingDataStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A09100000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A09100000000000000000001 /* LicenseList in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		406AF31CFC46E1944BB1400C /* Products */ = {
@@ -165,6 +177,7 @@
 			buildConfigurationList = 50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */;
 			buildPhases = (
 				800E9E7A78EBD0D58413C11C /* Sources */,
+				A09100000000000000000004 /* Frameworks */,
 				C709477A304C49E79307FDA8 /* Resources */,
 			);
 			buildRules = (
@@ -173,6 +186,7 @@
 			);
 			name = Tatami;
 			packageProductDependencies = (
+				A09100000000000000000002 /* LicenseList */,
 			);
 			productName = Tatami;
 			productReference = 1F1DC872C75B96AAEBF30600 /* Tatami.app */;
@@ -207,6 +221,9 @@
 			);
 			mainGroup = A7378DA067D6A4EB8EDAC990;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A09100000000000000000003 /* XCRemoteSwiftPackageReference "LicenseList" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -488,6 +505,25 @@
 			name = Debug;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A09100000000000000000003 /* XCRemoteSwiftPackageReference "LicenseList" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/cybozu/LicenseList.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A09100000000000000000002 /* LicenseList */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A09100000000000000000003 /* XCRemoteSwiftPackageReference "LicenseList" */;
+			productName = LicenseList;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		50BD1F8874248DB3EA611960 /* Build configuration list for PBXNativeTarget "Tatami" */ = {
