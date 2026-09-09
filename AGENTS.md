@@ -13,7 +13,7 @@ tmux の操作体系で画面分割を扱う、macOS ネイティブの個人用
 
 ## 検証方法
 
-- ビルド: `make build-macos`、ユニットテスト: `make test` (Swift Testing)。ログは `./tmp/build.log` / `./tmp/test.log` に保存し、`grep -i -e warning -e error` で全文を検査する (`tail` 等での切り詰め判定は禁止)。CI (`.github/workflows/ci.yml`) も同じ make target を `CODE_SIGNING_ALLOWED=NO` で実行する
+- ビルド: `make build-macos`、ユニットテスト: `make test` (Swift Testing)。ログは `./tmp/build.log` / `./tmp/test.log` に保存し、`grep -i -e warning -e error` で全文を検査する (`tail` 等での切り詰め判定は禁止)
 - 普段使い: `make macos` で Release ビルドを `/Applications/Tatami.app` に配置する
 - 動作確認 (UI・挙動): 本リポジトリは public のため、GitHub Actions の macOS runner 上で simtunnel を通じて行える (`/macos-simtunnel` skill。caller workflow は `.github/workflows/macos-app-session.yml`、既定 runner は `macos-26`)。ローカルの GUI セッションを使える場合は `make build-macos` の成果物 `tmp/DerivedData/Build/Products/Debug/Tatami.app` を `open` で起動してもよい
 - UI 要素には `accessibilityIdentifier` を付ける (WebDriverAgentMac から要素を特定するため)
