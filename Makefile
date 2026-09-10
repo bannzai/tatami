@@ -24,6 +24,11 @@ endif
 # arch を固定せず、実行している Mac (Apple silicon なら arm64、Intel なら x86_64) 向けにビルドする
 ARCH := $(shell uname -m)
 XCODEBUILD_FLAGS = -project $(XCODEPROJ) -scheme $(SCHEME) -configuration $(CONFIGURATION) -derivedDataPath $(DERIVED_DATA) -destination 'platform=macOS,arch=$(ARCH)' $(SIGNING_FLAGS)
+# CI では SPM ビルドプラグイン (LicenseList の PrepareLicenseList) の対話承認ができず
+# Validate plug-in で BUILD FAILED になるため検証を skip する。ローカルは Xcode の承認フローを維持する
+ifdef CI
+XCODEBUILD_FLAGS += -skipPackagePluginValidation
+endif
 
 .PHONY: build-macos macos test clean
 

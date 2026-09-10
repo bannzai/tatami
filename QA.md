@@ -114,6 +114,7 @@ duckduckgo.com の検索結果ページで、ページ内の検索入力欄に�
 
 ## 機能別 QA.md
 
+- [features/oss_licenses/QA.md](features/oss_licenses/QA.md) — OSS ライセンス一覧・本文の閲覧
 - [features/panes_windows/QA.md](features/panes_windows/QA.md) — ペイン分割・フォーカス・ウィンドウ操作
 - [features/navigation/QA.md](features/navigation/QA.md) — アドレスバー・遷移・target=_blank・ページ内検索
 - [features/persistence/QA.md](features/persistence/QA.md) — Cookie・セッション復元・履歴・ブックマーク
