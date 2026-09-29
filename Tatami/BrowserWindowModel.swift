@@ -445,13 +445,14 @@ final class BrowserWindowModel {
         addressBarFocusRequestCount += 1
     }
 
-    /// 分割・新規ウィンドウで開いたペインが空ページ (about:blank) なら、操作する対象が無いのでアドレスバーへフォーカスを移してすぐ URL を打てるようにする。
-    /// `set -g home` で実ページを開く設定の時は、ページ側の操作を邪魔しないためフォーカスを移さない
-    private func focusAddressBarIfBlankPane() {
-        guard currentWindow.focusedPane.url == AddressInput.homeURL else {
+    /// 分割・新規ウィンドウで開いたペインへキー入力の宛先を移す。空ページ (about:blank) は操作する対象が無いのでアドレスバーへ移してすぐ URL を打てるようにし、
+    /// 実ページ (既定の Google のトップページ等) は Web コンテンツへ移して、ページが読み込み時にフォーカスする検索窓へそのまま入力できるようにする (issue #68)
+    private func focusNewPane() {
+        guard currentWindow.focusedPane.url != AddressInput.blankURL else {
+            focusAddressBar()
             return
         }
-        focusAddressBar()
+        webContentFocusRequestCount += 1
     }
 
     func goBack() {
@@ -991,10 +992,10 @@ final class BrowserWindowModel {
         switch command {
         case .splitWindowHorizontal:
             currentWindow.split(axis: .horizontal)
-            focusAddressBarIfBlankPane()
+            focusNewPane()
         case .splitWindowVertical:
             currentWindow.split(axis: .vertical)
-            focusAddressBarIfBlankPane()
+            focusNewPane()
         case .killPane:
             closeFocusedPane()
         case .selectPaneNext:
@@ -1021,7 +1022,7 @@ final class BrowserWindowModel {
             currentWindow.applyNextLayout()
         case .newWindow:
             newWindow()
-            focusAddressBarIfBlankPane()
+            focusNewPane()
         case .nextWindow:
             nextWindow()
         case .previousWindow:

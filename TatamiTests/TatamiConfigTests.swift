@@ -126,7 +126,7 @@ struct TatamiConfigTests {
         // エラーの行を飛ばして最後の行まで読み続ける
         #expect(config.keyBindings.prefix == KeyStroke(tmuxKeyName: "C-a"))
         // 失敗した行の値は既定のまま残る
-        #expect(config.homeURL == AddressInput.homeURL)
+        #expect(config.homeURL == AddressInput.defaultHomeURL)
     }
 
     @Test func argumentCountsAreChecked() {
