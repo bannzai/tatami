@@ -1,8 +1,8 @@
 ---
 feature: panes_windows
 verification: manual
-last_verified_commit: 54b761324d624f9d828d64c66d169464a900b4a6
-last_verified_at: 2026-09-02
+last_verified_commit: 497f9ec7cc50c09894ed8e7370e1e02df5cd6e33
+last_verified_at: 2026-09-30
 ---
 
 # panes_windows QA
@@ -10,77 +10,84 @@ last_verified_at: 2026-09-02
 ## 関連リンク
 
 - 仕様: https://github.com/bannzai/tatami/blob/main/documents/PROJECT.md (コア体験の表・機能要件 1)
-- 関連: https://github.com/bannzai/tatami/issues/47 (方向転換) / https://github.com/bannzai/tatami/issues/51 (File > New Window のハング)
+- 関連: https://github.com/bannzai/tatami/issues/47 (方向転換) / https://github.com/bannzai/tatami/issues/51 (File > New Window のハング) / https://github.com/bannzai/tatami/issues/68 (新しいペインの既定を Google に・フォーカス枠を太く)
 
 ## 仕様チェックリスト
 
 | ID | 期待挙動 | 対応項目 |
 |----|---------|---------|
-| S1 | `prefix + "` で現在のペインを上下に分割し、新しいペインは空のページで開く | 上下分割 |
+| S1 | `prefix + "` で現在のペインを上下に分割し、新しいペインは `set -g home` のページ (既定は Google のトップページ) で開く | 上下分割 |
 | S2 | `prefix + %` で現在のペインを左右に分割する | 左右分割 |
-| S3 | 分割直後の空ページではアドレスバーへ自動フォーカスされ、そのまま URL を入力できる | 分割直後の入力 |
+| S3 | 分割直後、実ページ (既定の Google) ならその検索窓へ、空ページ (`set -g home about:blank`) ならアドレスバーへ自動フォーカスされ、そのまま入力できる | 分割直後の入力 / 空ページを home にした時の分割直後の入力 |
 | S4 | `prefix + o` / `;` / `h j k l` / 矢印でペインのフォーカスを移動できる | フォーカス移動 / 直前ペイン・矢印キーのフォーカス移動 |
 | S5 | `prefix + x` でペインを閉じ、兄弟ペインが領域を引き継ぐ | ペインを閉じる |
 | S6 | `prefix + z` でペインの zoom (全面表示) をトグルする | zoom |
 | S7 | `prefix + {` / `}` でペインを入れ替える | ペインの入れ替え / `prefix + }` の入れ替え |
 | S8 | `prefix + Space` でレイアウトを切り替える | レイアウト切り替え |
-| S9 | `prefix + c` で新しいウィンドウ (タブ相当) を空ページ + アドレスバーフォーカスで開く | 新しいウィンドウ |
+| S9 | `prefix + c` で新しいウィンドウ (タブ相当) を S3 と同じフォーカスで開く | 新しいウィンドウ |
 | S10 | `prefix + n` / `p` / `0-9` でウィンドウを移動・選択できる | ウィンドウの移動・選択 / 0 以外の番号キーでのウィンドウ選択 |
 | S11 | `prefix + ,` / `&` / `w` でウィンドウの名前変更・閉じる・一覧ができる | ウィンドウの名前変更・閉じる・一覧 |
 | S12 | File > New Window で別の macOS ウィンドウ (新しいセッション) が開く | macOS ウィンドウの追加 |
 | S13 | ペインの境界 (divider) をドラッグしてリサイズできる | ペインのドラッグリサイズ |
 | S14 | `prefix + s` でセッションの一覧・選択、`prefix + $` でセッション名の変更ができる | セッションの一覧・選択と名前変更 |
+| S15 | ペインが 2 枚以上の時、フォーカス中のペインを太い青枠 (4pt) で示す | フォーカス移動 |
 
 ## 1. ペイン分割
 
-- [x] **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が空ページでフォーカスされる
-  - 自動化: manual（macOS アプリのため osascript のキー送信 + screencapture の目視で確認する）
-- [x] **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が空ページでフォーカスされる
+- [x] **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が Google のトップページでフォーカスされる
+  - 自動化: manual（macOS アプリのため osascript のキー送信 + screencapture の目視で確認する。利用者のセッション・履歴を書き換えないよう、`PRODUCT_BUNDLE_IDENTIFIER=com.bannzai.Tatami.qa68` の別 bundle id でビルドし、`HOME` を `./tmp/qa-home` に向けて起動した）
+- [x] **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が Google のトップページでフォーカスされる
   - 自動化: manual（同上）
-- [x] **分割直後の入力**: 分割直後に prefix + / を押さずに `example.org` + Enter をタイプすると、アドレスバーに入力が入り新しいペインで開く
-  - 自動化: manual（同上。検証済み実例: https://github.com/bannzai/tatami/pull/48#issuecomment-5481009154 ）
+- [x] **分割直後の入力**: 分割直後にクリックせずタイプすると、新しいペインの Google の検索窓に入力が入る。アドレスバーにフォーカスがある状態 (`prefix + /` の後) から分割しても同じ
+  - 自動化: manual（同上）
+- [x] **空ページを home にした時の分割直後の入力**: `:set -g home about:blank` の後に分割すると、新しいペインは空ページで、タイプした `example.org` がアドレスバーに入る
+  - 自動化: manual（同上）
 
 #### 動作確認
 <details>
 <summary>動作確認エビデンス</summary>
 
-### **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が空ページでフォーカスされる
+### **上下分割**: `prefix + "` で現在のペインが上下に分割され、新しいペイン (下) が Google のトップページでフォーカスされる
 
 <details><summary>動作確認スクショ</summary>
 
-**確認日: 2026-09-01**
+**確認日: 2026-09-30**
 
-分割前 (1 ペイン)
+起動直後 (1 ペイン)。クリックせずに `tatami` とタイプすると Google の検索窓に入る
 
-<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/1efde99d-ba80-4204-89f0-e9d551ae8f57.png" width="320">
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/957a0874-e1e6-483a-a7ff-1b06f02bc089-03-launch-typed.png" width="320">
 
-`prefix + "` の後。下に空ページのペインができ、青枠とアドレスバーのフォーカスがそちらへ移る
+アドレスバーにフォーカスした状態 (`prefix + /`) から左のペインを `prefix + "` で上下に分割し、クリックせずに `fromaddr` とタイプすると、下の新しいペインの検索窓に入る
 
-<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/a83c150f-c126-4952-9f5f-bc172017993b.png" width="320">
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/70294751-36a9-44d4-acfd-3663a8bcca2f-06-split-from-address-bar.png" width="320">
 
 </details>
 
-### **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が空ページでフォーカスされる
+### **左右分割**: `prefix + %` で現在のペインが左右に分割され、新しいペイン (右) が Google のトップページでフォーカスされる
 
 <details><summary>動作確認スクショ</summary>
 
-**確認日: 2026-09-01**
+**確認日: 2026-09-30**
 
-下のペインを `prefix + %` で左右に分割し、右の空ページがフォーカスされる
+`prefix + %` の後、クリックせずに `split` とタイプすると右の新しいペインの検索窓に入り、右のペインが太い青枠で囲まれる
 
-<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/2018044e-4201-4cd5-a1a0-69ae7477a5f2.png" width="320">
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/767bab1d-3edf-4e6c-af20-8456bce04b5f-04-split-typed.png" width="320">
 
 </details>
 
-### **分割直後の入力**: 分割直後に prefix + / を押さずに `example.org` + Enter をタイプすると、アドレスバーに入力が入り新しいペインで開く
+### **分割直後の入力**: 分割直後にクリックせずタイプすると、新しいペインの Google の検索窓に入力が入る
+
+上下分割 (`fromaddr`)・左右分割 (`split`) のスクショで確認した
+
+### **空ページを home にした時の分割直後の入力**: `:set -g home about:blank` の後に分割すると、タイプした `example.org` がアドレスバーに入る
 
 <details><summary>動作確認スクショ</summary>
 
-**確認日: 2026-09-01**
+**確認日: 2026-09-30**
 
-分割直後にそのまま `example.org` と打って Enter すると、新しいペインが example.org を開く
+右の新しいペインは空ページで、`example.org` がアドレスバーに入る
 
-<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/5573dc7a-aae0-4bdf-a40a-53dd7575b173.png" width="320">
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/4eebd016-f88a-4915-86f9-4db65c073796-08-blank-home-split.png" width="320">
 
 </details>
 
@@ -90,7 +97,7 @@ last_verified_at: 2026-09-02
 
 ## 2. ペインのフォーカスと配置
 
-- [x] **フォーカス移動**: `prefix + o` で次のペインへ、`prefix + h/j/k/l` で方向指定でフォーカスが移る (青枠の追従で確認)
+- [x] **フォーカス移動**: `prefix + o` で次のペインへ、`prefix + h/j/k/l` で方向指定でフォーカスが移る (青枠の追従で確認。枠は 4pt)
   - 自動化: manual（osascript + screencapture）
   - どのペインがどれか分かるよう、`python3 -m http.server` で「PANE A」「PANE B」「PANE C」と大きく表示するだけのページを配って各ペインに割り当てると判定しやすい
 - [ ] **直前ペイン・矢印キーのフォーカス移動**: `prefix + ;` で直前のペインへ、`prefix + 矢印` で方向指定でフォーカスが移る
@@ -132,6 +139,12 @@ last_verified_at: 2026-09-02
 `prefix + l` で右の PANE C へ移る
 
 <img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/6dd463a1-8cfd-4ff0-a518-a5a93aaaf716.png" width="320">
+
+**確認日: 2026-09-30** (フォーカス枠を 4pt にした後。`prefix + h/j/k/l` は再確認していない)
+
+`prefix + o` で左のペインへ移り、太い青枠が左へ移る
+
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/7702b610-75c0-4628-a4d3-8519a198450f-05-focus-next.png" width="320">
 
 </details>
 
@@ -201,7 +214,7 @@ PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域�
 
 ## 3. ウィンドウ操作
 
-- [x] **新しいウィンドウ**: `prefix + c` で新しいウィンドウが空ページ + アドレスバーフォーカスで開き、status line の一覧に追加される
+- [x] **新しいウィンドウ**: `prefix + c` で新しいウィンドウが Google のトップページで開いて検索窓にフォーカスし、status line の一覧に追加される
   - 自動化: manual（osascript + screencapture）
 - [x] **ウィンドウの移動・選択**: `prefix + n` / `p` で隣へ、`prefix + <番号>` で直接選択でき、status line の `*` が追従する
   - 自動化: manual（同上）
@@ -224,15 +237,15 @@ PANE C を `prefix + x` で閉じると、残った PANE A と PANE B が領域�
 <details>
 <summary>動作確認エビデンス</summary>
 
-### **新しいウィンドウ**: `prefix + c` で新しいウィンドウが空ページ + アドレスバーフォーカスで開き、status line の一覧に追加される
+### **新しいウィンドウ**: `prefix + c` で新しいウィンドウが Google のトップページで開いて検索窓にフォーカスし、status line の一覧に追加される
 
 <details><summary>動作確認スクショ</summary>
 
-**確認日: 2026-09-01**
+**確認日: 2026-09-30**
 
-`prefix + c` で `9:blank*` が status line に加わり、空ページ + アドレスバーフォーカスで開く
+`prefix + c` で `1:www.google.com*` が status line に加わり、クリックせずにタイプした `newwindow` が検索窓に入る
 
-<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/bannzai/tatami/20260901/68ac7144-2ffc-4b28-9e2a-82ec8c78a13c.png" width="320">
+<img src="https://pub-7f3469dd3e2e445b9b8ec2d1381b5ea8.r2.dev/2026/09/29/a5ee71da-6de8-4cc5-b131-8d397ec26d7e-07-new-window.png" width="320">
 
 </details>
 
