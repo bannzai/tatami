@@ -5,7 +5,7 @@ struct TatamiConfig: Equatable {
     /// prefix キーとコマンドの対応 (`set -g prefix` / `bind` / `unbind`)
     var keyBindings = KeyBindingTable.default
     /// 新しいペインを開いた時に読み込む URL (`set -g home`)
-    var homeURL = AddressInput.homeURL
+    var homeURL = AddressInput.defaultHomeURL
     /// アドレスバーの入力が URL でない時に使う検索エンジン (`set -g search-engine`)
     var searchURL = AddressInput.defaultSearchURL
     /// WKWebView に設定する User-Agent (`set -g user-agent`)。nil は WebKit の既定 (Safari 相当) を使うことを表す

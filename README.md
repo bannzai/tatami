@@ -11,7 +11,7 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
 
   ```conf
   set -g prefix C-t                                    # prefix の変更 (既定は C-b)
-  set -g home https://www.google.com/                  # 新しいペインで開くページ (既定は空ページ)
+  set -g home about:blank                              # 新しいペインで開くページ (既定は Google のトップページ。空ページにするとアドレスバーへフォーカスする)
   set -g search-engine https://duckduckgo.com/?q=      # アドレスバーの検索エンジン (既定は Google)
   bind v split-window -v                               # キーの割り当て変更。unbind <キー> / source-file <パス> も使える
   bind -n C-t reload                                   # prefix なしで直接効くバインド (解除は unbind -n <キー>)

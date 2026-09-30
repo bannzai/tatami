@@ -5,10 +5,12 @@ import WebKit
 /// ペインツリーの矩形どおりに各ペインの WKWebView を並べる AppKit のビュー。
 /// ペイン間の境界線の描画とドラッグによるリサイズ、フォーカス中ペインの枠線の描画、クリックによるフォーカス移動を担当する
 final class PaneContainerView: NSView {
-    /// ペイン間の境界線の太さ。ドラッグで掴める幅も兼ねる
-    static let dividerThickness: CGFloat = 4
-    /// フォーカス中のペインを示す枠線の太さ。境界線の中に収める
-    static let focusBorderWidth: CGFloat = 2
+    /// ペイン間の境界線の太さ。ドラッグで掴める幅も兼ねる。
+    /// フォーカス枠 (focusBorderWidth) はこの半分の幅にしか描けないため、枠の太さの 2 倍にしている
+    static let dividerThickness: CGFloat = focusBorderWidth * 2
+    /// フォーカス中のペインを示す枠線の太さ。境界線の中に収める。
+    /// 2pt ではどのペインにフォーカスがあるか見分けにくかったため (issue #68)、ペイン間の余白が広がりすぎない範囲で太くした
+    static let focusBorderWidth: CGFloat = 4
 
     /// 境界線をドラッグした時の通知先。delta は割合の変化量
     var onDividerDrag: ((_ dividerPath: [SplitSide], _ delta: Double) -> Void)?

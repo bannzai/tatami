@@ -2,14 +2,16 @@ import Foundation
 
 /// アドレスバーの入力を URL に解決する純粋ロジック (ユニットテスト対象)
 enum AddressInput {
-    /// 起動直後に表示する空ページ。ホームページは tatami.conf で設定できるようにする予定で、それまでは about:blank にする
-    static let homeURL = URL(string: "about:blank")!
-    /// 検索エンジンの既定。作者が普段使っている Google を選んだ。tatami.conf で変更できるようにする予定
+    /// 空ページ。アドレスバーでは「URL が無い」状態として扱う
+    static let blankURL = URL(string: "about:blank")!
+    /// 新しいペインで開くページの既定。開いてすぐ検索語を打てるよう、検索窓があり読み込み時にそこへフォーカスする Google のトップページを選んだ (issue #68)
+    static let defaultHomeURL = URL(string: "https://www.google.com/")!
+    /// 検索エンジンの既定。作者が普段使っている Google を選んだ
     static let defaultSearchURL = URL(string: "https://www.google.com/search")!
 
     /// アドレスバーに表示する文字列。空ページ (about:blank) は「URL が無い」状態なので空にして、そのまま URL や検索語を打てるようにする
     static func displayText(url: URL) -> String {
-        url == homeURL ? "" : url.absoluteString
+        url == blankURL ? "" : url.absoluteString
     }
 
     /// 入力の種類に応じて URL を決める。
