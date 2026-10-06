@@ -57,3 +57,9 @@ test:
 
 clean:
 	rm -rf $(DERIVED_DATA)
+
+# 引数なしの make で動作確認 (verify) を実行する
+.DEFAULT_GOAL := verify
+
+.PHONY: verify
+verify: build-macos test
