@@ -63,5 +63,6 @@ clean:
 
 .PHONY: verify
 verify: build-macos test
-# build-macos と test は同じ DerivedData を使い、test も内部でビルドするため、-j 指定時もビルド完了後にテストを始める
+# 全 target が同じ DerivedData を使い、test も内部でビルドするため、-j 指定時も Makefile 全体を直列にする
+# (verify の build-macos → test の順序保証が主目的だが、macos 等の他の target も同じ理由で並列にしない)
 .NOTPARALLEL:
