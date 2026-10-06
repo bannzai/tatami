@@ -23,7 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: xcodebuild -version
-      - name: Build
-        run: make build-macos CODE_SIGNING_ALLOWED=NO
-      - name: Test
-        run: make test CODE_SIGNING_ALLOWED=NO
+      # 引数なしの make で verify (build-macos → test) が走ることごと検証する
+      - name: Verify
+        run: make CODE_SIGNING_ALLOWED=NO

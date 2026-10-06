@@ -57,3 +57,12 @@ test:
 
 clean:
 	rm -rf $(DERIVED_DATA)
+
+# 引数なしの make で動作確認 (verify) を実行する
+.DEFAULT_GOAL := verify
+
+.PHONY: verify
+verify: build-macos test
+# 全 target が同じ DerivedData を使い、test も内部でビルドするため、-j 指定時も Makefile 全体を直列にする
+# (verify の build-macos → test の順序保証が主目的だが、macos 等の他の target も同じ理由で並列にしない)
+.NOTPARALLEL:
