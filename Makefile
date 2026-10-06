@@ -63,3 +63,5 @@ clean:
 
 .PHONY: verify
 verify: build-macos test
+# build-macos と test は同じ DerivedData を使い、test も内部でビルドするため、-j 指定時もビルド完了後にテストを始める
+.NOTPARALLEL:
