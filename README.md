@@ -28,9 +28,10 @@ tmux の操作体系 (prefix キー + 1 打鍵) で画面分割を扱う、macOS
 ## ビルドと配置
 
 ```sh
-make               # 動作確認 (verify = build-macos + test)。引数なしの make はこれを実行する
+make               # Release ビルドを /Applications/Tatami.app に配置する (= make macos)
 make build-macos   # Debug ビルドだけ行う
 make test          # ユニットテスト
+make verify        # build-macos + test (CI が実行する検査)
 make macos         # Release ビルドを /Applications/Tatami.app に配置する
 ```
 

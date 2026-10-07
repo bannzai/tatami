@@ -13,7 +13,8 @@ tmux の操作体系で画面分割を扱う、macOS ネイティブの個人用
 
 ## 検証方法
 
-- ビルドとユニットテストの検証: 引数なしの `make` (= `make verify`) でまとめて実行する (UI・挙動の動作確認は含まない)
+- 引数なしの `make` は `make macos` (Release ビルドを `/Applications/Tatami.app` に配置する) を実行する。人が手で動作確認するための入口で、検査・テストは含めない (CI が `make verify` で行う)
+- ビルドとユニットテストの検証: `make verify` でまとめて実行する (UI・挙動の動作確認は含まない)
 - ビルド: `make build-macos`、ユニットテスト: `make test` (Swift Testing)。ログは `./tmp/build.log` / `./tmp/test.log` に保存し、`grep -i -e warning -e error` で全文を検査する (`tail` 等での切り詰め判定は禁止)
 - 普段使い: `make macos` で Release ビルドを `/Applications/Tatami.app` に配置する
 - 動作確認 (UI・挙動): 本リポジトリは public のため、GitHub Actions の macOS runner 上で simtunnel を通じて行える (`/macos-simtunnel` skill。caller workflow は `.github/workflows/macos-app-session.yml`、既定 runner は `macos-26`)。ローカルの GUI セッションを使える場合は `make build-macos` の成果物 `tmp/DerivedData/Build/Products/Debug/Tatami.app` を `open` で起動してもよい
