@@ -23,6 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: xcodebuild -version
-      # 引数なしの make で verify (build-macos → test) が走ることごと検証する
+      # verify (build-macos → test) を実行する。引数なしの make は macos (/Applications への配置) のため CI では使わない
       - name: Verify
-        run: make CODE_SIGNING_ALLOWED=NO
+        run: make verify CODE_SIGNING_ALLOWED=NO
