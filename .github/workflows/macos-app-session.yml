@@ -38,13 +38,15 @@ jobs:
       id-token: write # Tailscale の OIDC (workload identity federation) 認証に必要
       contents: read
     # タグ運用はしないため main の commit SHA で固定する（更新時は SHA を書き換える）
-    uses: bannzai/simtunnel/.github/workflows/macos-session.yml@c4013f4b664de1e4373b2aca6afc48584e759344 # main 2026-08-28
+    uses: bannzai/simtunnel/.github/workflows/macos-session.yml@ba4552d87d72c7aafa1428553eaa1656baaac361 # simtunnel PR #78 のブランチ。マージ後に main の SHA へ更新する
     with:
       session: ${{ inputs.session }}
       runner: ${{ inputs.runner }}
       duration_minutes: ${{ inputs.duration_minutes }}
       build_project: Tatami.xcodeproj
       build_scheme: Tatami
+      # LicenseList の build tool plugin (PrepareLicenseList) の検証は GUI の承認を求め、runner では通せないため
+      build_extra_args: -skipPackagePluginValidation
     secrets:
       TS_OIDC_CLIENT_ID: ${{ secrets.TS_OIDC_CLIENT_ID }}
       TS_OIDC_AUDIENCE: ${{ secrets.TS_OIDC_AUDIENCE }}
